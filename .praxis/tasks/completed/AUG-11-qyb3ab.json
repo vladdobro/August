@@ -1,0 +1,19 @@
+{
+  "id": "AUG-11-qyb3ab",
+  "assignee": "jarvis.json",
+  "priority": "high",
+  "status": "completed",
+  "title": "[AUG-11] Add keyboard accessibility to session list",
+  "why_we_need_this": "Session items in SessionList.tsx are div+onClick with no tabIndex, role, or keyboard handlers. Keyboard and screen reader users cannot navigate sessions at all. WCAG 2.1 Level A failure (2.1.1 Keyboard).",
+  "acceptance_criteria": "- [ ] `.session-list-items` has `role=\"listbox\"`\n- [ ] Each `.session-item` has `role=\"option\"`, `tabIndex={0}`, and `aria-selected` reflecting selection state\n- [ ] `onKeyDown` handler supports: Enter (select), Delete (delete with confirmation), ArrowUp/ArrowDown (navigate between items)\n- [ ] Focus is visually indicated (outline or highlight distinct from hover)\n- [ ] Screen reader announces session title, status, and selection state",
+  "important_constraints": "",
+  "labels": [
+    "frontend",
+    "accessibility",
+    "ux"
+  ],
+  "on_hold_reason": "",
+  "contextRouterIncluded": false,
+  "created_at": 1789032320121,
+  "column_entered_at": 1789037687862
+}

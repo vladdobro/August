@@ -1,0 +1,20 @@
+{
+  "id": "AUG-21-wqbn9z",
+  "assignee": "jarvis.json",
+  "priority": "high",
+  "status": "completed",
+  "title": "[AUG-21] Record mic and system audio as separate files, let user pick the right one",
+  "why_we_need_this": "When recording meetings (Google Meet, Zoom, etc.), the user needs both their mic audio and colleagues' audio from the output device. Currently the client mixes mic + system audio into a single stream via AudioContext. The user has multiple output devices (e.g. Головной телефон vs Наушники on the same headset) and getDisplayMedia() may capture audio from the wrong one. By saving mic and system audio as separate recordings, the user can verify which captured the meeting and discard the wrong one.",
+  "acceptance_criteria": "- [ ] When \"Capture system audio\" is enabled and recording starts, mic and system audio (getDisplayMedia) are recorded as TWO separate audio files, not mixed into one\n- [ ] Both recordings are uploaded as separate sessions (or sub-files within one session) after recording stops\n- [ ] User can listen to / preview each recording and choose which to keep for transcription\n- [ ] Recordings shorter than 30 seconds are automatically flagged or removed (configurable threshold)\n- [ ] Mic-only mode (toggle off) still works as before — single recording, no changes\n- [ ] UX clearly indicates that two separate tracks are being recorded when system audio is enabled",
+  "important_constraints": "- getDisplayMedia() is the only browser API for system audio capture — the screen sharing dialog is unavoidable but should be explained clearly in the UI\n- The application is a meeting recording tool, not a screen sharing tool — UI copy and flow should reflect this (e.g. \"share the tab/screen playing the meeting audio\")\n- Session storage format is folder-based (audio file + session.json + transcript.md) — multi-track support must fit this model\n- Both tracks should get their own transcription so the user can compare content, not just duration",
+  "labels": [
+    "frontend",
+    "backend",
+    "ux",
+    "recording"
+  ],
+  "on_hold_reason": "",
+  "contextRouterIncluded": false,
+  "created_at": 1789037557572,
+  "column_entered_at": 1789042070736
+}

@@ -1,0 +1,18 @@
+{
+  "id": "AUG-13-ob0moo",
+  "assignee": "jarvis.json",
+  "priority": "high",
+  "status": "completed",
+  "title": "[AUG-13] Add upload progress bar with percentage",
+  "why_we_need_this": "During file upload the UI shows only a spinner and static text. For large audio files (100+ MB meeting recordings), users have zero visibility into progress and may think the app is frozen.",
+  "acceptance_criteria": "- [ ] `uploadAudio` in api.ts uses XMLHttpRequest (or equivalent) with `upload.onprogress` callback\n- [ ] Dropzone area shows a determinate progress bar during upload\n- [ ] Percentage and uploaded/total size are displayed (e.g., \"45% — 52 MB / 115 MB\")\n- [ ] Progress bar uses existing design tokens (--accent color, --btn-radius)\n- [ ] Spinner remains for the transcription-starting phase after upload completes",
+  "important_constraints": "",
+  "labels": [
+    "frontend",
+    "ux"
+  ],
+  "on_hold_reason": "",
+  "contextRouterIncluded": false,
+  "created_at": 1789032330411,
+  "column_entered_at": 1789039103835
+}

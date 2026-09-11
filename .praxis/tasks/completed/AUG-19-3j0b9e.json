@@ -1,0 +1,18 @@
+{
+  "id": "AUG-19-3j0b9e",
+  "assignee": "jarvis.json",
+  "priority": "low",
+  "status": "completed",
+  "title": "[AUG-19] Replace native confirm dialog with styled undo toast for delete",
+  "why_we_need_this": "Deleting a session triggers window.confirm() — a native browser dialog that clashes with the polished jade-emerald design system. It's not customizable and interrupts user flow.",
+  "acceptance_criteria": "- [ ] Clicking delete removes the session immediately (optimistic delete)\n- [ ] A toast notification appears for 5 seconds: \"Session deleted — Undo\"\n- [ ] Clicking \"Undo\" restores the session (cancels the delete API call or re-creates)\n- [ ] Toast uses design tokens (--card-bg, --card-radius, --accent for the Undo link)\n- [ ] Toast is positioned bottom-center, above the theme toggle\n- [ ] If undo is not clicked within 5s, the delete is finalized\n- [ ] window.confirm() is removed entirely",
+  "important_constraints": "",
+  "labels": [
+    "frontend",
+    "ux"
+  ],
+  "on_hold_reason": "",
+  "contextRouterIncluded": false,
+  "created_at": 1789032366160,
+  "column_entered_at": 1789039076527
+}

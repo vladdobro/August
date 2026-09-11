@@ -1,0 +1,15 @@
+{
+  "id": "AUG-23-46cm1n",
+  "assignee": "assistant.json",
+  "priority": "medium",
+  "status": "completed",
+  "title": "[AUG-23] New brand design",
+  "why_we_need_this": "Разработай новый дизайн GUI\nОписание:\nДизайн в стиле Necron из Warhammer 40000\nКнопки= круги, соединенные линиями\nВ центре - кнопку Начала записи\nВсе текущие элементы, включая те, что появляются при разных событиях, сохранены (например визуальный эквалайзер микрофона)\nВыдержана симметрия по вертикали\n\nТвоя задача НАРИСОВАТЬ эскиз. \nАутпут=рисунок, никаких изменений в приложении",
+  "acceptance_criteria": "",
+  "important_constraints": "",
+  "labels": [],
+  "on_hold_reason": "",
+  "contextRouterIncluded": false,
+  "created_at": 1789041972199,
+  "column_entered_at": 1789051123065
+}

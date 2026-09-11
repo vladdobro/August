@@ -1,0 +1,18 @@
+{
+  "id": "AUG-16-78i8kv",
+  "assignee": "jarvis.json",
+  "priority": "medium",
+  "status": "completed",
+  "title": "[AUG-16] Make session rename discoverable with edit icon",
+  "why_we_need_this": "Renaming a session requires double-clicking the title — a hidden gesture with no visual cue. The delete button shows on hover, but rename has no equivalent affordance. Users never discover this feature.",
+  "acceptance_criteria": "- [ ] A pencil/edit icon appears on hover next to the delete × button on each session item\n- [ ] Clicking the edit icon enters rename mode (same behavior as current double-click)\n- [ ] Double-click on title still works as a secondary trigger\n- [ ] Edit icon uses sidebar color scheme and matches delete button styling (opacity transition on hover)\n- [ ] Edit icon is keyboard-accessible (focusable, activates on Enter)",
+  "important_constraints": "",
+  "labels": [
+    "frontend",
+    "ux"
+  ],
+  "on_hold_reason": "",
+  "contextRouterIncluded": false,
+  "created_at": 1789032349152,
+  "column_entered_at": 1789038042932
+}

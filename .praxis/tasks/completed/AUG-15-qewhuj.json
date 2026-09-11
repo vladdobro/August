@@ -1,0 +1,18 @@
+{
+  "id": "AUG-15-qewhuj",
+  "assignee": "jarvis.json",
+  "priority": "medium",
+  "status": "completed",
+  "title": "[AUG-15] Add search and status filter to session list",
+  "why_we_need_this": "The session list is a flat, unfiltered list. A manager doing 5 meetings/week accumulates 20+ sessions/month. Finding a specific session is scroll-only, and filtering by status (completed, failed) is not possible.",
+  "acceptance_criteria": "- [ ] Search input below the sidebar header filters sessions by title (case-insensitive, as-you-type)\n- [ ] Status filter chips or dropdown allows filtering by one or more statuses (uploading, transcribing, completed, failed)\n- [ ] Filters persist within the session (cleared on page reload is fine)\n- [ ] Empty filter results show \"No sessions match your search\" message\n- [ ] Search input and filter controls use existing design tokens and sidebar color scheme",
+  "important_constraints": "",
+  "labels": [
+    "frontend",
+    "ux"
+  ],
+  "on_hold_reason": "",
+  "contextRouterIncluded": false,
+  "created_at": 1789032339692,
+  "column_entered_at": 1789034964509
+}

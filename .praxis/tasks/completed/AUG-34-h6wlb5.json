@@ -1,0 +1,15 @@
+{
+  "id": "AUG-34-h6wlb5",
+  "assignee": "jarvis.json",
+  "priority": "medium",
+  "status": "completed",
+  "title": "[AUG-34] Approximate timer for transcription to be done",
+  "why_we_need_this": "approximate timer for transcription to be done\nAs i suppose, basing on the duration and quality of the video\nAnd taking into account known equipment of my PC - we can count an approximate time to finish the transcription.\nIf that so, I want you to to storm the idea how better to implement this timer into my product\n\nYou always know I'm the fun of WH40K, and that timer for voice recording is AWESOME,\nProbably something that way, but I want to see the options - something similar and something different\nOutput is a design for approval",
+  "acceptance_criteria": "",
+  "important_constraints": "",
+  "labels": [],
+  "on_hold_reason": "",
+  "contextRouterIncluded": false,
+  "created_at": 1789075253120,
+  "column_entered_at": 1789079836819
+}

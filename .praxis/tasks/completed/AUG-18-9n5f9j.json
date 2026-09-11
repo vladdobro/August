@@ -1,0 +1,18 @@
+{
+  "id": "AUG-18-9n5f9j",
+  "assignee": "jarvis.json",
+  "priority": "low",
+  "status": "completed",
+  "title": "[AUG-18] Improve empty state with illustration and onboarding guidance",
+  "why_we_need_this": "When no sessions exist, the sidebar shows one line of gray text. First-time users see a dark sidebar with minimal guidance and a blank main area. Poor first impression for a manager productivity tool.",
+  "acceptance_criteria": "- [ ] Empty sidebar state includes an SVG icon/illustration (microphone, waveform, or similar)\n- [ ] A headline like \"Record or upload your first meeting\" replaces the plain text\n- [ ] 2-3 step bullets show the workflow (upload/record → transcribe → review)\n- [ ] Visual direction guides attention toward the upload area in main content\n- [ ] Empty state uses existing design tokens and works in both light and dark themes",
+  "important_constraints": "",
+  "labels": [
+    "frontend",
+    "ux"
+  ],
+  "on_hold_reason": "",
+  "contextRouterIncluded": false,
+  "created_at": 1789032360655,
+  "column_entered_at": 1789035264230
+}

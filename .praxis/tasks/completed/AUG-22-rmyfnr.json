@@ -1,0 +1,15 @@
+{
+  "id": "AUG-22-rmyfnr",
+  "assignee": "jarvis.json",
+  "priority": "medium",
+  "status": "completed",
+  "title": "[AUG-22] Fix: Capture system audio checked by default",
+  "why_we_need_this": "fix: Capture system audio should be checked by default",
+  "acceptance_criteria": "",
+  "important_constraints": "",
+  "labels": [],
+  "on_hold_reason": "",
+  "contextRouterIncluded": false,
+  "created_at": 1789041230932,
+  "column_entered_at": 1789042063874
+}

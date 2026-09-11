@@ -1,0 +1,15 @@
+{
+  "id": "AUG-25-kd603z",
+  "assignee": "jarvis.json",
+  "priority": "medium",
+  "status": "completed",
+  "title": "[AUG-25] Bug: sessions separated for mic and system",
+  "why_we_need_this": "bug: sessions separated for mic and system, means the one conversation devided into 2 monologues\nProblem: even if I transcribe both Mic and System, it is hard to combine two transcriptions in one dialogue\n\nSession for one dialoge should be united\nInside the session it could be two separated records, BUT the final transcription should combine both Mic and System\n\nFix it please",
+  "acceptance_criteria": "",
+  "important_constraints": "",
+  "labels": [],
+  "on_hold_reason": "",
+  "contextRouterIncluded": false,
+  "created_at": 1789049850255,
+  "column_entered_at": 1789062035866
+}

@@ -1,0 +1,15 @@
+{
+  "id": "AUG-38-454lyo",
+  "assignee": "storm.json",
+  "priority": "medium",
+  "status": "completed",
+  "title": "[AUG-38] Почему отрываю приложение - а там старый дизайн?",
+  "why_we_need_this": "http://127.0.0.1:3001/\nзачем нужна старая версия?\n",
+  "acceptance_criteria": "",
+  "important_constraints": "",
+  "labels": [],
+  "on_hold_reason": "",
+  "contextRouterIncluded": false,
+  "created_at": 1789118002754,
+  "column_entered_at": 1789118297197
+}

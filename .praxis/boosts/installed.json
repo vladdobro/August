@@ -1,0 +1,12 @@
+{
+  "agentation": {
+    "installedAt": "2026-09-11T19:59:33.537Z",
+    "version": "1.0.0",
+    "files": [
+      ".agents/skills/agentation-init/SKILL.md",
+      ".agents/skills/agentation-init/references/frontend-react-vite.md",
+      ".agents/skills/agentation-init/references/script-templates.md",
+      ".agents/skills/agentation-init/references/verification-checks.md"
+    ]
+  }
+}

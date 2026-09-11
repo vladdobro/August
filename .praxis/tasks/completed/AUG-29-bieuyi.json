@@ -1,0 +1,15 @@
+{
+  "id": "AUG-29-bieuyi",
+  "assignee": "jarvis.json",
+  "priority": "medium",
+  "status": "completed",
+  "title": "[AUG-29] Объедини транскрипции",
+  "why_we_need_this": "Объедини транскрипции:\nday 1 mike training - mic\nday 1 mike training - sys\nв одну и ту же транскрипцию\nпереведи всё на русский и сохрани в md файле\nЗаголовок: день 1 тренеровка с Михаилом (начало)",
+  "acceptance_criteria": "",
+  "important_constraints": "",
+  "labels": [],
+  "on_hold_reason": "",
+  "contextRouterIncluded": false,
+  "created_at": 1789061008189,
+  "column_entered_at": 1789068546872
+}

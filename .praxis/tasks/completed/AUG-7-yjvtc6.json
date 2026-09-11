@@ -1,0 +1,15 @@
+{
+  "id": "AUG-7-yjvtc6",
+  "assignee": "jarvis.json",
+  "priority": "medium",
+  "status": "completed",
+  "title": "[AUG-7] Favicon",
+  "why_we_need_this": "add favicon to the application\nfavicon is the pixel styled soundbar with a \"A\" litera written inside it\n\n",
+  "acceptance_criteria": "",
+  "important_constraints": "",
+  "labels": [],
+  "on_hold_reason": "",
+  "contextRouterIncluded": false,
+  "created_at": 1789002715446,
+  "column_entered_at": 1789031688487
+}

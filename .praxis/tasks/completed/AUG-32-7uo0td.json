@@ -1,0 +1,15 @@
+{
+  "id": "AUG-32-7uo0td",
+  "assignee": "jarvis.json",
+  "priority": "medium",
+  "status": "completed",
+  "title": "[AUG-32] Объедини транскрипции 3",
+  "why_we_need_this": "Объедини две сессии в единый диалог:\n\nday 1 mike training 3 - mic\nday 1 mike training 3 - sys\n\nОпредели язык и переведи всё на русский\nнасколько осмысленным получается диалог?",
+  "acceptance_criteria": "",
+  "important_constraints": "",
+  "labels": [],
+  "on_hold_reason": "",
+  "contextRouterIncluded": false,
+  "created_at": 1789067742168,
+  "column_entered_at": 1789076821008
+}

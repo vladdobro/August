@@ -1,0 +1,15 @@
+{
+  "id": "AUG-8-k24y3s",
+  "assignee": "jarvis.json",
+  "priority": "medium",
+  "status": "completed",
+  "title": "[AUG-8] Run server command",
+  "why_we_need_this": "Create a command file so I can run/restart the server by myself",
+  "acceptance_criteria": "",
+  "important_constraints": "",
+  "labels": [],
+  "on_hold_reason": "",
+  "contextRouterIncluded": false,
+  "created_at": 1789030067120,
+  "column_entered_at": 1789031684684
+}

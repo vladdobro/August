@@ -1,0 +1,15 @@
+{
+  "id": "AUG-6-rhj8qw",
+  "assignee": "jarvis.json",
+  "priority": "medium",
+  "status": "completed",
+  "title": "[AUG-6] UI UX major update",
+  "why_we_need_this": "Check D:\\claude\\L1_Check_Prompt project for brandbook rules and templates\nUse it fully in this project, but:\nmain colour schem have to be Jade-emerald gradient",
+  "acceptance_criteria": "",
+  "important_constraints": "",
+  "labels": [],
+  "on_hold_reason": "",
+  "contextRouterIncluded": false,
+  "created_at": 1789002561070,
+  "column_entered_at": 1789031686773
+}

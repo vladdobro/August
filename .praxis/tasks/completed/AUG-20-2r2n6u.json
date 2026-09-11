@@ -1,0 +1,18 @@
+{
+  "id": "AUG-20-2r2n6u",
+  "assignee": "jarvis.json",
+  "priority": "low",
+  "status": "completed",
+  "title": "[AUG-20] Add transcript export options (txt, srt, copy text only)",
+  "why_we_need_this": "The only way to get transcript content out is \"Copy Transcript,\" which copies raw markdown with timestamps. Managers sharing transcripts with teams need clean formats — plain text without timestamps, .srt for subtitles, downloadable .txt.",
+  "acceptance_criteria": "- [ ] \"Copy Transcript\" button becomes a dropdown with options: \"Copy with timestamps\", \"Copy text only\", \"Download .txt\", \"Download .srt\"\n- [ ] \"Copy text only\" strips [HH:MM:SS] prefixes and markdown markers\n- [ ] \"Download .txt\" saves a plain text file with timestamps\n- [ ] \"Download .srt\" saves a valid SubRip subtitle file with sequential numbering and timestamp ranges\n- [ ] Dropdown uses design tokens and matches the copy button styling\n- [ ] \"Copied!\" feedback shown for copy actions; browser download dialog for file downloads",
+  "important_constraints": "",
+  "labels": [
+    "frontend",
+    "ux"
+  ],
+  "on_hold_reason": "",
+  "contextRouterIncluded": false,
+  "created_at": 1789032372596,
+  "column_entered_at": 1789038091617
+}

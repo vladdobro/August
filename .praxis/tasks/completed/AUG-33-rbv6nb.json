@@ -1,0 +1,15 @@
+{
+  "id": "AUG-33-rbv6nb",
+  "assignee": "jarvis.json",
+  "priority": "medium",
+  "status": "completed",
+  "title": "[AUG-33] Russian set as a default language",
+  "why_we_need_this": "Check that Russian set as a default language for transcription",
+  "acceptance_criteria": "",
+  "important_constraints": "",
+  "labels": [],
+  "on_hold_reason": "",
+  "contextRouterIncluded": false,
+  "created_at": 1789068986875,
+  "column_entered_at": 1789072524453
+}

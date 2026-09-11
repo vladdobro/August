@@ -1,0 +1,15 @@
+{
+  "id": "AUG-3-ddkn34",
+  "assignee": "jarvis.json",
+  "priority": "medium",
+  "status": "completed",
+  "title": "[AUG-3] Audio devices to choose",
+  "why_we_need_this": "Make an option to choose between available sound devices to record as it was in the initial project\nThere was an option to choose sound device and microphone device before the recording begins\n",
+  "acceptance_criteria": "",
+  "important_constraints": "",
+  "labels": [],
+  "on_hold_reason": "",
+  "contextRouterIncluded": false,
+  "created_at": 1789001415665,
+  "column_entered_at": 1789002121637
+}

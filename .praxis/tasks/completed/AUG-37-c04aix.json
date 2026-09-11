@@ -1,0 +1,15 @@
+{
+  "id": "AUG-37-c04aix",
+  "assignee": "storm.json",
+  "priority": "medium",
+  "status": "completed",
+  "title": "[AUG-37] Обновить дизайн кнопки записи",
+  "why_we_need_this": "приблизить дизайн кнопки записи к макету\nhttps://claude.ai/code/artifact/5e64beb0-025e-4371-9c08-97fe8a47e17e\n\nХочу чтобы во время записи кнопка выглядела как на макете Recording Active",
+  "acceptance_criteria": "",
+  "important_constraints": "",
+  "labels": [],
+  "on_hold_reason": "",
+  "contextRouterIncluded": false,
+  "created_at": 1789078832357,
+  "column_entered_at": 1789118610511
+}

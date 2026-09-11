@@ -1,0 +1,18 @@
+{
+  "id": "AUG-14-wkxser",
+  "assignee": "jarvis.json",
+  "priority": "medium",
+  "status": "completed",
+  "title": "[AUG-14] Add recording timer and audio level indicator",
+  "why_we_need_this": "When recording, the only feedback is the button text changing to \"Stop Recording\". No elapsed time counter, no audio level visualization. Users can't tell how long they've been recording or whether audio is being captured.",
+  "acceptance_criteria": "- [ ] A `mm:ss` timer counts up from 00:00 while recording, visible near the record button\n- [ ] A pulsing red dot animation appears next to the timer\n- [ ] Timer and pulse stop immediately when recording stops\n- [ ] Optionally: audio level bar using AnalyserNode from the existing AudioContext shows real-time input level\n- [ ] All new elements respect reduced-motion preference and design tokens",
+  "important_constraints": "",
+  "labels": [
+    "frontend",
+    "ux"
+  ],
+  "on_hold_reason": "",
+  "contextRouterIncluded": false,
+  "created_at": 1789032334894,
+  "column_entered_at": 1789037789325
+}

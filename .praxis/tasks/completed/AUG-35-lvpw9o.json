@@ -1,0 +1,19 @@
+{
+  "id": "AUG-35-lvpw9o",
+  "assignee": "jarvis.json",
+  "priority": "medium",
+  "status": "completed",
+  "title": "[AUG-35] Усиление аудио при повторной транскрипции",
+  "why_we_need_this": "Whisper галлюцинирует (японские/китайские субтитры или «Субтитры DimaTorzok») на тихих микрофонных дорожках. Ручное усиление через ffmpeg (5x gain + voice-band filter 100-4000Hz + loudnorm) кардинально улучшает результат — из полностью нечитаемой японской галлюцинации получается ~60% разборчивого русского текста. Пользователь должен иметь возможность запустить это прямо из GUI, не прибегая к командной строке.",
+  "acceptance_criteria": "1. В UI TranscriptView при нажатии Retranscribe появляется опция «Усилить аудио» (toggle/checkbox), по умолчанию выключена\n2. Когда опция включена, сервер перед запуском whisper применяет к аудиофайлу ffmpeg-препроцессинг: highpass=f=100, lowpass=f=4000, volume=5.0, loudnorm=I=-16:TP=-1.5:LRA=11, конвертация в 16kHz mono\n3. Усиленный аудиофайл сохраняется рядом с оригиналом (например audio-boosted.wav / audio-mic-boosted.wav), оригинал НЕ перезаписывается\n4. Whisper запускается на усиленном файле; результат проходит через тот же TranscriptMerger pipeline\n5. Для dual-track сессий усиление применяется к каждому треку независимо (mic и sys)\n6. API endpoint POST /api/sessions/:id/retranscribe принимает новый опциональный параметр `boost: boolean`\n7. При отсутствии ffmpeg в системе — опция disabled в UI с тултипом «Требуется ffmpeg»; сервер проверяет доступность ffmpeg при старте или при запросе",
+  "important_constraints": "- ffmpeg вызывается как child process, аналогично whisper-cli.exe — не блокирует API\n- Не перезаписывать оригинальные аудиофайлы (audio.wav, audio-mic.wav, audio-system.wav)\n- Параметры фильтра (gain, частоты, loudnorm targets) вынести в конфиг или константы, не хардкодить в вызове\n- Учесть 8.3 short path для non-ASCII путей (та же проблема что у whisper-cli)\n- Усиленные файлы — временные артефакты, можно удалять после завершения транскрипции",
+  "labels": [
+    "feature",
+    "transcription",
+    "ffmpeg"
+  ],
+  "on_hold_reason": "",
+  "contextRouterIncluded": false,
+  "created_at": 1789071265846,
+  "column_entered_at": 1789076828376
+}

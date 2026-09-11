@@ -1,0 +1,15 @@
+{
+  "id": "AUG-43-cva2u2",
+  "assignee": "storm.json",
+  "priority": "medium",
+  "status": "completed",
+  "title": "[AUG-43] Добавить возможность вновь открыть окно онлайн транскрипции",
+  "why_we_need_this": "а если я закрыл правый сайдбарво во время записи с life transcription, то как мне его вновь открыть\nкакие видишь идеи это сделать? накидай макетов",
+  "acceptance_criteria": "",
+  "important_constraints": "",
+  "labels": [],
+  "on_hold_reason": "",
+  "contextRouterIncluded": false,
+  "created_at": 1789167810844,
+  "column_entered_at": 1789168861345
+}

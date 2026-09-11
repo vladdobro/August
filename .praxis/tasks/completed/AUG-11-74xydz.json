@@ -1,0 +1,15 @@
+{
+  "id": "AUG-11-74xydz",
+  "assignee": "jarvis.json",
+  "priority": "medium",
+  "status": "completed",
+  "title": "[AUG-11] New branding",
+  "why_we_need_this": "lets try to make a new branding of the application\nI like the gree-toned schema, but want to make it a bit more contrast and darker\nUse the reference: necron-web-gui\nlike:\nDark mode:\nhttps://dribbble.com/shots/24460678-Necrons\nhttps://dribbble.com/shots/22717468-Necrontyr-Objective-Markers\nLight mode:\nhttps://wahapedia.ru/wh40k10ed/factions/necrons/Awakening%20Points%20Remaining.pdf\n\ndiagonal lines are OK, not only 90%\nRounds are ok",
+  "acceptance_criteria": "",
+  "important_constraints": "avoid very light colours, like blanc white or bright green",
+  "labels": [],
+  "on_hold_reason": "",
+  "contextRouterIncluded": false,
+  "created_at": 1789035652499,
+  "column_entered_at": 1789040893576
+}

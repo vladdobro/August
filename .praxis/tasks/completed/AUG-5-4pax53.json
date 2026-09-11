@@ -1,0 +1,15 @@
+{
+  "id": "AUG-5-4pax53",
+  "assignee": "jarvis.json",
+  "priority": "medium",
+  "status": "completed",
+  "title": "[AUG-5] Option to rename the session",
+  "why_we_need_this": "Add an option to rename the recordered session ",
+  "acceptance_criteria": "",
+  "important_constraints": "",
+  "labels": [],
+  "on_hold_reason": "",
+  "contextRouterIncluded": false,
+  "created_at": 1789001571921,
+  "column_entered_at": 1789002441797
+}

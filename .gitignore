@@ -1,0 +1,46 @@
+# Dependencies
+node_modules/
+
+# Build output
+dist/
+build/
+
+# Environment
+.env
+.env.local
+
+# Session data (file-based storage; keep the folder via .gitkeep)
+server/data/sessions/*
+!server/data/sessions/.gitkeep
+server/data/uploads/*
+!server/data/uploads/.gitkeep
+
+# Whisper native binaries (large, machine-specific; see whisper/README.md)
+whisper/bin/*.exe
+whisper/bin/*.dll
+
+# Whisper model files (large, not committed)
+whisper/models/*.bin
+
+# Misc uploads
+uploads/
+
+# Logs
+*.log
+npm-debug.log*
+
+# Editor/OS
+.DS_Store
+Thumbs.db
+.vscode/
+.idea/
+.praxis/chat
+.praxis/config/
+.praxis/scripts
+.praxis/prompts
+.praxis/assets
+.praxis/api
+.praxis/context
+.praxis/user_assets
+.mcp.json
+.praxis/analytics

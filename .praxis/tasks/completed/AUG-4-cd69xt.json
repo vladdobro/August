@@ -1,0 +1,15 @@
+{
+  "id": "AUG-4-cd69xt",
+  "assignee": "jarvis.json",
+  "priority": "medium",
+  "status": "completed",
+  "title": "[AUG-4] Button to restart the transcription",
+  "why_we_need_this": "add a button to restart the transcription\nmay be useful if the transcription failed due to any kind of error\nin current version there is no option to try it again",
+  "acceptance_criteria": "",
+  "important_constraints": "",
+  "labels": [],
+  "on_hold_reason": "",
+  "contextRouterIncluded": false,
+  "created_at": 1789001502938,
+  "column_entered_at": 1789002428898
+}

@@ -1,0 +1,15 @@
+{
+  "id": "AUG-28-796j2l",
+  "assignee": "jarvis.json",
+  "priority": "medium",
+  "status": "completed",
+  "title": "[AUG-28] Stuck on transcribing",
+  "why_we_need_this": "I have two sessions stuck on transcribing\n[System] recording-1789045614663.webm\n[Mic] recording-1789045614663.webm\nSpinner circles for almost 2 hours with no result\nAnd there is no button to stop/restart the transcription\n\nYou job is to:\n- Restart the transcription - this is vital to me to gather the result\n- Add options to stop and restart the transcription even if it is already in progress\n- implement a progress bar on trasncription in progress\n",
+  "acceptance_criteria": "",
+  "important_constraints": "",
+  "labels": [],
+  "on_hold_reason": "",
+  "contextRouterIncluded": false,
+  "created_at": 1789055004140,
+  "column_entered_at": 1789062057931
+}

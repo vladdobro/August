@@ -1,0 +1,15 @@
+{
+  "id": "AUG-9-qrwkdo",
+  "assignee": "critic.json",
+  "priority": "medium",
+  "status": "completed",
+  "title": "[AUG-9] Оцени UI UX и предложи топ 10 улучшений",
+  "why_we_need_this": "Задача оценить текущий фронтенд и дать 10 ключевых замечаний",
+  "acceptance_criteria": "",
+  "important_constraints": "",
+  "labels": [],
+  "on_hold_reason": "",
+  "contextRouterIncluded": false,
+  "created_at": 1789031754775,
+  "column_entered_at": 1789037684005
+}

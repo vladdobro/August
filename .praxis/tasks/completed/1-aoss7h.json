@@ -1,0 +1,15 @@
+{
+  "id": "1-aoss7h",
+  "assignee": "jarvis.json",
+  "priority": "medium",
+  "status": "completed",
+  "title": "[AUG-1] Refactoring as MVP",
+  "why_we_need_this": "The first task to do is to access the old project  D:\\claude\\SplitVox (you are allowed to read it)\nand to refactor it as a web application based on a figured stack\n\nIn addition, you have to place all relevant files inside the project folder, for example:\nRecorded audio files, whisper AI model etc",
+  "acceptance_criteria": "",
+  "important_constraints": "",
+  "labels": [],
+  "on_hold_reason": "",
+  "contextRouterIncluded": false,
+  "created_at": 1788996236129,
+  "column_entered_at": 1789000785959
+}

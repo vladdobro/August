@@ -1,0 +1,15 @@
+{
+  "id": "AUG-24-yb30na",
+  "assignee": "jarvis.json",
+  "priority": "medium",
+  "status": "completed",
+  "title": "[AUG-24] Add re-transcribe button",
+  "why_we_need_this": "add kinda re-transcribe button with option to choose another language for any session\nProblem: in this [Mic] recording-1789044592062.webm record the transcription was made in Chineese(?) \nUse Russian always as a default language",
+  "acceptance_criteria": "",
+  "important_constraints": "",
+  "labels": [],
+  "on_hold_reason": "",
+  "contextRouterIncluded": false,
+  "created_at": 1789049600332,
+  "column_entered_at": 1789062039621
+}

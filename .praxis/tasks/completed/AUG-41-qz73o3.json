@@ -1,0 +1,15 @@
+{
+  "id": "AUG-41-qz73o3",
+  "assignee": "storm.json",
+  "priority": "medium",
+  "status": "completed",
+  "title": "[AUG-41] Minor UI UX changes",
+  "why_we_need_this": "Хочу улучшить некоторые элменты графического дизайна, приблизив общий стиль к основной тебе Warhammer 40000 Necrontyr\n\n## Page Feedback: /\nViewport: 1812×959\n\n### 1. <App> <SessionList> div [Sessions]\nLocation: #root > .app-layout > .session-list > .session-list-items\nSource: D:/claude/August/client/src/components/SessionList.tsx:203:7\nReact: <App> <SessionList>\nFeedback: scroll bar\nЗадача: scroll bar, который позволяет прокручивать список сессий вниз и вверх - полностью выпадает из общей темы. Предложи в общем стиле\n\n### 2. <App> <FileUpload> circuit dropzone\nLocation: .app-layout > .main-content > .circuit-layout > .circuit-dropzone\nSource: D:/claude/August/client/src/components/FileUpload.tsx:545:7\nReact: <App> <FileUpload>\nFeedback: drag & drop\nЗадача: Поле для загрузки видео выглядит слишком милым. Вселенная Warhammer, особенно расса Necrontyr - это брутальный психотим\nЯ прикладываю референс того как подобное окно могло бы выглядеть (screenshot attached)\n\n### 3. <App> <SessionList> session filter\nLocation: .app-layout > .session-list > .session-list-filters > .session-filter-chips\nSource: D:/claude/August/client/src/components/SessionList.tsx:180:9\nReact: <App> <SessionList>\nFeedback: filters\nЗадача: Фильтров немного и их тоже можно было бы выполнить в стиле кругов-лучей. Размеры кругов можно сделать немного разными, и расположить их немного хаотично по оси Y, чтобы создавалось впечатление \"парада планет\"\n\n### 4. <App> <SessionList> input \"Search sessions...\"\nLocation: .app-layout > .session-list > .session-list-filters > .session-search-input\nSource: D:/claude/August/client/src/components/SessionList.tsx:173:9\nReact: <App> <SessionList>\nFeedback: search bar\nЗадача: добавить атмосферной брутальности в дизайн поисковой строки. Округлые мягкие формы вряд ли соответствуют духу Necrontyr\n\n### 5. <App> <FileUpload> <RecordingModePicker> menu\nLocation: .main-content > .circuit-layout > .mode-picker-overlay > .mode-picker\nSource: D:/claude/August/client/src/components/RecordingModePicker.tsx:32:7\nReact: <App> <FileUpload> <RecordingModePicker>\nFeedback: start rec popup\nЗадача: Мы же во вселенной Sci-Fi, хочу, чтобы всплывающее окно записи было заменено на разворачивающееся меню из круга кнопки. Как в фильмах про научную фантастику",
+  "acceptance_criteria": "",
+  "important_constraints": "",
+  "labels": [],
+  "on_hold_reason": "",
+  "contextRouterIncluded": false,
+  "created_at": 1789158052320,
+  "column_entered_at": 1789167843298
+}

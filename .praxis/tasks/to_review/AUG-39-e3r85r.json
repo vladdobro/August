@@ -1,0 +1,20 @@
+{
+  "id": "AUG-39-e3r85r",
+  "assignee": "jarvis.json",
+  "priority": "high",
+  "status": "to_review",
+  "title": "[AUG-39] Live Transcription Mode — real-time Them + Me transcript during recording",
+  "why_we_need_this": "Currently August only transcribes after recording stops. Users in live meetings need to see what the other party is saying in real time — for note-taking, catching missed words, and following conversations in non-native languages. This adds a second recording mode that streams system audio through whisper.cpp during the call, displaying a live transcript without changing the existing recording + post-recording pipeline.\n\nYou can use how-to-realtime-transcr.md in the project directory to guide you",
+  "acceptance_criteria": "## Mode Selection\n- Pressing the blue Record button shows a popover with two options: \"Default (simple transcription)\" and \"Live Transcription\"\n- Selecting either option starts the recording immediately\n- \"Default\" behaves exactly as today — no behavior change\n\n## Live Transcription Engine (macOS only)\n- System audio (Them track) is buffered into 3–5 second chunks and fed to whisper.cpp sequentially during recording\n- Chunks overlap by ~1 second to preserve context at sentence boundaries\n- VAD-gated chunking: silent segments (below existing silenceRMSThreshold) are skipped — no GPU wasted on silence\n- Target latency: transcribed text appears within ≤5 seconds of speech\n- Both audio files (mic.wav, system.wav) continue recording exactly as in Default mode — the existing recording pipeline is untouched\n- Post-recording TranscriptionPipeline still runs as usual after stop, producing the final transcript.md\n\n## Live Transcript UI\n- A right-side slide-out panel appears when Live Transcription mode starts, spanning the full height of the app window\n- Panel contains a scrollable text view showing live-transcribed text from the Them track\n- Auto-scroll: panel auto-scrolls to the latest text; if the user scrolls up manually, auto-scroll pauses; a \"↓\" button appears to jump back to live\n- \"Copy All\" button copies the entire current live transcript to clipboard\n- Text in the panel is selectable via standard macOS text selection\n- Panel closes when recording stops\n\n## Resilience\n- Pause/resume: user can pause live transcription without stopping the recording; visual indicator shows paused state\n- Error isolation: if the live whisper.cpp instance crashes or errors mid-session, recording continues uninterrupted; the panel shows a warning (e.g. \"⚠️ Live transcription interrupted\") instead of killing the session\n- The live transcription whisper instance must not interfere with the post-recording TranscriptionPipeline (separate context/resources)",
+  "important_constraints": "Scope change (2026-08-28): the live panel shows BOTH tracks, interleaved as `Them: text` / `Me: text` (consecutive same-speaker segments coalesced into one line). \"Me\" comes from a second, independent AVAudioEngine mic tap (`LiveMicAudioTap`); `MicRecorder` stays untouched. Mic-tap failure degrades to Them-only with a panel notice, never interrupts live mode or the recording.",
+  "labels": [
+    "feature",
+    "macos",
+    "transcription",
+    "ui"
+  ],
+  "on_hold_reason": "",
+  "contextRouterIncluded": true,
+  "created_at": 1789152688659,
+  "column_entered_at": 1789153649854
+}

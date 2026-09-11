@@ -1,0 +1,39 @@
+{
+  "entries": [
+    {
+      "ratio": 0.9385657256914742,
+      "dualTrack": true,
+      "timestamp": "2026-09-10T22:18:12.008Z"
+    },
+    {
+      "ratio": 0.9373638586352522,
+      "dualTrack": true,
+      "timestamp": "2026-09-10T22:35:40.026Z"
+    },
+    {
+      "ratio": 2.477552986512524,
+      "dualTrack": true,
+      "timestamp": "2026-09-11T10:39:12.509Z"
+    },
+    {
+      "ratio": 0.7553702468312208,
+      "dualTrack": true,
+      "timestamp": "2026-09-11T10:42:02.320Z"
+    },
+    {
+      "ratio": 0.7802934311437146,
+      "dualTrack": true,
+      "timestamp": "2026-09-11T10:43:37.961Z"
+    },
+    {
+      "ratio": 1.3279360749654536,
+      "dualTrack": true,
+      "timestamp": "2026-09-11T17:46:25.530Z"
+    },
+    {
+      "ratio": 1.0252248677248679,
+      "dualTrack": true,
+      "timestamp": "2026-09-11T19:58:36.825Z"
+    }
+  ]
+}

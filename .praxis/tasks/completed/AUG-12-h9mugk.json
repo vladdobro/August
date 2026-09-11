@@ -1,0 +1,18 @@
+{
+  "id": "AUG-12-h9mugk",
+  "assignee": "jarvis.json",
+  "priority": "high",
+  "status": "completed",
+  "title": "[AUG-12] Replace misleading Sound Device selector with system audio toggle",
+  "why_we_need_this": "The \"Sound Device\" dropdown in FileUpload.tsx lists audiooutput devices but selecting any value triggers getDisplayMedia() — a screen sharing prompt. The selectedSoundId value isn't used in the actual call. Users expect device selection, not a screen sharing dialog.",
+  "acceptance_criteria": "- [ ] \"Sound Device\" dropdown replaced with a checkbox/toggle: \"Capture system audio\"\n- [ ] Tooltip or helper text explains: \"Captures system audio via screen sharing — you'll be asked to share a tab or screen\"\n- [ ] Checking the toggle still triggers getDisplayMedia() flow on record start\n- [ ] Unchecking records mic-only as before\n- [ ] No misleading output device list is shown",
+  "important_constraints": "",
+  "labels": [
+    "frontend",
+    "ux"
+  ],
+  "on_hold_reason": "",
+  "contextRouterIncluded": false,
+  "created_at": 1789032324780,
+  "column_entered_at": 1789039155374
+}

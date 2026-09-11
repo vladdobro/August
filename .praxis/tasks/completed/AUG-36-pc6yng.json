@@ -1,0 +1,15 @@
+{
+  "id": "AUG-36-pc6yng",
+  "assignee": "storm.json",
+  "priority": "medium",
+  "status": "completed",
+  "title": "[AUG-36] Шторм дизайна боковой панели в стиле Warhammer 40000 Necrontyr",
+  "why_we_need_this": "Нужен брейншторм дизайна боковой панели (где все сессии, поиск и тд) в стиле WH40K Necrontyr - чтобы была в общей стилистике приложения\nА то сейчас она выглядит выпадающей из общего дизайна\n\nВажно не перегрузить интерфейс большим количеством лишних деталей\nСобери несколько концептов в похоже стиле и с заметными отличиями",
+  "acceptance_criteria": "",
+  "important_constraints": "",
+  "labels": [],
+  "on_hold_reason": "",
+  "contextRouterIncluded": false,
+  "created_at": 1789078332108,
+  "column_entered_at": 1789152124682
+}

@@ -1,0 +1,15 @@
+{
+  "id": "AUG-44-6ljgpi",
+  "assignee": "jarvis.json",
+  "priority": "medium",
+  "status": "completed",
+  "title": "[AUG-44] BUG: UI nodes filters",
+  "why_we_need_this": "сейчас если фильтры активные, то Node (соединяющие линии) залезают внутрь кругов статусов\nКАК ДОЛЖНО БЫТЬ: Линии соединяют окружности и не залезают внутрь круга\n\nДоп задача: поменять позиции фильтров DONE и ERR местами, после чего проверить, что nodes всё так же соединяют окружности и не залезают внутрь кругов в активном и пассивном состоянии\n",
+  "acceptance_criteria": "",
+  "important_constraints": "",
+  "labels": [],
+  "on_hold_reason": "",
+  "contextRouterIncluded": false,
+  "created_at": 1789169128547,
+  "column_entered_at": 1789169648297
+}
