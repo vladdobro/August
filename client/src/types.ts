@@ -22,4 +22,16 @@ export interface HealthStatus {
   whisperAvailable: boolean;
   modelAvailable: boolean;
   ffmpegAvailable: boolean;
+  ffmpegMessage?: string | null;
+}
+
+export type ModelState = 'present' | 'downloading' | 'missing';
+
+export interface ModelSetupStatus {
+  state: ModelState;
+  percent: number;
+  bytesDownloaded: number;
+  totalBytes: number;
+  verifying: boolean;
+  error: string | null;
 }

@@ -1,10 +1,11 @@
-import { execFile, type ChildProcess } from 'node:child_process';
+import { execFile, type ChildProcess, type ExecFileException } from 'node:child_process';
 import fs from 'node:fs/promises';
 import os from 'node:os';
 import path from 'node:path';
 import { randomUUID } from 'node:crypto';
 
 import { config, AUDIO_BOOST } from '../config.js';
+import { getModelStatus } from './modelDownloader.js';
 import type { TranscriptionLanguage, TranscriptSegment, WhisperJsonOutput } from '../types.js';
 
 export class WhisperError extends Error {
@@ -15,6 +16,19 @@ export class WhisperError extends Error {
 }
 
 const WAV_EXTENSIONS = new Set(['.wav']);
+
+export const FFMPEG_MISSING_MESSAGE = [
+  '❌ ffmpeg not found. Install it:',
+  '   macOS:   brew install ffmpeg',
+  '   Windows: winget install ffmpeg',
+].join('\n');
+
+/// Turns an execFile ffmpeg failure into a WhisperError, using the friendlier
+/// FFMPEG_MISSING_MESSAGE when the failure is ffmpeg not being on PATH.
+function ffmpegError(error: ExecFileException, stderr: string, fallbackMessage: string): WhisperError {
+  if (error.code === 'ENOENT') return new WhisperError(FFMPEG_MISSING_MESSAGE, error);
+  return new WhisperError(`${fallbackMessage}${stderr || error.message}`, error);
+}
 
 const activeProcesses = new Map<string, ChildProcess[]>();
 
@@ -49,7 +63,7 @@ export async function ensureWav(audioPath: string): Promise<string> {
       ['-i', audioPath, '-ar', '16000', '-ac', '1', '-c:a', 'pcm_s16le', '-y', wavPath],
       { timeout: 120_000 },
       (error, _stdout, stderr) => {
-        if (error) reject(new WhisperError(`ffmpeg conversion failed: ${stderr || error.message}`, error));
+        if (error) reject(ffmpegError(error, stderr, 'ffmpeg conversion failed: '));
         else resolve();
       },
     );
@@ -73,7 +87,7 @@ export function threadCount(): number {
 
 const NON_ASCII = /[^\x00-\x7F]/;
 
-/// whisper-cli.exe (this whisper.cpp build) crashes with
+/// whisper-cli.exe (the Windows whisper.cpp build) crashes with
 /// STATUS_STACK_BUFFER_OVERRUN when a path argument (e.g. --model) contains
 /// non-ASCII characters — verified by hand: it reproduces on this machine
 /// because the Windows account name is Cyrillic, so the default
@@ -81,9 +95,11 @@ const NON_ASCII = /[^\x00-\x7F]/;
 /// outright. Converting to the legacy Windows short (8.3) path, which is
 /// pure ASCII, avoids the crash. Only shells out to cmd.exe when the path
 /// actually contains non-ASCII characters, so the common case (ASCII
-/// Windows profile) pays no extra cost. Windows-only; a no-op path is not
-/// expected on other platforms since this binary is a .exe.
+/// Windows profile) pays no extra cost. This 8.3 short-path conversion is a
+/// cmd.exe-only concept, so it's a passthrough on macOS/Linux, which handle
+/// UTF-8 paths natively.
 export async function toSafePath(filePath: string): Promise<string> {
+  if (process.platform !== 'win32') return filePath;
   if (!NON_ASCII.test(filePath)) return filePath;
   try {
     const shortPath = await new Promise<string>((resolve, reject) => {
@@ -152,7 +168,7 @@ export async function boostAudio(audioPath: string): Promise<string> {
       ['-i', safeInput, '-af', af, '-ar', String(AUDIO_BOOST.sampleRate), '-ac', '1', '-c:a', 'pcm_s16le', '-y', safeOutput],
       { timeout: 300_000 },
       (error, _stdout, stderr) => {
-        if (error) reject(new WhisperError(`ffmpeg audio boost failed: ${stderr || error.message}`, error));
+        if (error) reject(ffmpegError(error, stderr, 'ffmpeg audio boost failed: '));
         else resolve();
       },
     );
@@ -161,42 +177,50 @@ export async function boostAudio(audioPath: string): Promise<string> {
   return boostedPath;
 }
 
-/// Runs whisper-cli.exe against `audioPath` and returns the parsed,
-/// per-segment transcript with numeric start/end times in seconds and (when
-/// whisper reports it) each segment's no_speech_prob. Flags mirror
-/// SplitVox's WhisperTranscriber.cs exactly: max-context 0 (anti-loop
-/// defense), no-gpu (use_gpu=false), full JSON output for timestamps. Note:
-/// this whisper-cli.exe build's --output-json-full does not actually emit a
+export interface RunWhisperOptions {
+  audioPath: string;
+  language: string;
+  outputBase: string;
+  trackingKey?: string;
+  timeoutMs?: number;
+  maxBuffer?: number;
+}
+
+/// Single entry point for every whisper-cli invocation (batch transcription
+/// and live chunk transcription both go through this). Handles bin/model/
+/// audio existence checks, Windows short-path conversion, spawning
+/// whisper-cli with the shared flag set, process tracking (for cancellation)
+/// and reading + parsing + cleaning up the JSON output file. Flags mirror
+/// SplitVox's WhisperTranscriber.cs: max-context 0 (anti-loop defense), GPU
+/// off except Metal on Apple Silicon, full JSON output for timestamps. Note:
+/// this whisper-cli build's --output-json-full does not actually emit a
 /// per-segment no_speech_prob field (verified by inspecting the binary), so
-/// noSpeechProb below will typically be undefined — WhisperTranscriber's
-/// "layer 2" no-speech gate degrades gracefully to a no-op in that case; the
-/// hallucination blacklist and dedup logic in transcriptMerger.ts are the
-/// primary defenses and are unaffected.
-export async function transcribe(
-  audioPath: string,
-  language: TranscriptionLanguage,
-  trackingKey?: string,
-): Promise<TranscriptSegment[]> {
+/// noSpeechProb in transcribe()'s output will typically be undefined —
+/// WhisperTranscriber's "layer 2" no-speech gate degrades gracefully to a
+/// no-op in that case; the hallucination blacklist and dedup logic in
+/// transcriptMerger.ts are the primary defenses and are unaffected.
+export async function runWhisper(opts: RunWhisperOptions): Promise<WhisperJsonOutput> {
+  const { audioPath, language, outputBase, trackingKey } = opts;
+  const binName = path.basename(config.whisperBinPath);
+
   if (!(await fileExists(config.whisperBinPath))) {
     throw new WhisperError(
-      `whisper-cli.exe not found at "${config.whisperBinPath}". See whisper/README.md for setup.`,
+      `${binName} not found at "${config.whisperBinPath}". Run \`npm run setup\` to download it (see whisper/README.md).`,
     );
   }
   if (!(await fileExists(config.whisperModelPath))) {
+    const status = getModelStatus();
+    if (status.state === 'downloading') {
+      throw new WhisperError(`Whisper model is still downloading (${status.percent}%). Try again when it finishes.`);
+    }
     throw new WhisperError(
-      `Whisper model not found at "${config.whisperModelPath}". See whisper/README.md to download it.`,
+      `Whisper model not found at "${config.whisperModelPath}". Restart the server to auto-download it (see whisper/README.md).`,
     );
   }
   if (!(await fileExists(audioPath))) {
     throw new WhisperError(`Audio file not found at "${audioPath}".`);
   }
 
-  // Write whisper's output next to the audio file (always inside our own,
-  // ASCII-only, repo-rooted data dir) rather than os.tmpdir() — on a machine
-  // with a non-ASCII Windows account name, os.tmpdir() resolves under
-  // %TEMP%\<username>\..., which would crash whisper-cli.exe just like the
-  // model path issue above.
-  const outputBase = path.join(path.dirname(audioPath), `.whisper-output-${randomUUID()}`);
   const outputJsonPath = `${outputBase}.json`;
 
   const [safeModelPath, safeBinPath, safeAudioPath, safeOutputBase] = await Promise.all([
@@ -208,9 +232,9 @@ export async function transcribe(
 
   const args = [
     '--model', safeModelPath,
-    '--language', language,
+    '--language', language || 'auto',
     '--max-context', '0',
-    '--no-gpu',
+    ...(config.whisperUseGpu ? [] : ['--no-gpu']),
     '--output-json-full',
     '--output-file', safeOutputBase,
     '--no-prints',
@@ -223,7 +247,7 @@ export async function transcribe(
       const child = execFile(
         safeBinPath,
         args,
-        { maxBuffer: 1024 * 1024 * 64 },
+        { timeout: opts.timeoutMs, maxBuffer: opts.maxBuffer ?? 1024 * 1024 * 64 },
         (error, _stdout, stderr) => {
           if (trackingKey) {
             const procs = activeProcesses.get(trackingKey);
@@ -234,7 +258,7 @@ export async function transcribe(
             }
           }
           if (error) {
-            reject(new WhisperError(`whisper-cli.exe failed: ${stderr || error.message}`, error));
+            reject(new WhisperError(`${binName} failed: ${stderr || error.message}`, error));
             return;
           }
           resolve();
@@ -248,30 +272,46 @@ export async function transcribe(
     });
   } catch (err) {
     if (err instanceof WhisperError) throw err;
-    throw new WhisperError('Failed to run whisper-cli.exe', err);
+    throw new WhisperError(`Failed to run ${binName}`, err);
   }
 
-  let raw: string;
   try {
-    raw = await fs.readFile(outputJsonPath, 'utf-8');
+    const raw = await fs.readFile(outputJsonPath, 'utf-8');
+    try {
+      return JSON.parse(raw) as WhisperJsonOutput;
+    } catch (err) {
+      throw new WhisperError(`Failed to parse ${binName} JSON output`, err);
+    }
   } catch (err) {
-    throw new WhisperError(`whisper-cli.exe did not produce output at "${outputJsonPath}"`, err);
-  }
-
-  let parsed: WhisperJsonOutput;
-  try {
-    parsed = JSON.parse(raw) as WhisperJsonOutput;
-  } catch (err) {
-    throw new WhisperError('Failed to parse whisper-cli.exe JSON output', err);
+    if (err instanceof WhisperError) throw err;
+    throw new WhisperError(`${binName} did not produce output at "${outputJsonPath}"`, err);
   } finally {
     // Best-effort cleanup of the temp output file; ignore failures.
     fs.unlink(outputJsonPath).catch(() => {});
   }
+}
 
+/// Runs whisper-cli against `audioPath` and returns the parsed, per-segment
+/// transcript with numeric start/end times in seconds and (when whisper
+/// reports it) each segment's no_speech_prob. GPU is off except Metal on
+/// Apple Silicon (see config.whisperUseGpu).
+export async function transcribe(
+  audioPath: string,
+  language: TranscriptionLanguage,
+  trackingKey?: string,
+): Promise<TranscriptSegment[]> {
+  // Write whisper's output next to the audio file (always inside our own,
+  // ASCII-only, repo-rooted data dir) rather than os.tmpdir() — on a machine
+  // with a non-ASCII Windows account name, os.tmpdir() resolves under
+  // %TEMP%\<username>\..., which would crash whisper-cli.exe just like the
+  // model path issue above.
+  const outputBase = path.join(path.dirname(audioPath), `.whisper-output-${randomUUID()}`);
+
+  const parsed = await runWhisper({ audioPath, language, outputBase, trackingKey });
   const transcription = parsed.transcription ?? [];
 
   return transcription.map((entry) => ({
-    // Verified against this whisper-cli.exe build's actual --output-json-full
+    // Verified against this whisper-cli build's actual --output-json-full
     // output: offsets.from/to are in MILLISECONDS (matching the SRT-style
     // "HH:MM:SS,mmm" timestamps strings alongside them), not centiseconds —
     // a 2.000s clip produced offsets.to === 2000. Divide by 1000 for seconds.
@@ -280,7 +320,7 @@ export async function transcribe(
     text: (entry.text ?? '').trim(),
     // This build's JSON writer does not include a per-segment no_speech_prob
     // field even though the underlying whisper.dll API supports it, so this
-    // is normally undefined — see the transcribe() doc comment above.
+    // is normally undefined — see the runWhisper() doc comment above.
     noSpeechProb: entry.no_speech_prob,
   }));
 }

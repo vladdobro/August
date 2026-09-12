@@ -1,7 +1,8 @@
 # Transcription Route
 
 ## TL;DR
-- whisper-cli.exe (whisper.cpp) transcribes session audio locally; output is raw timestamped segments in milliseconds.
+- whisper-cli (whisper.cpp), built for Windows and macOS, transcribes session audio locally; output is raw timestamped segments in milliseconds.
+- runWhisper() in whisper.ts is the single whisper-cli invocation path for both batch and live transcription.
 - TranscriptMerger filters hallucinations and filler, dedupes near-duplicate segments, and joins nearby segments into readable lines.
 - A session moves through uploading, transcribing, then completed or failed — the client polls status until it leaves transcribing.
 - Dual-track recording (mic + system) produces one session; mergeDualStream interleaves both streams with [Me]/[Them] role labels.
@@ -13,7 +14,8 @@
 - getAudioDuration() uses ffprobe to measure audio length before transcription starts, enabling accurate time estimates.
 - SessionMetadata.estimatedDuration (seconds) is computed at transcription start and sent to the client for countdown display.
 - Orphaned sessions stuck in "transcribing" with no active process are auto-recovered to "failed" on server startup.
-- Live transcription mode streams real-time audio chunks over WebSocket to whisper-cli.exe — see child route live-transcription/.
+- Live transcription mode streams real-time audio chunks over WebSocket to whisper-cli — see child route live-transcription/.
+- Per-platform binaries, the setup script, and model auto-download live in the whisper-setup child route.
 
 This route governs how audio becomes a transcript: the whisper.cpp CLI wrapper, the TranscriptMerger cleanup pass, and the session states in between.
 
@@ -23,7 +25,7 @@ Document the exact mechanics of turning a recorded or uploaded audio file into a
 
 ## Core Concepts
 
-- whisper.cpp CLI wrapper: server/src/services/whisper.ts spawns whisper-cli.exe as a child process against a session's audio file and parses its JSON output.
+- whisper.cpp CLI wrapper: server/src/services/whisper.ts's runWhisper() is the shared spawner that invokes whisper-cli as a child process against a session's audio file; transcribe() calls it and maps the returned JSON into segments.
 - TranscriptMerger: server/src/services/transcriptMerger.ts takes raw whisper.cpp segments and produces the cleaned transcript — filtering, deduplication, and join logic.
 - Session lifecycle: a session's status field moves uploading -> transcribing -> completed or transcribing -> failed. A failed session can be retranscribed, which resets it to transcribing.
 - Transcript rendering: the final transcript is markdown — a header followed by [HH:MM:SS] text lines (single-track) or [HH:MM:SS] [Me]/[Them] text lines (dual-track), one per merged segment.
@@ -33,7 +35,7 @@ Document the exact mechanics of turning a recorded or uploaded audio file into a
 - Orphan recovery: recoverOrphanedSessions() runs on server startup — any session in "transcribing" state with no active tracked process is moved to "failed" with an explanatory error message.
 - Transcription metadata: SessionMetadata includes transcriptionStartedAt (ISO timestamp set when transcription begins) used by the client to display elapsed time.
 - Audio boost preprocessing: boostAudio() in whisper.ts applies an ffmpeg filter chain (highpass 100Hz, lowpass 4000Hz, 5x volume gain, loudnorm normalization) and converts to 16kHz mono WAV. Used when the retranscribe endpoint receives boost=true. Boosted files are saved as {basename}-boosted.wav next to the original and deleted after transcription completes.
-- ffmpeg availability: checkFfmpegAvailable() probes ffmpeg at runtime. The /api/health endpoint reports ffmpegAvailable; the client disables the boost toggle when false. The retranscribe endpoint validates ffmpeg presence before accepting a boost request.
+- ffmpeg availability: checkFfmpegAvailable() probes ffmpeg at runtime. The /api/health endpoint reports ffmpegAvailable and ffmpegMessage (the shared FFMPEG_MISSING_MESSAGE when unavailable); the client disables the boost toggle when false. Server startup also logs FFMPEG_MISSING_MESSAGE as a pre-flight check. The retranscribe endpoint validates ffmpeg presence before accepting a boost request.
 - Performance tracking: server/src/services/performanceTracker.ts records the ratio of processing time to audio duration after each completed transcription. Stores the last 10 entries in data/perf-stats.json, separated by single vs dual track. Used to estimate future transcription durations.
 - ETA estimation: at transcription start, getAudioDuration() probes the audio file via ffprobe, then getEstimatedDuration() multiplies by the rolling average ratio (default 1.5x for single, 2.85x for dual-track). The result is saved as estimatedDuration on the session metadata.
 - Chronometer Ring UI: during transcribing state, the client renders a circular SVG progress ring with a requestAnimationFrame-driven MM:SS:mm countdown. Three visual phases: amber (normal), red (< 60 seconds remaining), zeroed (0:00:00 with "Exterminatus Initiated" banner and pulsing digits).
@@ -47,8 +49,11 @@ Document the exact mechanics of turning a recorded or uploaded audio file into a
 - joinAdjacentSameRole respects the role field — segments are only joined when they share the same role AND are within the gap threshold.
 - DEDUP_WINDOW = 30.0 seconds — near-duplicate text within this window is collapsed to one segment.
 - NO_SPEECH_PROB_THRESHOLD = 0.6 — segments at or above this whisper.cpp no-speech probability are dropped.
-- whisper-cli.exe is always invoked with --max-context 0 (anti-loop) and --no-gpu, and --language set to auto, en, or ru.
-- Transcription always runs as a background process — the API never blocks a request waiting for whisper-cli.exe to finish.
+- --max-context 0 on every invocation.
+- --no-gpu on every platform except macOS Apple Silicon, which uses Metal.
+- All whisper-cli spawning goes through runWhisper() — never duplicate invocation logic in callers.
+- ffmpeg-missing errors use the shared FFMPEG_MISSING_MESSAGE with per-platform install commands.
+- Transcription always runs as a background process — the API never blocks a request waiting for whisper-cli to finish.
 - Retranscription reuses the session's existing audio file but allows a language override — the session's language field is updated to the chosen language.
 - Retranscription defaults to Russian ('ru') when no language is explicitly specified in the request body.
 - Retranscription cancels any active transcription for the session before starting a new one.
@@ -67,15 +72,15 @@ Document the exact mechanics of turning a recorded or uploaded audio file into a
 
 - Never call a third-party speech-to-text API as a fallback or supplement to whisper.cpp — see project-context/architecture/README.md invariants.
 - Timestamp offsets from whisper-cli --output-json-full in this build are milliseconds — convert correctly before formatting [HH:MM:SS] lines.
-- Non-ASCII (e.g. Cyrillic) session paths must be converted to 8.3 short paths before being passed to whisper-cli.exe, or the process crashes.
+- On Windows, non-ASCII paths must be converted to 8.3 short paths via toSafePath; toSafePath is a passthrough on macOS.
 - Dual-track sessions store audio as audio-mic.{ext} and audio-system.{ext}; single-track sessions store audio as audio.{ext}.
 - ensureWav derives the output filename from the input basename — never hardcode audio.wav, which would collide in dual-track sessions.
 - Boosted filenames use the pattern {basename}-boosted.wav — findAudioFiles must never match these as original audio (verified: startsWith('audio.') / 'audio-mic.' / 'audio-system.' excludes '-boosted' variants).
-- boostAudio must use toSafePath for both input and output paths — same non-ASCII crash risk as whisper-cli.exe.
+- On Windows, boostAudio must use toSafePath for both input and output paths — same non-ASCII crash risk as whisper-cli.
 
 ## Key files
 
-- server/src/services/whisper.ts — whisper-cli.exe invocation, flags, and JSON output parsing.
+- server/src/services/whisper.ts — runWhisper (single whisper-cli invocation), flags, JSON parsing, ffmpeg helpers.
 - server/src/routes/sessions.ts — session API endpoints including upload and retranscribe.
 - server/src/services/transcriptMerger.ts — filtering, dedup, join, and markdown rendering logic.
 - server/src/services/performanceTracker.ts — rolling speed ratio tracking and ETA estimation.
@@ -85,3 +90,7 @@ Document the exact mechanics of turning a recorded or uploaded audio file into a
 ### Live Transcription
 Real-time WebSocket-based transcription during a live call — chunked audio capture, server-side whisper invocation, and a slide-out transcript panel.
 Directory Path: project-context/transcription/live-transcription/
+
+### Whisper Setup
+Per-platform whisper-cli binaries, the npm run setup script, model auto-download with SHA256 verification and SSE progress, and ffmpeg pre-flight.
+Directory Path: project-context/transcription/whisper-setup/

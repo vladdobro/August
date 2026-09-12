@@ -5,7 +5,7 @@ import multer from 'multer';
 
 import { config } from '../config.js';
 import * as sessionManager from '../services/sessionManager.js';
-import { transcribe, ensureWav, boostAudio, checkFfmpegAvailable, getAudioDuration, WhisperError, cancelTranscription, isTranscribing } from '../services/whisper.js';
+import { transcribe, ensureWav, boostAudio, checkFfmpegAvailable, getAudioDuration, WhisperError, cancelTranscription, isTranscribing, FFMPEG_MISSING_MESSAGE } from '../services/whisper.js';
 import { mergeSingleStream, mergeDualStream, renderTranscript } from '../services/transcriptMerger.js';
 import { recordCompletion, getEstimatedDuration } from '../services/performanceTracker.js';
 import type { TranscriptionLanguage } from '../types.js';
@@ -310,7 +310,7 @@ router.post('/:id/retranscribe', async (req, res) => {
   if (boost) {
     const ffmpegOk = await checkFfmpegAvailable();
     if (!ffmpegOk) {
-      res.status(400).json({ error: 'ffmpeg is not available on this system' });
+      res.status(400).json({ error: FFMPEG_MISSING_MESSAGE });
       return;
     }
   }
