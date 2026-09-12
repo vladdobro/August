@@ -4,7 +4,8 @@ import FileUpload from './components/FileUpload';
 import TranscriptView from './components/TranscriptView';
 import ModelDownloadModal from './components/ModelDownloadModal';
 import { checkHealth, deleteSession, fetchSessions, fetchTranscript, renameSession, retranscribeSession, cancelTranscription } from './api';
-import type { SessionMetadata } from './types';
+import type { HealthStatus, SessionMetadata } from './types';
+import SetupGuide from './components/SetupGuide';
 import { ThemeToggle } from './theme';
 import { Agentation } from 'agentation';
 
@@ -17,6 +18,8 @@ const App: React.FC = () => {
   const [loadError, setLoadError] = useState<string | null>(null);
   const [ffmpegAvailable, setFfmpegAvailable] = useState(false);
   const selectedSessionIdRef = useRef<string | null>(null);
+  const [healthStatus, setHealthStatus] = useState<HealthStatus | null>(null);
+  const [setupDismissed, setSetupDismissed] = useState(false);
   const [pendingDelete, setPendingDelete] = useState<{
     session: SessionMetadata;
     timeoutId: ReturnType<typeof setTimeout>;
@@ -44,11 +47,19 @@ const App: React.FC = () => {
     return () => clearInterval(interval);
   }, [refreshSessions]);
 
-  useEffect(() => {
-    checkHealth()
-      .then((h) => setFfmpegAvailable(h.ffmpegAvailable))
-      .catch(() => setFfmpegAvailable(false));
+  const refreshHealth = useCallback(async () => {
+    try {
+      const h = await checkHealth();
+      setHealthStatus(h);
+      setFfmpegAvailable(h.ffmpegAvailable);
+    } catch {
+      setFfmpegAvailable(false);
+    }
   }, []);
+
+  useEffect(() => {
+    void refreshHealth();
+  }, [refreshHealth]);
 
   const selectedSession = sessions.find((s) => s.id === selectedSessionId) ?? null;
 
@@ -150,8 +161,29 @@ const App: React.FC = () => {
     }
   };
 
+  const needsSetup = healthStatus !== null
+    && (!healthStatus.whisperAvailable || !healthStatus.modelAvailable)
+    && !setupDismissed;
+
   const shouldEnableAgentation = import.meta.env.DEV;
   const agentationEndpoint = import.meta.env.VITE_AGENTATION_ENDPOINT || 'http://127.0.0.1:4747';
+
+  if (needsSetup) {
+    return (
+      <>
+        <div className="app-layout">
+          <main className="main-content">
+            <SetupGuide
+              health={healthStatus!}
+              onRefresh={refreshHealth}
+              onDismiss={() => setSetupDismissed(true)}
+            />
+          </main>
+        </div>
+        {shouldEnableAgentation && <Agentation endpoint={agentationEndpoint} />}
+      </>
+    );
+  }
 
   return (
     <>
