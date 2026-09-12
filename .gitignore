@@ -15,6 +15,10 @@ server/data/sessions/*
 server/data/uploads/*
 !server/data/uploads/.gitkeep
 
+# Runtime server data (machine-specific, regenerated automatically)
+server/data/perf-stats.json
+server/data/live-tmp/
+
 # Whisper native binaries (downloaded/built by `npm run setup`; see whisper/README.md)
 whisper/bin/
 whisper/.build/
