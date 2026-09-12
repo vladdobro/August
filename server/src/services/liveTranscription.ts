@@ -3,21 +3,19 @@
 // pipeline (routes/sessions.ts + services/whisper.ts) — it does not touch
 // that pipeline. The client streams short raw-PCM windows (captured
 // alongside, not instead of, the existing MediaRecorder capture) over this
-// socket; each window is decoded independently with whisper-cli.exe and the
+// socket; each window is decoded independently with whisper-cli and the
 // resulting text is pushed straight back to the client for a live transcript
 // panel. Nothing here is persisted to disk beyond the lifetime of a chunk.
 
 import { randomUUID } from 'node:crypto';
-import { execFile } from 'node:child_process';
 import type { Server as HttpServer } from 'node:http';
 import fs from 'node:fs/promises';
 import path from 'node:path';
 import { WebSocketServer, WebSocket, type RawData } from 'ws';
 
 import { config } from '../config.js';
-import { fileExists, threadCount, toSafePath } from './whisper.js';
+import { runWhisper } from './whisper.js';
 import { FILLER_ONLY_TEXTS, isHallucination, normalize } from './transcriptMerger.js';
-import type { WhisperJsonOutput } from '../types.js';
 
 type Speaker = 'Me' | 'Them';
 
@@ -34,7 +32,7 @@ const SAMPLE_RATE = 16000;
 
 // Live chunks are written next to the sessions dir (server/data/live-tmp),
 // never os.tmpdir() — on this machine the Windows account name is Cyrillic,
-// so os.tmpdir() resolves to a non-ASCII path that crashes whisper-cli.exe
+// so os.tmpdir() resolves to a non-ASCII path that crashes whisper-cli
 // outright (same issue documented in whisper.ts's toSafePath).
 const LIVE_TMP_DIR = path.resolve(config.sessionsDir, '..', 'live-tmp');
 
@@ -101,59 +99,19 @@ function isLikelyFiller(text: string): boolean {
 }
 
 async function transcribeChunk(wavPath: string, language: string): Promise<string> {
-  if (!(await fileExists(config.whisperBinPath))) {
-    throw new Error(`whisper-cli.exe not found at "${config.whisperBinPath}"`);
-  }
-  if (!(await fileExists(config.whisperModelPath))) {
-    throw new Error(`Whisper model not found at "${config.whisperModelPath}"`);
-  }
-
-  const outputBase = `${wavPath.slice(0, -path.extname(wavPath).length)}`;
-  const outputJsonPath = `${outputBase}.json`;
-
-  const [safeModelPath, safeBinPath, safeAudioPath, safeOutputBase] = await Promise.all([
-    toSafePath(config.whisperModelPath),
-    toSafePath(config.whisperBinPath),
-    toSafePath(wavPath),
-    toSafePath(outputBase),
-  ]);
-
-  const args = [
-    '--model', safeModelPath,
-    '--language', language || 'auto',
-    '--max-context', '0',
-    '--no-gpu',
-    '--output-json-full',
-    '--output-file', safeOutputBase,
-    '--no-prints',
-    '--threads', String(threadCount()),
-    safeAudioPath,
-  ];
-
-  try {
-    await new Promise<void>((resolve, reject) => {
-      execFile(
-        safeBinPath,
-        args,
-        { maxBuffer: 1024 * 1024 * 16, timeout: CHUNK_TIMEOUT_MS },
-        (error, _stdout, stderr) => {
-          if (error) reject(new Error(`whisper-cli.exe failed: ${stderr || error.message}`));
-          else resolve();
-        },
-      );
-    });
-
-    const raw = await fs.readFile(outputJsonPath, 'utf-8');
-    const parsed = JSON.parse(raw) as WhisperJsonOutput;
-    const text = (parsed.transcription ?? [])
-      .map((entry) => (entry.text ?? '').trim())
-      .filter((t) => t.length > 0)
-      .join(' ')
-      .trim();
-    return text;
-  } finally {
-    fs.unlink(outputJsonPath).catch(() => {});
-  }
+  const outputBase = wavPath.slice(0, -path.extname(wavPath).length);
+  const parsed = await runWhisper({
+    audioPath: wavPath,
+    language,
+    outputBase,
+    timeoutMs: CHUNK_TIMEOUT_MS,
+    maxBuffer: 1024 * 1024 * 16,
+  });
+  return (parsed.transcription ?? [])
+    .map((entry) => (entry.text ?? '').trim())
+    .filter((t) => t.length > 0)
+    .join(' ')
+    .trim();
 }
 
 interface QueuedChunk {

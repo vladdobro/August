@@ -3,15 +3,15 @@ import { createServer } from 'node:http';
 import path from 'node:path';
 import { fileURLToPath } from 'node:url';
 import cors from 'cors';
-import dotenv from 'dotenv';
 import express from 'express';
 
-import { config } from './config.js';
+import { config, whisperPlatformDir } from './config.js';
 import healthRouter from './routes/health.js';
 import sessionsRouter, { recoverOrphanedSessions } from './routes/sessions.js';
+import setupRouter from './routes/setup.js';
 import { setupLiveTranscription } from './services/liveTranscription.js';
-
-dotenv.config();
+import { checkFfmpegAvailable, FFMPEG_MISSING_MESSAGE, fileExists } from './services/whisper.js';
+import { ensureWhisperModel } from './services/modelDownloader.js';
 
 const __filename = fileURLToPath(import.meta.url);
 const __dirname = path.dirname(__filename);
@@ -21,9 +21,22 @@ async function ensureDataDirs(): Promise<void> {
   await fs.mkdir(config.uploadsDir, { recursive: true });
 }
 
+async function runPreflightChecks(): Promise<void> {
+  if (!whisperPlatformDir()) {
+    console.warn(`⚠ Unsupported platform ${process.platform}-${process.arch}. Supported: Windows x64, macOS arm64/x64.`);
+  }
+  if (!(await checkFfmpegAvailable())) {
+    console.error(FFMPEG_MISSING_MESSAGE);
+  }
+  if (!(await fileExists(config.whisperBinPath))) {
+    console.error(`❌ whisper-cli not found at ${config.whisperBinPath}. Run: npm run setup`);
+  }
+}
+
 async function main() {
   await ensureDataDirs();
   await recoverOrphanedSessions();
+  await runPreflightChecks();
 
   const app = express();
 
@@ -32,6 +45,7 @@ async function main() {
 
   app.use('/api', healthRouter);
   app.use('/api/sessions', sessionsRouter);
+  app.use('/api/setup', setupRouter);
 
   const isDev = process.env.NODE_ENV !== 'production';
 
@@ -69,8 +83,11 @@ async function main() {
     console.log(`  Sessions dir: ${config.sessionsDir}`);
     console.log(`  Whisper binary: ${config.whisperBinPath}`);
     console.log(`  Whisper model: ${config.whisperModelPath}`);
+    console.log(`  Platform: ${process.platform}-${process.arch} (GPU: ${config.whisperUseGpu ? 'Metal' : 'off'})`);
     console.log(`  Live transcription: ws://localhost:${config.port}/api/live-transcribe`);
   });
+
+  void ensureWhisperModel();
 }
 
 main().catch((err) => {

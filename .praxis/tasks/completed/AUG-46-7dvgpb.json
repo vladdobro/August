@@ -1,0 +1,15 @@
+{
+  "id": "AUG-46-7dvgpb",
+  "assignee": "storm.json",
+  "priority": "medium",
+  "status": "to_review",
+  "title": "[AUG-46] Improve task",
+  "why_we_need_this": "работаем только на русском языке. Цель понять что мы могли упустить в \n  задаче @.praxis/tasks/new/AUG-45-nn7aad.json \n  \nуспешным выполнением этого запроса будет - утвержденная и обновленная задача только когда я скажу. Давай устроим брейншторм на русском языке и в конечном счете обновим задачу на английском",
+  "acceptance_criteria": "",
+  "important_constraints": "",
+  "labels": [],
+  "on_hold_reason": "",
+  "contextRouterIncluded": true,
+  "created_at": 1789173059216,
+  "column_entered_at": 1789174630714
+}

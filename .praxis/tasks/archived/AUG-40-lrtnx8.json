@@ -2,7 +2,7 @@
   "id": "AUG-40-lrtnx8",
   "assignee": "jarvis.json",
   "priority": "medium",
-  "status": "to_review",
+  "status": "archived",
   "title": "[AUG-40] Integrate Agentation widget",
   "why_we_need_this": "Agentation lets us annotate the running web app in the browser and hand those annotations to AI coding agents, closing the loop between visual QA and code fixes. We only need the frontend widget — no MCP server setup required. This task was created from the Boosts view; the setup skill was written to `.agents/skills/agentation-init/`.",
   "acceptance_criteria": "- Follow `.agents/skills/agentation-init/SKILL.md` for the widget integration steps only.\n- `agentation` is installed as a frontend dependency using the project's package manager.\n- `<Agentation endpoint={...} />` is mounted in the root app component, gated to development mode, reading `VITE_AGENTATION_ENDPOINT` with a default of `http://127.0.0.1:4747`.\n- `.env.example` contains `VITE_AGENTATION_ENDPOINT`.\n- The Agentation toolbar is visible in dev mode.",
@@ -14,5 +14,7 @@
   "on_hold_reason": "",
   "contextRouterIncluded": false,
   "created_at": 1789156782338,
-  "column_entered_at": 1789156939338
+  "column_entered_at": 1789174737025,
+  "archived_at": 1789174737021,
+  "archived_from_status": "to_review"
 }

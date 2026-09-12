@@ -1,0 +1,19 @@
+{
+  "id": "AUG-49-vpihw2",
+  "assignee": "jarvis.json",
+  "priority": "high",
+  "status": "new",
+  "title": "[AUG-49] Strip \"Редактор субтитров А.Семкин Корректор А.Егорова\" hallucination from transcripts",
+  "why_we_need_this": "Whisper large-v3-turbo was trained on subtitle data and regularly hallucinates the Russian subtitle credit line \"Редактор субтитров А.Семкин Корректор А.Егорова\" (often during silence, or appended to real speech in the same segment). The current filter in server/src/services/transcriptMerger.ts only catches the \"субтитры … dimatorzok\" credit variant and only drops a segment when its whole normalized text is a hallucination. As a result this credit line leaks into finished transcripts and live transcripts, polluting meeting notes and forcing managers to clean them by hand.",
+  "acceptance_criteria": "1. A segment whose entire text is the credit line (any spacing/punctuation variant, e.g. \"Редактор субтитров А.Семкин Корректор А.Егорова\", \"Редактор субтитров А. Семкин. Корректор А. Егорова.\", or just one half — \"Редактор субтитров А.Семкин\" / \"Корректор А.Егорова\") is dropped from the batch transcript.\n2. When the credit line appears inside a segment together with real speech, only the credit fragment is removed; the real speech in that segment is kept, trimmed, with no leftover stray punctuation/double spaces. If nothing meaningful remains, the segment is dropped.\n3. The same filtering applies to live transcription (server/src/services/liveTranscription.ts), which already reuses normalize/isHallucination from transcriptMerger.ts — batch and live outputs must behave identically.\n4. Detection is pattern/co-occurrence based (e.g. \"редактор субтитров\" + \"семкин\", \"корректор\" + \"егорова\"), case-insensitive and tolerant to spacing/punctuation around initials — not a single exact literal string. Follow the existing isHallucination design comment (no one-off literal wording variants).\n5. Existing filters keep working unchanged: FILLER_ONLY_TEXTS, HALLUCINATION_BLACKLIST, the \"субтитры\"+\"dimatorzok\" check, dedup, join, and no_speech_prob logic.\n6. Unit tests cover: full-segment credit line (several punctuation variants), each half alone, credit line embedded before/after real speech, an ordinary segment that merely mentions the word \"субтитры\" or \"корректор\" without the names (must NOT be altered), and the live-transcription path.\n7. TypeScript build and the server test suite pass locally; results reported in the handoff.",
+  "important_constraints": "- Implement in server/src/services/transcriptMerger.ts; keep all whisper-cli invocation in runWhisper() untouched.\n- Do not re-tune TranscriptMerger constants (JOIN_GAP_THRESHOLD, DEDUP_WINDOW, NO_SPEECH_PROB_THRESHOLD) — they are ported verbatim from SplitVox.\n- Stripping must happen before dedup/join so cleaned segments participate correctly in merging.\n- No third-party AI/API calls — purely local text post-processing.\n- Update project-context/transcription/README.md Invariants to document the new credit-line stripping rule.",
+  "labels": [
+    "transcription",
+    "hallucination-filter",
+    "backend"
+  ],
+  "on_hold_reason": "",
+  "contextRouterIncluded": true,
+  "created_at": 1789179215637,
+  "column_entered_at": 1789179215637
+}

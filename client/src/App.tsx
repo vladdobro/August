@@ -2,6 +2,7 @@ import React, { useCallback, useEffect, useRef, useState } from 'react';
 import SessionList from './components/SessionList';
 import FileUpload from './components/FileUpload';
 import TranscriptView from './components/TranscriptView';
+import ModelDownloadModal from './components/ModelDownloadModal';
 import { checkHealth, deleteSession, fetchSessions, fetchTranscript, renameSession, retranscribeSession, cancelTranscription } from './api';
 import type { SessionMetadata } from './types';
 import { ThemeToggle } from './theme';
@@ -178,6 +179,7 @@ const App: React.FC = () => {
 
         {selectedSession && <ThemeToggle />}
       </div>
+      <ModelDownloadModal />
       {shouldEnableAgentation && <Agentation endpoint={agentationEndpoint} />}
     </>
   );

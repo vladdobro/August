@@ -2,10 +2,12 @@
   "name": "august",
   "private": true,
   "scripts": {
+    "predev": "npm run setup || echo whisper setup failed - transcription stays unavailable until npm run setup succeeds",
     "dev": "concurrently \"npm run dev:server\" \"npm run dev:client\"",
     "dev:server": "cd server && npm run dev",
     "dev:client": "cd client && npm run dev",
-    "install:all": "npm install && cd server && npm install && cd ../client && npm install"
+    "install:all": "npm install && cd server && npm install && cd ../client && npm install",
+    "setup": "cd server && npm run setup"
   },
   "devDependencies": {
     "concurrently": "^8.2.0"

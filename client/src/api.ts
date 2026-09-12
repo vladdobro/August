@@ -1,4 +1,4 @@
-import type { HealthStatus, SessionMetadata, TranscriptionLanguage } from './types';
+import type { HealthStatus, ModelSetupStatus, SessionMetadata, TranscriptionLanguage } from './types';
 
 export interface UploadProgress {
   loaded: number;
@@ -162,3 +162,10 @@ export async function checkHealth(): Promise<HealthStatus> {
   const res = await fetch(`${API_BASE}/health`);
   return handleJsonResponse<HealthStatus>(res);
 }
+
+export async function fetchSetupStatus(): Promise<ModelSetupStatus> {
+  const res = await fetch(`${API_BASE}/setup/status`);
+  return handleJsonResponse<ModelSetupStatus>(res);
+}
+
+export const SETUP_PROGRESS_URL = `${API_BASE}/setup/download-progress`;

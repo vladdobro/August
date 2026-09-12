@@ -1,19 +1,9 @@
 import { Router } from 'express';
-import fs from 'node:fs/promises';
 
 import { config } from '../config.js';
-import { checkFfmpegAvailable } from '../services/whisper.js';
+import { checkFfmpegAvailable, fileExists, FFMPEG_MISSING_MESSAGE } from '../services/whisper.js';
 
 const router = Router();
-
-async function fileExists(filePath: string): Promise<boolean> {
-  try {
-    await fs.access(filePath);
-    return true;
-  } catch {
-    return false;
-  }
-}
 
 router.get('/health', async (_req, res) => {
   const [whisperAvailable, modelAvailable, ffmpegAvailable] = await Promise.all([
@@ -27,6 +17,7 @@ router.get('/health', async (_req, res) => {
     whisperAvailable,
     modelAvailable,
     ffmpegAvailable,
+    ffmpegMessage: ffmpegAvailable ? null : FFMPEG_MISSING_MESSAGE,
   });
 });
 
