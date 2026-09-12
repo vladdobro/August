@@ -1,7 +1,7 @@
 # Transcription Route
 
 ## TL;DR
-- whisper-cli.exe (whisper.cpp) transcribes session audio locally; output is raw timestamped segments in milliseconds.
+- whisper-cli.exe (whisper.cpp) transcribes session audio locally with Vulkan GPU acceleration; output is raw timestamped segments in milliseconds.
 - TranscriptMerger filters hallucinations and filler, dedupes near-duplicate segments, and joins nearby segments into readable lines.
 - A session moves through uploading, transcribing, then completed or failed — the client polls status until it leaves transcribing.
 - Dual-track recording (mic + system) produces one session; mergeDualStream interleaves both streams with [Me]/[Them] role labels.
@@ -14,6 +14,7 @@
 - SessionMetadata.estimatedDuration (seconds) is computed at transcription start and sent to the client for countdown display.
 - Orphaned sessions stuck in "transcribing" with no active process are auto-recovered to "failed" on server startup.
 - Live transcription mode streams real-time audio chunks over WebSocket to whisper-cli.exe — see child route live-transcription/.
+- A GUI onboarding gate (SetupGuide) blocks the main UI until whisper-cli.exe and the model are available — see child route setup/.
 
 This route governs how audio becomes a transcript: the whisper.cpp CLI wrapper, the TranscriptMerger cleanup pass, and the session states in between.
 
@@ -47,7 +48,8 @@ Document the exact mechanics of turning a recorded or uploaded audio file into a
 - joinAdjacentSameRole respects the role field — segments are only joined when they share the same role AND are within the gap threshold.
 - DEDUP_WINDOW = 30.0 seconds — near-duplicate text within this window is collapsed to one segment.
 - NO_SPEECH_PROB_THRESHOLD = 0.6 — segments at or above this whisper.cpp no-speech probability are dropped.
-- whisper-cli.exe is always invoked with --max-context 0 (anti-loop) and --no-gpu, and --language set to auto, en, or ru.
+- whisper-cli.exe is always invoked with --max-context 0 (anti-loop) and --language set to auto, en, or ru.
+- whisper-cli.exe is built with Vulkan GPU support (GGML_VULKAN=ON) and auto-detects GPU at startup, falling back to CPU if unavailable.
 - Transcription always runs as a background process — the API never blocks a request waiting for whisper-cli.exe to finish.
 - Retranscription reuses the session's existing audio file but allows a language override — the session's language field is updated to the chosen language.
 - Retranscription defaults to Russian ('ru') when no language is explicitly specified in the request body.
@@ -85,3 +87,7 @@ Document the exact mechanics of turning a recorded or uploaded audio file into a
 ### Live Transcription
 Real-time WebSocket-based transcription during a live call — chunked audio capture, server-side whisper invocation, and a slide-out transcript panel.
 Directory Path: project-context/transcription/live-transcription/
+
+### Setup and Onboarding
+GUI onboarding flow that gates the main UI, guides users through whisper binary setup, and provides in-app model download with SSE progress tracking.
+Directory Path: project-context/transcription/setup/

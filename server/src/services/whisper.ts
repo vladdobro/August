@@ -210,7 +210,6 @@ export async function transcribe(
     '--model', safeModelPath,
     '--language', language,
     '--max-context', '0',
-    '--no-gpu',
     '--output-json-full',
     '--output-file', safeOutputBase,
     '--no-prints',

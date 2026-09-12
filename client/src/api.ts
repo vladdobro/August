@@ -162,3 +162,48 @@ export async function checkHealth(): Promise<HealthStatus> {
   const res = await fetch(`${API_BASE}/health`);
   return handleJsonResponse<HealthStatus>(res);
 }
+
+export async function downloadModel(
+  onProgress: (downloaded: number, total: number) => void,
+  onVerifying: () => void,
+): Promise<void> {
+  const res = await fetch(`${API_BASE}/setup/download-model`, { method: 'POST' });
+  if (!res.ok) throw new Error(`Failed to start download: ${res.status}`);
+  if (!res.body) throw new Error('No response body');
+
+  const reader = res.body.getReader();
+  const decoder = new TextDecoder();
+  let buffer = '';
+
+  for (;;) {
+    const { done, value } = await reader.read();
+    if (done) break;
+    buffer += decoder.decode(value, { stream: true });
+
+    const events = buffer.split('\n\n');
+    buffer = events.pop()!;
+
+    for (const block of events) {
+      if (!block.trim()) continue;
+      const eventMatch = block.match(/event:\s*(\S+)/);
+      const dataMatch = block.match(/data:\s*(.*)/);
+      if (!eventMatch || !dataMatch) continue;
+
+      const event = eventMatch[1];
+      const data = JSON.parse(dataMatch[1]);
+
+      switch (event) {
+        case 'progress':
+          onProgress(data.downloaded, data.total);
+          break;
+        case 'verifying':
+          onVerifying();
+          break;
+        case 'error':
+          throw new Error(data.message);
+        case 'complete':
+          return;
+      }
+    }
+  }
+}

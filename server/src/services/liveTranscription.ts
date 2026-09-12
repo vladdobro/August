@@ -122,7 +122,6 @@ async function transcribeChunk(wavPath: string, language: string): Promise<strin
     '--model', safeModelPath,
     '--language', language || 'auto',
     '--max-context', '0',
-    '--no-gpu',
     '--output-json-full',
     '--output-file', safeOutputBase,
     '--no-prints',

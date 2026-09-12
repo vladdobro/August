@@ -10,6 +10,7 @@ import { config } from './config.js';
 import healthRouter from './routes/health.js';
 import sessionsRouter, { recoverOrphanedSessions } from './routes/sessions.js';
 import { setupLiveTranscription } from './services/liveTranscription.js';
+import setupRouter from './routes/setup.js';
 
 dotenv.config();
 
@@ -32,6 +33,7 @@ async function main() {
 
   app.use('/api', healthRouter);
   app.use('/api/sessions', sessionsRouter);
+  app.use('/api/setup', setupRouter);
 
   const isDev = process.env.NODE_ENV !== 'production';
 

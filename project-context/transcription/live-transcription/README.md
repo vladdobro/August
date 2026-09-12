@@ -39,7 +39,7 @@ Document the mechanics of the live transcription mode — how audio is captured 
 
 - Live transcription never modifies the MediaRecorder streams or the existing upload/transcription pipeline.
 - The WebSocket endpoint is /api/live-transcribe — it handles upgrade requests on the shared HTTP server.
-- whisper-cli.exe is invoked with the same anti-loop params as the batch pipeline: --max-context 0, --no-gpu.
+- whisper-cli.exe is invoked with the same anti-loop params as the batch pipeline: --max-context 0.
 - Non-ASCII paths use toSafePath() (imported from whisper.ts) to convert to Windows 8.3 short paths.
 - Temporary WAV files are written to server/data/live-tmp/ (ASCII-safe), not os.tmpdir() which may resolve to a Cyrillic path.
 - The server drops queued chunks beyond MAX_QUEUE_LENGTH (6) to prevent backpressure buildup.
