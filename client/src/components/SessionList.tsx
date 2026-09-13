@@ -12,6 +12,7 @@ interface SessionListProps {
   onRename: (id: string, title: string) => void;
   onNewSession: () => void;
   onDiagnostics: () => void;
+  onKeysAndTokens: () => void;
 }
 
 const ALL_STATUSES: SessionStatus[] = ['uploading', 'transcribing', 'failed', 'completed'];
@@ -64,6 +65,7 @@ const SessionList: React.FC<SessionListProps> = ({
   onRename,
   onNewSession,
   onDiagnostics,
+  onKeysAndTokens,
 }) => {
   const [menuOpen, setMenuOpen] = useState(false);
   const [showAbout, setShowAbout] = useState(false);
@@ -247,8 +249,19 @@ const SessionList: React.FC<SessionListProps> = ({
                   </svg>
                   Diagnostics
                 </button>
-                <a
+                <button
+                  type="button"
                   className="sidebar-menu-item sidebar-menu-item--2"
+                  onClick={() => { setMenuOpen(false); onKeysAndTokens(); }}
+                >
+                  <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+                    <rect x="3" y="11" width="18" height="11" rx="0" />
+                    <path d="M7 11V7a5 5 0 0110 0v4" />
+                  </svg>
+                  Keys & Tokens
+                </button>
+                <a
+                  className="sidebar-menu-item sidebar-menu-item--3"
                   href="https://youtu.be/dQw4w9WgXcQ"
                   target="_blank"
                   rel="noopener noreferrer"

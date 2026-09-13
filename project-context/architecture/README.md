@@ -55,9 +55,11 @@ Give any agent working on the codebase a map of the client/server split, how a s
 - Task ID allocation mirrors the Praxis Python logic: reads .praxis/config/task_counter, scans .praxis/tasks/*/ for the filesystem max, increments, and writes the counter back.
 - Task tag prefix is read from .praxis/config/general.yaml (taskTitleTag field); composite ID format is TAG-NUMBER-SUFFIX (e.g., POS-42-a7x3mq).
 - POST /api/praxis/validate checks whether a directory contains .praxis/ before attempting task creation.
-- The acceptance criteria template embedded in the export is a structured instruction set with 4 sections: pre-processing (reasoning, classification, dedup scan, context search), deliverables (summary, action items, commitments CMT-NNN, route updates), quality rules (self-containment, traceability, nothing-silently-skipped, halt on ambiguity), and output format (recap summary, extracted items, processing log).
+- The acceptance criteria template embedded in the export is a structured instruction set with 4 sections: pre-processing (participant identification, role prediction, reasoning, classification, dedup scan, context search), deliverables (summary, action items, commitments CMT-NNN, route updates), quality rules (self-containment, traceability, nothing-silently-skipped, halt on ambiguity), and output format (recap summary, extracted items, processing log).
+- Pre-processing requires identifying [Them] from transcript context and predicting professional roles for each participant before any extraction begins.
 - Task creation from transcripts only generates tasks for items the sender personally committed to — vague discussion points route to context updates instead.
 - The template enforces merge-don't-replace for route updates — new information merges into existing records, never overwrites them.
+- Exported tasks are always assigned to assistant.json unconditionally.
 
 ## Key files
 

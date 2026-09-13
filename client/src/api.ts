@@ -163,6 +163,15 @@ export async function checkHealth(): Promise<HealthStatus> {
   return handleJsonResponse<HealthStatus>(res);
 }
 
+export async function saveGroqKey(key: string): Promise<{ ok: boolean; groqAvailable: boolean }> {
+  const res = await fetch(`${API_BASE}/config/groq-key`, {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({ key }),
+  });
+  return handleJsonResponse<{ ok: boolean; groqAvailable: boolean }>(res);
+}
+
 export async function fetchSetupStatus(): Promise<ModelSetupStatus> {
   const res = await fetch(`${API_BASE}/setup/status`);
   return handleJsonResponse<ModelSetupStatus>(res);

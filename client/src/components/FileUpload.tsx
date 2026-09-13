@@ -17,6 +17,7 @@ interface FileUploadProps {
   onUploaded: () => void;
   onRecordingChange?: (recording: boolean) => void;
   groqAvailable?: boolean;
+  onGroqKeySaved?: () => void;
 }
 
 function isAcceptedFile(file: File): boolean {
@@ -35,7 +36,7 @@ function formatBytes(bytes: number): string {
   return `${Math.round(bytes / (1024 * 1024))} MB`;
 }
 
-const FileUpload: React.FC<FileUploadProps> = ({ onUploaded, onRecordingChange, groqAvailable }) => {
+const FileUpload: React.FC<FileUploadProps> = ({ onUploaded, onRecordingChange, groqAvailable, onGroqKeySaved }) => {
   const { theme, toggle: toggleTheme } = useTheme();
   const [language, setLanguage] = useState<TranscriptionLanguage>('ru');
   const [isDragging, setIsDragging] = useState(false);
@@ -608,7 +609,7 @@ const FileUpload: React.FC<FileUploadProps> = ({ onUploaded, onRecordingChange, 
         </button>
 
         {showModePicker && (
-          <RecordingModePicker onSelect={handleModeSelect} onClose={() => setShowModePicker(false)} groqAvailable={groqAvailable} />
+          <RecordingModePicker onSelect={handleModeSelect} onClose={() => setShowModePicker(false)} groqAvailable={groqAvailable} onGroqKeySaved={onGroqKeySaved} />
         )}
       </div>
 

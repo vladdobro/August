@@ -6,6 +6,7 @@ import ModelDownloadModal from './components/ModelDownloadModal';
 import { checkHealth, deleteSession, fetchSessions, fetchTranscript, renameSession, retranscribeSession, cancelTranscription } from './api';
 import type { HealthStatus, SessionMetadata } from './types';
 import SetupGuide from './components/SetupGuide';
+import GroqKeyModal from './components/GroqKeyModal';
 import { ThemeToggle } from './theme';
 import { Agentation } from 'agentation';
 
@@ -26,6 +27,7 @@ const App: React.FC = () => {
     timeoutId: ReturnType<typeof setTimeout>;
   } | null>(null);
   const [isRecording, setIsRecording] = useState(false);
+  const [showGroqKeyModal, setShowGroqKeyModal] = useState(false);
 
   selectedSessionIdRef.current = selectedSessionId;
 
@@ -200,6 +202,7 @@ const App: React.FC = () => {
             if (showDiagnostics) { setSetupDismissed(true); setShowDiagnostics(false); }
           }}
           onDiagnostics={() => { setSetupDismissed(false); setShowDiagnostics(true); }}
+          onKeysAndTokens={() => setShowGroqKeyModal(true)}
         />
 
         <main className="main-content">
@@ -231,7 +234,7 @@ const App: React.FC = () => {
 
           {(showFileUpload || isRecording) && (
             <div style={showFileUpload ? undefined : { display: 'none' }}>
-              <FileUpload onUploaded={handleUploaded} onRecordingChange={setIsRecording} groqAvailable={healthStatus?.groqAvailable ?? false} />
+              <FileUpload onUploaded={handleUploaded} onRecordingChange={setIsRecording} groqAvailable={healthStatus?.groqAvailable ?? false} onGroqKeySaved={refreshHealth} />
             </div>
           )}
         </main>
@@ -239,6 +242,13 @@ const App: React.FC = () => {
         {selectedSession && !needsSetup && <ThemeToggle />}
       </div>
       <ModelDownloadModal />
+      {showGroqKeyModal && (
+        <GroqKeyModal
+          groqAvailable={healthStatus?.groqAvailable ?? false}
+          onClose={() => setShowGroqKeyModal(false)}
+          onSaved={refreshHealth}
+        />
+      )}
       {shouldEnableAgentation && <Agentation endpoint={agentationEndpoint} />}
     </>
   );

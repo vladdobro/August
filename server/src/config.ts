@@ -9,7 +9,8 @@ const __dirname = path.dirname(__filename);
 const serverRoot = path.resolve(__dirname, '..');
 const repoRoot = path.resolve(serverRoot, '..');
 
-dotenv.config({ path: path.resolve(repoRoot, '.env') });
+export const ENV_FILE_PATH = path.resolve(repoRoot, '.env');
+dotenv.config({ path: ENV_FILE_PATH });
 
 export const WHISPER_CPP_VERSION = '1.8.4';
 export const WHISPER_BIN_ROOT = path.resolve(repoRoot, 'whisper', 'bin');

@@ -14,8 +14,10 @@ const ACCEPTANCE_CRITERIA_TEMPLATE = `Process this meeting transcript following 
 
 ## Pre-processing (before any extraction)
 1. Read the full transcript before extracting anything.
-2. Reason through: who attended, meeting purpose, which projects/routes are touched.
-3. Classify every extractable item as: decision / action item / context insight / blocker.
+2. Identify participants: [Me] is the sender. Determine who [Them] is from the transcript context — fill in "Them is: {name/role}".
+3. Predict the most appropriate professional roles for each participant based on what they discuss, their domain language, and the decisions they make.
+4. Reason through: who attended, meeting purpose, which projects/routes are touched.
+5. Classify every extractable item as: decision / action item / context insight / blocker.
 4. Call search_project_context with domain keywords from the transcript BEFORE any route read or write.
 5. Scan active tasks (get_active_tasks) before creating new ones to prevent duplicates.
 
