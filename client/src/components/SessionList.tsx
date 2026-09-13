@@ -1,5 +1,6 @@
 import React, { useEffect, useLayoutEffect, useRef, useState } from 'react';
 import type { SessionMetadata, SessionStatus } from '../types';
+import AboutModal from './AboutModal';
 
 interface SessionListProps {
   sessions: SessionMetadata[];
@@ -65,6 +66,7 @@ const SessionList: React.FC<SessionListProps> = ({
   onDiagnostics,
 }) => {
   const [menuOpen, setMenuOpen] = useState(false);
+  const [showAbout, setShowAbout] = useState(false);
   const menuRef = useRef<HTMLDivElement>(null);
   const [editingId, setEditingId] = useState<string | null>(null);
   const [editValue, setEditValue] = useState('');
@@ -217,7 +219,7 @@ const SessionList: React.FC<SessionListProps> = ({
       </svg>
       <div className="session-list-header">
         <div className="session-header-left">
-          <h1 className="app-title">August</h1>
+          <h1 className="app-title app-title--clickable" onClick={() => setShowAbout(true)}>August</h1>
           <div className="sidebar-menu" ref={menuRef}>
             <button
               type="button"
@@ -446,6 +448,7 @@ const SessionList: React.FC<SessionListProps> = ({
           )
         )}
       </div>
+      {showAbout && <AboutModal onClose={() => setShowAbout(false)} />}
     </div>
   );
 };

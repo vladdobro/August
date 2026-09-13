@@ -1,0 +1,19 @@
+{
+  "id": "AUG-65-dowm5l",
+  "assignee": "jarvis.json",
+  "priority": "medium",
+  "status": "new",
+  "title": "[AUG-65] Add Groq API option for live transcription mode",
+  "why_we_need_this": "Live transcription currently runs each audio chunk through local whisper-cli.exe on CPU, which takes 3-15 seconds per chunk — too slow for a real-time feel. Groq's Whisper API returns results in ~200-500ms for small chunks (80-160 KB each, well under the 25MB limit). Adding Groq as an opt-in engine for live mode gives near-instant transcription during live calls while keeping local whisper as the default.",
+  "acceptance_criteria": "- [ ] Add a Groq API key setting (server-side config or environment variable GROQ_API_KEY)\n- [ ] Implement a Groq transcription function that POSTs audio chunks to Groq's /openai/v1/audio/transcriptions endpoint (model: whisper-large-v3, supports language param: en/ru/auto)\n- [ ] In the live transcription WebSocket handler (server/src/services/liveTranscription.ts), add a toggle to route chunks to Groq instead of local whisper-cli.exe\n- [ ] Expose the toggle in the client UI — user can choose \"Local\" or \"Groq\" before starting a live session\n- [ ] When Groq is selected but API key is missing or request fails, fall back to local whisper with a warning\n- [ ] Respect Groq free-tier rate limits (20 req/min) — if rate-limited, fall back to local whisper for that chunk and resume Groq on next chunk\n- [ ] Post-recording full-file transcription remains local whisper only (Groq's 25MB file limit makes it impractical for full recordings)",
+  "important_constraints": "This is the first third-party API call in the project — the self-hosted-only invariant (architecture, PRD, transcription routes) applies to post-recording transcription and remains unchanged. Live mode Groq is an explicit user opt-in, not a default. The Groq API key must never be hardcoded or committed to the repo.",
+  "labels": [
+    "performance",
+    "whisper",
+    "live-transcription"
+  ],
+  "on_hold_reason": "",
+  "contextRouterIncluded": false,
+  "created_at": 1789304182799,
+  "column_entered_at": 1789304182799
+}

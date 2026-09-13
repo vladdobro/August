@@ -2,7 +2,7 @@
   "id": "AUG-48-pf9rag",
   "assignee": "assistant.json",
   "priority": "low",
-  "status": "to_review",
+  "status": "completed",
   "title": "[AUG-48] Владу: Рассмотреть переход на whisper large-v3-turbo-q8_0",
   "why_we_need_this": "Квантизованная модель q8_0 занимает вдвое меньше RAM/диска (~874 МБ vs ~1624 МБ) и работает на ~18% быстрее без потери качества. Документ со сравнением: project-context/transcription/whisper-model-comparison.md",
   "acceptance_criteria": "- Владислав ознакомился с документом @project-context/transcription/whisper-model-comparison.md\n- Принято решение о переходе на q8_0 или обоснован отказ\n- Если решено переходить: модель скачана, путь обновлён, транскрипция протестирована на реальном аудио",
@@ -14,5 +14,5 @@
   "on_hold_reason": "",
   "contextRouterIncluded": true,
   "created_at": 1789176610379,
-  "column_entered_at": 1789254381714
+  "column_entered_at": 1789295517501
 }

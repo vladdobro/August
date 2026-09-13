@@ -1,0 +1,15 @@
+{
+  "id": "AUG-64-dzirvx",
+  "assignee": "jarvis.json",
+  "priority": "medium",
+  "status": "to_review",
+  "title": "[AUG-64] Bug transcription failed",
+  "why_we_need_this": "Transcription failed\n\n❌ ffmpeg not found. Install it:\nmacOS: brew install ffmpeg\nWindows: winget install ffmpeg\nRecording 13.09.2026, 17:20:56\n\n",
+  "acceptance_criteria": "",
+  "important_constraints": "",
+  "labels": [],
+  "on_hold_reason": "",
+  "contextRouterIncluded": false,
+  "created_at": 1789309321200,
+  "column_entered_at": 1789309844819
+}

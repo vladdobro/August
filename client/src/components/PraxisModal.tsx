@@ -1,6 +1,64 @@
 import React, { useState, useEffect, useRef } from 'react';
 import { sendToPraxis, validatePraxisProject } from '../api';
 
+const AugustLogo: React.FC = () => (
+  <svg
+    className="praxis-success-logo"
+    width="42"
+    height="42"
+    viewBox="0 0 100 100"
+    fill="none"
+    xmlns="http://www.w3.org/2000/svg"
+    style={{ transform: 'rotate(45deg)' }}
+  >
+    <circle cx="50" cy="50" r="16" stroke="currentColor" strokeWidth="4" fill="none" />
+    <circle cx="50" cy="50" r="12" stroke="currentColor" strokeWidth="2" fill="none" opacity="0.4" />
+    <line x1="50" y1="34" x2="50" y2="14" stroke="currentColor" strokeWidth="3.5" />
+    <path d="M42 10 Q50 18 58 10" stroke="currentColor" strokeWidth="3.5" fill="none" />
+    <circle cx="50" cy="14" r="3" fill="currentColor" />
+    <line x1="66" y1="50" x2="90" y2="50" stroke="currentColor" strokeWidth="3.5" />
+    <circle cx="90" cy="50" r="3.5" fill="currentColor" />
+    <line x1="34" y1="50" x2="10" y2="50" stroke="currentColor" strokeWidth="3.5" />
+    <circle cx="10" cy="50" r="3.5" fill="currentColor" />
+    <line x1="40" y1="63" x2="18" y2="88" stroke="currentColor" strokeWidth="3.5" />
+    <circle cx="18" cy="88" r="3" fill="currentColor" />
+    <line x1="60" y1="63" x2="82" y2="88" stroke="currentColor" strokeWidth="3.5" />
+    <circle cx="82" cy="88" r="3" fill="currentColor" />
+    <line x1="50" y1="66" x2="50" y2="88" stroke="currentColor" strokeWidth="3.5" />
+    <circle cx="50" cy="88" r="3" fill="currentColor" />
+  </svg>
+);
+
+const PraxisLogo: React.FC = () => (
+  <svg
+    className="praxis-success-logo"
+    width="42"
+    height="42"
+    viewBox="0 0 100 100"
+    fill="none"
+    xmlns="http://www.w3.org/2000/svg"
+  >
+    <circle cx="50" cy="50" r="8" fill="currentColor" />
+    <ellipse cx="50" cy="50" rx="40" ry="16" stroke="currentColor" strokeWidth="4" fill="none" />
+    <ellipse cx="50" cy="50" rx="40" ry="16" stroke="currentColor" strokeWidth="4" fill="none" transform="rotate(60 50 50)" />
+    <ellipse cx="50" cy="50" rx="40" ry="16" stroke="currentColor" strokeWidth="4" fill="none" transform="rotate(120 50 50)" />
+  </svg>
+);
+
+const CheckCircleLogo: React.FC = () => (
+  <svg
+    className="praxis-success-logo"
+    width="42"
+    height="42"
+    viewBox="0 0 100 100"
+    fill="none"
+    xmlns="http://www.w3.org/2000/svg"
+  >
+    <circle cx="50" cy="50" r="38" stroke="currentColor" strokeWidth="4" fill="none" />
+    <polyline points="30,52 45,67 72,35" stroke="currentColor" strokeWidth="5" fill="none" strokeLinecap="round" strokeLinejoin="round" />
+  </svg>
+);
+
 interface PraxisModalProps {
   sessionId: string;
   sessionTitle: string;
@@ -128,10 +186,11 @@ const PraxisModal: React.FC<PraxisModalProps> = ({ sessionId, sessionTitle, onCl
         ) : (
           <>
             <div className="praxis-success">
-              <svg className="praxis-success-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
-                <path d="M22 11.08V12a10 10 0 1 1-5.93-9.14" />
-                <polyline points="22 4 12 14.01 9 11.01" />
-              </svg>
+              <div className="praxis-success-logos">
+                <AugustLogo />
+                <PraxisLogo />
+                <CheckCircleLogo />
+              </div>
               <p>Task created successfully</p>
               <span className="praxis-task-id">{success.taskId}</span>
             </div>

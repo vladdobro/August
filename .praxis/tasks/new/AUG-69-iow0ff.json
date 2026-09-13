@@ -1,0 +1,15 @@
+{
+  "id": "AUG-69-iow0ff",
+  "assignee": "jarvis.json",
+  "priority": "high",
+  "status": "new",
+  "title": "[AUG-69] Diagnostics: treat ffmpeg as mandatory, add install guidance",
+  "why_we_need_this": "The diagnostics page (SetupGuide) classifies ffmpeg as optional (\"OPT\" label, \"Not required\" status when missing) and provides no installation help. In reality, ffmpeg is mandatory for all browser recordings — MediaRecorder outputs WebM, and whisper-cli only accepts WAV, so ensureWav() always needs ffmpeg. This caused a user to record a session, see diagnostics say everything is fine, and then hit a silent async transcription failure with \"ffmpeg not found\".",
+  "acceptance_criteria": "1. `SetupGuide.tsx`: Remove the \"OPT\" tag from the ffmpeg node label (remove `<span className=\"diag-tag-optional\">OPT</span>`)\n2. `SetupGuide.tsx`: Change the ffmpeg missing status from \"Not required\" to \"Not installed\" (line 244: `{ffmpegReady ? 'Available' : 'Not installed'}`)\n3. `SetupGuide.tsx`: Update the HintPopup text from \"Optional — most formats work without it\" to something accurate, e.g. \"Converts browser audio (WebM) to WAV for the whisper engine. Required for recording.\"\n4. `SetupGuide.tsx`: Include ffmpeg in the `allReady` gate — change line 138 from `const allReady = whisperReady && modelReady;` to `const allReady = whisperReady && modelReady && ffmpegReady;`\n5. `App.tsx`: Include ffmpeg in the `needsSetup` gate — add `|| !healthStatus.ffmpegAvailable` to the condition on lines 168-170\n6. `SetupGuide.tsx`: Add an install guidance section (code block with copy button) for ffmpeg when it's missing but whisper+model are ready. Windows command: `winget install ffmpeg`. macOS: already covered by `brew install whisper-cpp ffmpeg`.\n7. `SetupGuide.tsx`: Change the ffmpeg node circle color class from `diag-circle--green` to `diag-circle--yellow` (matching whisper node severity) to visually signal it's required, not auxiliary\n8. Verify via `?diagnostics&mock=ffmpeg` that the diagnostics page shows ffmpeg as missing, blocks \"Proceed\", and displays the install command",
+  "important_constraints": "",
+  "labels": [],
+  "on_hold_reason": "",
+  "contextRouterIncluded": false,
+  "created_at": 1789317124672,
+  "column_entered_at": 1789317124672
+}

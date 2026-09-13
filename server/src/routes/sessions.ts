@@ -242,6 +242,34 @@ router.post('/upload', upload.fields([
   const language = normalizeLanguage(req.body?.language);
   const isDual = !!systemFile;
 
+  // Preflight: catch missing dependencies before creating a session
+  const needsFfmpeg = !micFile.originalname.toLowerCase().endsWith('.wav')
+    || (systemFile && !systemFile.originalname.toLowerCase().endsWith('.wav'));
+  if (needsFfmpeg && !(await checkFfmpegAvailable())) {
+    res.status(400).json({ error: FFMPEG_MISSING_MESSAGE });
+    return;
+  }
+  if (!(await fileExists(config.whisperBinPath))) {
+    const binName = path.basename(config.whisperBinPath);
+    res.status(400).json({
+      error: `${binName} not found at "${config.whisperBinPath}". Run \`npm run setup\` to download it.`,
+    });
+    return;
+  }
+  if (!(await fileExists(config.whisperModelPath))) {
+    const modelStatus = getModelStatus();
+    if (modelStatus.state === 'downloading') {
+      res.status(400).json({
+        error: `Whisper model is still downloading (${modelStatus.percent}%). Try again when it finishes.`,
+      });
+    } else {
+      res.status(400).json({
+        error: `Whisper model not found. Restart the server to auto-download it.`,
+      });
+    }
+    return;
+  }
+
   try {
     const session = await sessionManager.createSession(
       isDual ? undefined : micFile.originalname,
