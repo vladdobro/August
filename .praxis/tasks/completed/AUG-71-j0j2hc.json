@@ -1,0 +1,15 @@
+{
+  "id": "AUG-71-j0j2hc",
+  "assignee": "jarvis.json",
+  "priority": "medium",
+  "status": "to_review",
+  "title": "[AUG-71] Major FE audit",
+  "why_we_need_this": "Audit all the product for the compliance to Brandbook rules\nCheck every single page, every single button\nFix everything that doesn't fit the brandbook rules",
+  "acceptance_criteria": "",
+  "important_constraints": "",
+  "labels": [],
+  "on_hold_reason": "",
+  "contextRouterIncluded": false,
+  "created_at": 1789337373708,
+  "column_entered_at": 1789339458337
+}

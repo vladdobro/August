@@ -1,0 +1,18 @@
+{
+  "id": "AUG-75-cp22ah",
+  "assignee": "jarvis.json",
+  "priority": "high",
+  "status": "to_review",
+  "title": "[AUG-75] RCA: Groq purple color scheme missed during FE audit",
+  "why_we_need_this": "During AUG-71 Major FE Audit, the agent audited the semantic color pass across all components but excluded the Groq integration's purple color scheme (#7c5cbf light / #a88de0 dark) from the violation list. The SAVE button, link color, and input focus border all use purple — a color entirely outside the brandbook Necron palette. The agent rationalized this as \"intentional third-party branding\" without flagging it for user decision, violating the audit's mandate to check EVERY element against brandbook rules. Three prior RCA tasks (AUG-73 for skipping color pass entirely, AUG-74 for missing semantic title classification) indicate a pattern of incomplete audit coverage that self-justifies exclusions.",
+  "acceptance_criteria": "1. Root cause documented: agent applied subjective \"brand exception\" reasoning to exclude Groq purple from violation list without user approval — the brandbook has no exception clause for third-party colors\n2. Add rule to agent constraints: during brandbook audits, NEVER self-exempt elements based on assumed design intent — flag ALL deviations and let the user decide which are intentional exceptions\n3. Add rule: when an agent's output does not match the scope/expectations of the initial task, an RCA task MUST be created automatically before proceeding — this is a mandatory process gate, not optional\n4. Update @project-context/frontend-design/README.md audit rules to explicitly state: third-party integration components (Groq, Praxis, etc.) are NOT exempt from the brandbook — all UI within the product follows the same color system\n5. All rules documented in project context and agent memory",
+  "important_constraints": "",
+  "labels": [
+    "rca",
+    "process"
+  ],
+  "on_hold_reason": "",
+  "contextRouterIncluded": false,
+  "created_at": 1789339799657,
+  "column_entered_at": 1789340074175
+}

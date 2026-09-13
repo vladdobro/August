@@ -1,0 +1,19 @@
+{
+  "id": "AUG-73-dofz5b",
+  "assignee": "jarvis.json",
+  "priority": "high",
+  "status": "to_review",
+  "title": "[AUG-73] RCA: Incomplete FE audit — agent scoped to single category instead of full brandbook",
+  "why_we_need_this": "During AUG-71 (Major FE audit), the agent read the full brandbook (~480 lines covering 12+ rule categories: border-radius, colors, typography, spacing, shadows, dark mode, accessibility, responsive breakpoints, etc.) but then built an execution plan covering only border-radius and hover transforms. The task was marked to_review as if complete, when only ~15% of the brandbook was actually audited. Color violations were caught only after the user asked a follow-up question. This represents a systematic failure in Step 4 (trajectory preparation) — the agent collapsed a multi-category audit into a single-category fix without acknowledging the scope reduction.",
+  "acceptance_criteria": "1. Root cause documented: identify why Step 4 narrowed scope (cognitive shortcut — picked the most visually obvious violation category and treated it as the whole task)\n\n2. Prevention rule added to Jarvis assignee constraints or project-context:\n   - When a task says \"audit ALL\" or \"check EVERY\", Step 4 MUST produce a checklist that maps 1:1 to every section/category in the reference document (brandbook, spec, etc.)\n   - The execution trajectory must explicitly list each category with a pass/fail placeholder\n   - Categories with zero findings must still appear as \"audited — compliant\" rather than being silently skipped\n   - The agent must not mark to_review until every category in the checklist has a recorded result\n\n3. Verification gate: before calling update_task_status → to_review on any audit-type task, the agent must compare the number of brandbook/spec sections against the number of sections covered in findings — if coverage is below 100%, the agent must either continue or explicitly flag partial coverage to the user\n\n4. Apply these rules retroactively: reopen AUG-71 and complete the remaining brandbook categories (colors, typography, spacing, shadows, dark mode completeness, accessibility, responsive breakpoints)",
+  "important_constraints": "This is a process improvement task, not a code task. The deliverable is updated agent instructions and a completed re-audit, not just a written document.",
+  "labels": [
+    "rca",
+    "process",
+    "quality"
+  ],
+  "on_hold_reason": "",
+  "contextRouterIncluded": false,
+  "created_at": 1789338343041,
+  "column_entered_at": 1789338799104
+}

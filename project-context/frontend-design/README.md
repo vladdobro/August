@@ -16,7 +16,7 @@
 - Diagnostics page uses W40K CRT terminal aesthetic: monospace font stack, 0 border-radius, scan-line overlays, staggered fade-in animations.
 - Font stacks are defined as CSS custom properties: --font-gothic (UnifrakturMaguntia, reserved for future decorative use), --font-terminal (Cascadia Code stack), and the system UI font.
 - Terminal font (--font-terminal) applies to diagnostics page, sidebar menu items, and code blocks — never use hardcoded font-family for terminal fonts.
-- Titles (.app-title, .diag-title) use the system UI font — gothic font was too hard to read for headings.
+- Titles use system UI font; page headings use accent gradient, modal titles use var(--accent).
 - Sidebar menu (.sidebar-menu) opens a staggered fade-in dropdown from the header, next to the "August" title.
 - Brutalist angular design: 0 border-radius (90-degree corners) on all major elements — cards, buttons, inputs, modals, dropdowns. Only status badges (999px pill) and circuit nodes (50% circle) are rounded.
 - Color utility schema: top priority = green filled buttons + light green bold text (#a0e2c0); high = yellow filled buttons + green bold text; normal = unfilled green/yellow buttons (80/20 split); low = white/green text, not bold; situational = red for alerts/close.
@@ -82,7 +82,7 @@ The Necron palette (all values defined in :root of App.css):
 | --necron-300 | #00c876 | Primary accent (dark mode), gauss green |
 | --necron-200 | #2dd690 | Accent hover (dark), status-completed (dark) |
 | --necron-100 | #6adaa5 | Filter chip text, diagnostics text |
-| --necron-50 | #a0e2c0 | Sidebar text, diagnostics headings |
+| --necron-50 | #a0e2c0 | Sidebar text, section labels, diagnostic node labels |
 
 Semantic color mapping (light → dark):
 - --accent: #0a7b50 → #00c876
@@ -118,8 +118,9 @@ Every UI element that conveys importance or calls for action must follow this pr
 
 Top priority (critical actions, primary CTA):
 - Buttons: green filled (var(--accent) background, #e0e8e3 text)
-- Text: light green (var(--necron-50) #a0e2c0), bold (font-weight 700-800) — like the diagnostics page title
-- Use for: main action buttons, primary navigation, key status indicators
+- Page headings: accent gradient (linear-gradient(135deg, #00c876, #2dd690) with background-clip: text) — e.g. .app-title, .circuit-title, .diag-title, .live-panel-title
+- Modal/sub-page headings: color: var(--accent) — e.g. .praxis-modal-title, .model-download-title, .transcript-circuit-title
+- Use for: main action buttons, primary navigation, page titles, key status indicators
 
 High priority (important but secondary):
 - Buttons: yellow/amber filled (#d4a028 background, var(--necron-950) dark text)
@@ -142,6 +143,15 @@ Situational (alerts, destructive, close):
 - Text: red (#e05555, var(--status-failed))
 - Use for: delete confirmations, error states, close/dismiss buttons, stop/cancel actions, skip warnings
 - Red should never appear in normal UI flow — it signals danger or termination only
+
+Audit rule — when auditing color compliance, three passes are mandatory:
+- Pass 1 (palette constraints): forbidden values, missing dark overrides, hardcoded vs token usage
+- Pass 2 (semantic compliance): for every visible text element and button, verify its color treatment matches its importance level per the schema above. Elements to check: page titles, section titles, button labels, status text, metadata, action labels, modal titles. Each element must be classified by importance level and its CSS verified against the matching schema tier. Page headings (22-26px, weight 800) are top-priority and must use accent gradient; modal/sub-page titles (16-20px, weight 700-800) must use color: var(--accent). Recovery/retry buttons must use green accent (not red) — red is for danger/destruction only.
+- Pass 3 (token consistency): all error/warning colors must use var(--status-failed) token, never hardcoded hex values (#c0392b, #e05555, #dc2626). CSS variable fallbacks must match the actual token value.
+
+Third-party integration components (Groq, Praxis, etc.) are NOT exempt from the brandbook — all UI within the product follows the same Necron color system.
+An agent performing an audit must flag ALL deviations without exception — never self-exempt elements based on assumed design intent. The user decides which deviations are intentional.
+When an agent's output does not match the scope or expectations of the initial task, an RCA task MUST be created before proceeding.
 
 ### Typography Rules
 
@@ -288,7 +298,7 @@ Recording indicator:
 - Audio level bar: 80px wide, 6px tall, red fill
 
 Error/warning boxes:
-- Error: background rgba(212,64,64,0.1), color var(--status-failed) or #e05555, border 1px solid rgba(212,64,64,0.2-0.25), border-radius var(--btn-radius) (main) or 0 (diagnostics)
+- Error: background rgba(212,64,64,0.1), color var(--status-failed), border 1px solid rgba(212,64,64,0.2-0.25), border-radius var(--btn-radius) (main) or 0 (diagnostics). Always use var(--status-failed) token for error text — never hardcode hex values.
 - Warning: background rgba(212,160,40,0.08), color #d4a028, border 1px solid rgba(212,160,40,0.2), border-radius 0 (CRT)
 - Notice: background rgba(0,200,118,0.06), border-left 3px solid rgba(0,200,118,0.25), border-radius 2px
 
@@ -426,7 +436,7 @@ All chrono animations are disabled under prefers-reduced-motion: reduce.
 ### Interactive Component Patterns
 
 Export dropdown (TranscriptView): a position:relative wrapper (.export-dropdown) with an absolutely positioned menu (.export-menu).
-Dropdown menu items (.export-menu-item) use accent-light on hover and 8px inner border-radius.
+Dropdown menu items (.export-menu-item) use accent-light on hover and 0 border-radius (matching global angular rule).
 Menu appears with a 0.12s ease-out slide-down animation (exportMenuIn keyframes).
 Dropdown closes on click-outside via a mousedown document listener registered only while open.
 File downloads use Blob + URL.createObjectURL + programmatic anchor click for .txt and .srt export.
@@ -532,7 +542,10 @@ Gothic font (--font-gothic) is loaded but reserved — not applied to titles due
 - Never use pure white backgrounds. Light mode uses muted sage (#c4cec8) and stone (#d0d8d3).
 - Dark mode button text on accent backgrounds uses #0a110d (near-black), not #e0e8e3.
 - Color utility schema is mandatory: green filled = top priority, yellow filled = high priority, green/yellow outline = normal, plain text = low, red = situational/destructive only. See "Color Utility Schema" section.
-- Never use red (#e05555, #dc2626) for normal UI flow — it signals danger or termination exclusively.
+- Never use red (#e05555, #dc2626) for normal UI flow — it signals danger or termination exclusively. Recovery/retry buttons must use green accent, not red.
+- All error text colors must use var(--status-failed) token — never hardcode #c0392b, #e05555, or #dc2626 directly.
+- Page headings (.circuit-title, .diag-title, .app-title, .live-panel-title) must use accent gradient (linear-gradient(135deg, #00c876, #2dd690) with background-clip: text).
+- Modal and sub-page headings (.praxis-modal-title, .model-download-title, .transcript-circuit-title) must use color: var(--accent).
 
 ## Route-Specific Constraints
 

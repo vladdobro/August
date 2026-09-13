@@ -1,0 +1,19 @@
+{
+  "id": "AUG-74-trv40z",
+  "assignee": "jarvis.json",
+  "priority": "high",
+  "status": "to_review",
+  "title": "[AUG-74] RCA: Color utility schema not applied to element-level audit — page titles missed",
+  "why_we_need_this": "During AUG-71 (Major FE audit), the color utility schema section was marked \"Compliant\" after verifying only structural rules (no #fff backgrounds, no bright/neon green, correct status colors). The agent never checked whether EACH visible element uses the correct priority-based color treatment per the schema — e.g. whether page titles use top/high-priority color (var(--accent)) vs low-priority body text color (var(--text-primary)). The \".circuit-title\" heading \"New Transcription\" uses var(--text-primary), which is low-priority styling for what is the main page heading. This was missed because the color audit checked palette-level constraints (forbidden values) but not semantic-level constraints (is each element's color appropriate for its importance level).",
+  "acceptance_criteria": "1. Root cause documented: the color audit checked CSS-level \"don't use X\" rules but skipped the semantic \"use Y for this importance level\" rules from the Color Utility Schema section\n\n2. Prevention rule: when auditing color compliance, the agent must perform TWO passes:\n   - Pass 1 (palette constraints): forbidden values, missing dark overrides, hardcoded vs token usage\n   - Pass 2 (semantic compliance): for every visible text element and button, verify its color treatment matches its importance level per the Color Utility Schema (top → green filled/green text, high → yellow filled/green bold text, normal → outline, low → plain text, situational → red only)\n\n3. The semantic pass must enumerate each page's visible elements and classify them by importance level, then verify the CSS matches. Elements to check: page titles, section titles, button labels, status text, metadata, action labels, modal titles\n\n4. Apply retroactively: audit all page titles, section titles, and primary headings in App.css against the Color Utility Schema and fix any that use the wrong priority color",
+  "important_constraints": "",
+  "labels": [
+    "rca",
+    "process",
+    "quality"
+  ],
+  "on_hold_reason": "",
+  "contextRouterIncluded": false,
+  "created_at": 1789338948445,
+  "column_entered_at": 1789339208879
+}
