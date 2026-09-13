@@ -1772,6 +1772,42 @@ body {
   border: 1px solid rgba(224, 85, 85, 0.2);
 }
 
+.recording-active-banner {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: 10px;
+  width: 100%;
+  padding: 12px 18px;
+  margin-bottom: 16px;
+  border-radius: 0;
+  background: rgba(224, 85, 85, 0.08);
+  border: 1px solid rgba(224, 85, 85, 0.25);
+  color: var(--status-failed);
+  font-family: var(--font-terminal);
+  font-size: 13px;
+  font-weight: 600;
+  letter-spacing: 0.5px;
+  text-transform: uppercase;
+  cursor: pointer;
+  transition: background 0.2s, border-color 0.2s;
+}
+
+.recording-active-banner:hover {
+  background: rgba(224, 85, 85, 0.15);
+  border-color: rgba(224, 85, 85, 0.4);
+}
+
+:root[data-theme='dark'] .recording-active-banner {
+  background: rgba(224, 85, 85, 0.1);
+  border-color: rgba(224, 85, 85, 0.3);
+}
+
+:root[data-theme='dark'] .recording-active-banner:hover {
+  background: rgba(224, 85, 85, 0.2);
+  border-color: rgba(224, 85, 85, 0.5);
+}
+
 .recording-live-badge {
   display: inline-flex;
   align-items: center;

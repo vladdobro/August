@@ -12,6 +12,7 @@
 - GET /api/setup/status and the SSE stream /api/setup/download-progress expose live model download progress to the client.
 - whisper/bin/ and whisper/.build/ are git-ignored; platform binaries are never committed to the repository.
 - npm run dev runs setup automatically through the root package.json predev hook, and a setup failure never blocks the app from starting.
+- ffmpeg is mandatory for all browser recordings; the diagnostics page blocks "Proceed" when ffmpeg is missing.
 
 One-sentence description: How whisper-cli binaries and the whisper model get installed per platform, and how the client learns about download progress.
 
@@ -38,7 +39,7 @@ Explain the setup, binary-distribution, and model-download mechanics behind tran
 - Setup API: GET /api/setup/status (point-in-time state), GET /api/setup/download-progress (SSE stream), and POST /api/setup/download-model (triggers server-side download) in server/src/routes/setup.ts.
 - The diagnostics page download button triggers POST /api/setup/download-model instead of opening a browser download — the server downloads directly to whisper/models/ with checksum verification.
 - Client modal: ModelDownloadModal.tsx (mounted in App.tsx) fetches status on load, opens an EventSource while downloading, shows the error with a Dismiss button when missing, and renders nothing when the model is present.
-- ffmpeg pre-flight: checkFfmpegAvailable() runs both at server startup and inside the setup script; failures log the shared FFMPEG_MISSING_MESSAGE with per-platform install commands.
+- ffmpeg pre-flight: checkFfmpegAvailable() runs both at server startup and inside the setup script; failures log the shared FFMPEG_MISSING_MESSAGE with per-platform install commands. ffmpeg is mandatory because MediaRecorder outputs WebM and whisper-cli only accepts WAV.
 - .env loading: config.ts loads the repo-root .env via dotenv before computing config, so WHISPER_BIN_PATH and WHISPER_MODEL_PATH overrides in .env are honored.
 
 ## Invariants
@@ -57,7 +58,7 @@ Explain the setup, binary-distribution, and model-download mechanics behind tran
 - Both the setup script and the model downloader route their downloads through the shared download.ts helper — never duplicate streaming or hashing logic.
 - --no-gpu is passed on every platform except macOS Apple Silicon, which uses Metal (config.whisperUseGpu).
 - Verified on darwin-arm64: the built whisper-cli is a static arm64 Mach-O binary linking only system frameworks, and transcription runs with Metal enabled.
-- ffmpeg is never bundled — it stays a system dependency checked at setup time and at server startup.
+- ffmpeg is never bundled — it stays a mandatory system dependency checked at setup time, at server startup, and in the diagnostics gate (allReady).
 - Binaries are excluded from git because they are large and platform-specific — never commit a whisper-cli binary.
 
 ## Route-Specific Constraints

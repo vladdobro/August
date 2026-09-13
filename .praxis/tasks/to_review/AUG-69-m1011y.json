@@ -2,7 +2,7 @@
   "id": "AUG-69-m1011y",
   "assignee": "jarvis.json",
   "priority": "medium",
-  "status": "in_progress",
+  "status": "to_review",
   "title": "[AUG-69] Get more relevant instructions on August to praxis integration",
   "why_we_need_this": "there is an integration August to Praxis\nand there are statements for this task on created in praxis\nmeanwhile there is an Assistant in Praxis called @.praxis/assignees/recap-master.json \nI think the recap master should be an assignee on this integration process\nAnd we definetely should review the existing prompt on task creation with experience that Recap master has in its skills and description itself. \nThe good things recap master has and we can add to prompt on task creation give me to review\nTake into account, that recap master will be deleted soon",
   "acceptance_criteria": "",
@@ -11,5 +11,5 @@
   "on_hold_reason": "",
   "contextRouterIncluded": false,
   "created_at": 1789317762920,
-  "column_entered_at": 1789317765423
+  "column_entered_at": 1789325477391
 }

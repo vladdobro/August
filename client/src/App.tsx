@@ -25,6 +25,7 @@ const App: React.FC = () => {
     session: SessionMetadata;
     timeoutId: ReturnType<typeof setTimeout>;
   } | null>(null);
+  const [isRecording, setIsRecording] = useState(false);
 
   selectedSessionIdRef.current = selectedSessionId;
 
@@ -166,7 +167,7 @@ const App: React.FC = () => {
   const forceDiag = searchParams.has('diagnostics');
   const mockParam = searchParams.get('mock');
   const needsSetup = healthStatus !== null
-    && (forceDiag || showDiagnostics || !healthStatus.whisperAvailable || !healthStatus.modelAvailable)
+    && (forceDiag || showDiagnostics || !healthStatus.whisperAvailable || !healthStatus.modelAvailable || !healthStatus.ffmpegAvailable)
     && !setupDismissed;
 
   const diagHealth: HealthStatus | null = healthStatus && forceDiag && mockParam
@@ -181,22 +182,7 @@ const App: React.FC = () => {
   const shouldEnableAgentation = import.meta.env.DEV;
   const agentationEndpoint = import.meta.env.VITE_AGENTATION_ENDPOINT || 'http://127.0.0.1:4747';
 
-  if (needsSetup) {
-    return (
-      <>
-        <div className="app-layout">
-          <main className="main-content">
-            <SetupGuide
-              health={diagHealth!}
-              onRefresh={refreshHealth}
-              onDismiss={() => { setSetupDismissed(true); setShowDiagnostics(false); }}
-            />
-          </main>
-        </div>
-        {shouldEnableAgentation && <Agentation endpoint={agentationEndpoint} />}
-      </>
-    );
-  }
+  const showFileUpload = !selectedSession && !needsSetup;
 
   return (
     <>
@@ -209,21 +195,48 @@ const App: React.FC = () => {
           onDelete={handleDelete}
           onUndoDelete={handleUndoDelete}
           onRename={handleRename}
-          onNewSession={handleNewSession}
+          onNewSession={() => {
+            handleNewSession();
+            if (showDiagnostics) { setSetupDismissed(true); setShowDiagnostics(false); }
+          }}
           onDiagnostics={() => { setSetupDismissed(false); setShowDiagnostics(true); }}
         />
 
         <main className="main-content">
           {loadError && <div className="global-error">{loadError}</div>}
 
-          {selectedSession ? (
+          {needsSetup && (
+            <>
+              {isRecording && (
+                <button
+                  type="button"
+                  className="recording-active-banner"
+                  onClick={() => { setSetupDismissed(true); setShowDiagnostics(false); setSelectedSessionId(null); }}
+                >
+                  <span className="recording-dot" aria-hidden="true" />
+                  Recording in progress — click to return
+                </button>
+              )}
+              <SetupGuide
+                health={diagHealth!}
+                onRefresh={refreshHealth}
+                onDismiss={() => { setSetupDismissed(true); setShowDiagnostics(false); }}
+              />
+            </>
+          )}
+
+          {!needsSetup && selectedSession && (
             <TranscriptView session={selectedSession} transcript={transcript} onRetranscribe={handleRetranscribe} onCancel={handleCancel} ffmpegAvailable={ffmpegAvailable} />
-          ) : (
-            <FileUpload onUploaded={handleUploaded} />
+          )}
+
+          {(showFileUpload || isRecording) && (
+            <div style={showFileUpload ? undefined : { display: 'none' }}>
+              <FileUpload onUploaded={handleUploaded} onRecordingChange={setIsRecording} />
+            </div>
           )}
         </main>
 
-        {selectedSession && <ThemeToggle />}
+        {selectedSession && !needsSetup && <ThemeToggle />}
       </div>
       <ModelDownloadModal />
       {shouldEnableAgentation && <Agentation endpoint={agentationEndpoint} />}

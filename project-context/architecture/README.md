@@ -11,6 +11,7 @@
 - Agentation widget is mounted in App.tsx for dev mode only, gated by import.meta.env.DEV.
 - The server loads the repo-root .env from config.ts before building config.
 - Praxis integration: POST /api/praxis/send creates a task directly in a target PraxisOS project's .praxis/tasks/new/ directory from a session transcript.
+- App.tsx uses a single unified render — no early returns that unmount the layout; FileUpload stays mounted (hidden) during active recording to preserve MediaRecorder state.
 
 This route documents the August web app's technical architecture: how the client, server, and local whisper.cpp inference fit together.
 
@@ -31,6 +32,8 @@ Give any agent working on the codebase a map of the client/server split, how a s
 - All AI inference runs locally via whisper.cpp — never sent to a third-party AI API.
 - Every session is stored as a folder (audio file + session.json + transcript.md) — never a database row for the MVP.
 - Transcription always runs in the background (child process) — the API responds immediately and the client polls for status, never blocking on transcription.
+- FileUpload must never be unmounted while recording is active — MediaRecorder and AudioContext state lives in React refs and is destroyed on unmount.
+- App.tsx lifts `isRecording` from FileUpload via `onRecordingChange` callback to keep FileUpload mounted (hidden via display:none) when navigating to diagnostics or other views.
 
 ## Key implementation details
 
@@ -48,7 +51,9 @@ Give any agent working on the codebase a map of the client/server split, how a s
 - Task ID allocation mirrors the Praxis Python logic: reads .praxis/config/task_counter, scans .praxis/tasks/*/ for the filesystem max, increments, and writes the counter back.
 - Task tag prefix is read from .praxis/config/general.yaml (taskTitleTag field); composite ID format is TAG-NUMBER-SUFFIX (e.g., POS-42-a7x3mq).
 - POST /api/praxis/validate checks whether a directory contains .praxis/ before attempting task creation.
-- The acceptance criteria template embedded in the export includes 4 deliverables: summary, action items, commitments (CMT-NNN), and route updates.
+- The acceptance criteria template embedded in the export is a structured instruction set with 4 sections: pre-processing (reasoning, classification, dedup scan, context search), deliverables (summary, action items, commitments CMT-NNN, route updates), quality rules (self-containment, traceability, nothing-silently-skipped, halt on ambiguity), and output format (recap summary, extracted items, processing log).
+- Task creation from transcripts only generates tasks for items the sender personally committed to — vague discussion points route to context updates instead.
+- The template enforces merge-don't-replace for route updates — new information merges into existing records, never overwrites them.
 
 ## Key files
 

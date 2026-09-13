@@ -69,6 +69,7 @@ const NecronLogo: React.FC = () => (
 const SetupGuide: React.FC<SetupGuideProps> = ({ health, onRefresh, onDismiss }) => {
   const [modelStatus, setModelStatus] = useState<ModelSetupStatus | null>(null);
   const [copied, setCopied] = useState(false);
+  const [ffmpegCopied, setFfmpegCopied] = useState(false);
   const [refreshing, setRefreshing] = useState(false);
   const [showSkipWarning, setShowSkipWarning] = useState(false);
   const [noGpu, setNoGpu] = useState(false);
@@ -76,6 +77,7 @@ const SetupGuide: React.FC<SetupGuideProps> = ({ health, onRefresh, onDismiss })
   const setupCommand = isMac
     ? 'brew install whisper-cpp ffmpeg'
     : 'powershell -ExecutionPolicy Bypass -File scripts\\setup-whisper.ps1';
+  const ffmpegInstallCommand = 'winget install ffmpeg';
   const pollModelStatus = useCallback(() => {
     let es: EventSource | null = null;
     fetchSetupStatus()
@@ -112,6 +114,14 @@ const SetupGuide: React.FC<SetupGuideProps> = ({ health, onRefresh, onDismiss })
     } catch { /* clipboard not available */ }
   };
 
+  const handleCopyFfmpeg = async () => {
+    try {
+      await navigator.clipboard.writeText(ffmpegInstallCommand);
+      setFfmpegCopied(true);
+      setTimeout(() => setFfmpegCopied(false), 2000);
+    } catch { /* clipboard not available */ }
+  };
+
   const handleRefresh = async () => {
     setRefreshing(true);
     try {
@@ -135,7 +145,7 @@ const SetupGuide: React.FC<SetupGuideProps> = ({ health, onRefresh, onDismiss })
   const whisperReady = health.whisperAvailable;
   const modelReady = health.modelAvailable && (!modelStatus || modelStatus.state !== 'downloading');
   const ffmpegReady = health.ffmpegAvailable;
-  const allReady = whisperReady && modelReady;
+  const allReady = whisperReady && modelReady && ffmpegReady;
 
   return (
     <div className="diag-page">
@@ -224,7 +234,7 @@ const SetupGuide: React.FC<SetupGuideProps> = ({ health, onRefresh, onDismiss })
           {/* FFmpeg — circle center at 34%,80%; circle 62px; text right (Windows only) */}
           {!isMac && (
             <div className="diag-node diag-node--ffmpeg">
-              <div className={`diag-node-circle diag-circle--green ${ffmpegReady ? 'diag-circle--ok' : ''}`}>
+              <div className={`diag-node-circle diag-circle--yellow ${ffmpegReady ? 'diag-circle--ok' : ''}`}>
                 {ffmpegReady ? (
                   <svg className="diag-check" width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="#00c876" strokeWidth="3" strokeLinecap="round" strokeLinejoin="round">
                     <polyline points="20 6 9 17 4 12" />
@@ -237,16 +247,41 @@ const SetupGuide: React.FC<SetupGuideProps> = ({ health, onRefresh, onDismiss })
               </div>
               <div className="diag-node-info">
                 <span className="diag-node-label">
-                  FFmpeg <span className="diag-tag-optional">OPT</span>
-                  <HintPopup text="Multimedia toolkit for audio format conversion (mp3, m4a → wav). Optional — most formats work without it." />
+                  FFmpeg
+                  <HintPopup text="Converts browser audio (WebM) to WAV for the whisper engine. Required for recording." />
                 </span>
                 <span className={`diag-node-status ${ffmpegReady ? 'diag-node-status--ready' : ''}`}>
-                  {ffmpegReady ? 'Available' : 'Not required'}
+                  {ffmpegReady ? 'Available' : 'Not installed'}
                 </span>
               </div>
             </div>
           )}
         </div>
+
+        {/* FFmpeg install guidance — shown when whisper+model ready but ffmpeg missing (Windows only) */}
+        {!isMac && !ffmpegReady && whisperReady && modelReady && (
+          <div className="diag-section">
+            <div className="diag-section-title">Install FFmpeg</div>
+            <p className="diag-section-desc">
+              FFmpeg converts browser audio (WebM) to WAV for the whisper engine. Install it via winget:
+            </p>
+            <div className="diag-code-block">
+              <code className="diag-code-text">{ffmpegInstallCommand}</code>
+              <button className="diag-code-copy" onClick={handleCopyFfmpeg} type="button" title="Copy command">
+                {ffmpegCopied ? (
+                  <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round">
+                    <polyline points="20 6 9 17 4 12" />
+                  </svg>
+                ) : (
+                  <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+                    <rect x="9" y="9" width="13" height="13" rx="2" ry="2" />
+                    <path d="M5 15H4a2 2 0 01-2-2V4a2 2 0 012-2h9a2 2 0 012 2v1" />
+                  </svg>
+                )}
+              </button>
+            </div>
+          </div>
+        )}
 
         {/* Download progress */}
         {isDownloading && modelStatus && (

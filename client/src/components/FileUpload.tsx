@@ -14,6 +14,7 @@ const BAR_BASE_HEIGHT = [14, 8, 12, 6, 15, 10, 7, 13, 6, 11, 9, 14];
 
 interface FileUploadProps {
   onUploaded: () => void;
+  onRecordingChange?: (recording: boolean) => void;
 }
 
 function isAcceptedFile(file: File): boolean {
@@ -32,7 +33,7 @@ function formatBytes(bytes: number): string {
   return `${Math.round(bytes / (1024 * 1024))} MB`;
 }
 
-const FileUpload: React.FC<FileUploadProps> = ({ onUploaded }) => {
+const FileUpload: React.FC<FileUploadProps> = ({ onUploaded, onRecordingChange }) => {
   const { theme, toggle: toggleTheme } = useTheme();
   const [language, setLanguage] = useState<TranscriptionLanguage>('ru');
   const [isDragging, setIsDragging] = useState(false);
@@ -352,6 +353,7 @@ const FileUpload: React.FC<FileUploadProps> = ({ onUploaded }) => {
       animationFrameRef.current = requestAnimationFrame(updateLevel);
 
       setIsRecording(true);
+      onRecordingChange?.(true);
 
       if (liveMode) {
         startLiveTranscription(micStream, liveSystemStream);
@@ -368,6 +370,7 @@ const FileUpload: React.FC<FileUploadProps> = ({ onUploaded }) => {
     soundRecorderRef.current?.stop();
     soundRecorderRef.current = null;
     setIsRecording(false);
+    onRecordingChange?.(false);
 
     if (liveClientRef.current) {
       liveClientRef.current.stop();

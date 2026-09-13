@@ -492,13 +492,15 @@ The diagnostics page (.diag-page) renders when components are missing or when tr
 It uses a W40K CRT terminal aesthetic: angular corners (0 border-radius), monospace terminal font, necron palette.
 A 45°-rotated Necron symbol SVG logo (.diag-logo) is centered at the top.
 Circuit-node layout: three absolutely positioned circles connected by animated dashed SVG lines with percentage-based coordinates.
-Node colors are fixed fills: Whisper (yellow, rgba(212,170,60,0.25)), GGML (red, rgba(212,80,80,0.22)), FFmpeg (green, rgba(0,200,118,0.18)).
+Node colors are fixed fills: Whisper (yellow, rgba(212,170,60,0.25)), GGML (red, rgba(212,80,80,0.22)), FFmpeg (yellow, rgba(212,170,60,0.25)).
 Only checkmark icons use green (#00c876) — circle fills keep their assigned color even when operational.
 FFmpeg node renders only on Windows (isMac detection via navigator.userAgent).
 Adaptive reveal logic: GPU button when whisper missing, direct download when only model missing, staggered fade-in via diag-reveal--1/2/3 classes.
 Proceed button uses W40K CRT styling: metallic frame, arrow pseudo-elements, scan-line overlay, necron palette gradient.
 Refresh and Skip buttons share a horizontal row (.diag-actions) with equal flex:1 width. Skip turns red on hover.
 The ?diagnostics query param forces the diagnostics view; ?mock=whisper,model,ffmpeg simulates missing components.
+ffmpeg is mandatory — allReady requires whisperReady && modelReady && ffmpegReady, and needsSetup in App.tsx includes !healthStatus.ffmpegAvailable.
+When ffmpeg is missing but whisper+model are ready, a "Install FFmpeg" section with `winget install ffmpeg` and a copy button appears (Windows only; macOS covers ffmpeg via `brew install whisper-cpp ffmpeg`).
 Clickable whisper/models/ path opens the native file manager via POST /api/setup/open-model-folder.
 
 ### Praxis Modal

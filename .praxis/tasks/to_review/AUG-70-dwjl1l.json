@@ -1,0 +1,15 @@
+{
+  "id": "AUG-70-dwjl1l",
+  "assignee": "jarvis.json",
+  "priority": "medium",
+  "status": "to_review",
+  "title": "[AUG-70] Bug: droping ongoing session to shadow",
+  "why_we_need_this": "Bug:\nI start the recording\nThan I go to settings>Diagnostics\nThan I click \"Proceed\"\nVuola, the recording looks like didn't start or even closed\nBut according to resource monitoring I see that the recording continues. Unfortunately I don't know how to return to the session at least to stop the recording\n\nHow it should be:\nwhen I navigate across the product I always can return to the ongoing recording\nEven if it has a live recording",
+  "acceptance_criteria": "",
+  "important_constraints": "",
+  "labels": [],
+  "on_hold_reason": "",
+  "contextRouterIncluded": false,
+  "created_at": 1789318966755,
+  "column_entered_at": 1789325531435
+}
