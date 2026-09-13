@@ -2,7 +2,7 @@
   "id": "AUG-55-8tt8kb",
   "assignee": "cartographer.json",
   "priority": "medium",
-  "status": "in_progress",
+  "status": "completed",
   "title": "[AUG-55] Complete brandbook rules",
   "why_we_need_this": "build up the complete brandbook rules based on main page and diagnostics page\nbrandbook rules cover: colours, fonts, frames forms and designs etc etc etc\nMake sure that each new FE change/update will be compliant with brandbook rules\n",
   "acceptance_criteria": "",
@@ -11,5 +11,5 @@
   "on_hold_reason": "",
   "contextRouterIncluded": false,
   "created_at": 1789295315848,
-  "column_entered_at": 1789295936096
+  "column_entered_at": 1789318499197
 }
