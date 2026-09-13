@@ -1,0 +1,15 @@
+{
+  "id": "AUG-53-pji6qr",
+  "assignee": "jarvis.json",
+  "priority": "medium",
+  "status": "to_review",
+  "title": "[AUG-53] August-Praxis integration",
+  "why_we_need_this": "On the page of a session add one more option to export: send to praxis\nthis one should create a task in praxis (choose the project) with the existing session conversation and additional prompt:\nFour deliverables, every time:\n\n1. Summary — structured by topics, saved to project-context/commitments/YYYY-MM-DD-{participants}-summary.md\n2. Action items — concrete tasks with owners, appended to commitments/action-items/README.md\n3. Commitments — agreements between participants (CMT-NNN, sequential numbering), added to the relevant commit-with-{name}/README.md child route\n4. Route updates — distribute new information to all relevant project-context routes (subordinates, superiors, operations, strategy, etc.)\n\nKey rules:\n- CMT IDs are sequential and global — I check the highest existing one before assigning new ones\n- Always update the commitments index table with the new meeting\n- The whole thing runs through the standard 7-step task lifecycle if it's a kanban task, or directly if you paste it ad-hoc",
+  "acceptance_criteria": "",
+  "important_constraints": "",
+  "labels": [],
+  "on_hold_reason": "",
+  "contextRouterIncluded": false,
+  "created_at": 1789260635743,
+  "column_entered_at": 1789260997145
+}

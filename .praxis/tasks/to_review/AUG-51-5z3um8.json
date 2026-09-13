@@ -1,0 +1,15 @@
+{
+  "id": "AUG-51-5z3um8",
+  "assignee": "jarvis.json",
+  "priority": "medium",
+  "status": "to_review",
+  "title": "[AUG-51] Update fonts with new rules",
+  "why_we_need_this": "update fonts and its colour with new rules\nnew rules take from the task AUG-51\n",
+  "acceptance_criteria": "",
+  "important_constraints": "",
+  "labels": [],
+  "on_hold_reason": "",
+  "contextRouterIncluded": false,
+  "created_at": 1789254214505,
+  "column_entered_at": 1789257314026
+}

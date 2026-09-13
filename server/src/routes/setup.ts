@@ -1,6 +1,10 @@
+import { exec } from 'node:child_process';
+import path from 'node:path';
+import fs from 'node:fs/promises';
 import { Router } from 'express';
 
-import { getModelStatus, onModelStatus, type ModelStatus } from '../services/modelDownloader.js';
+import { config } from '../config.js';
+import { ensureWhisperModel, getModelStatus, onModelStatus, type ModelStatus } from '../services/modelDownloader.js';
 
 const router = Router();
 
@@ -54,6 +58,33 @@ router.get('/download-progress', (req, res) => {
   }
 
   req.on('close', cleanup);
+});
+
+router.post('/download-model', (_req, res) => {
+  const status = getModelStatus();
+  if (status.state === 'downloading') {
+    res.json({ ok: true, message: 'Already downloading' });
+    return;
+  }
+  void ensureWhisperModel();
+  res.json({ ok: true, message: 'Download started' });
+});
+
+router.post('/open-model-folder', async (_req, res) => {
+  const dir = path.dirname(config.whisperModelPath);
+  await fs.mkdir(dir, { recursive: true });
+
+  const cmd = process.platform === 'win32'
+    ? `explorer.exe "${dir}"`
+    : `open "${dir}"`;
+
+  exec(cmd, (err) => {
+    if (err) {
+      res.status(500).json({ error: 'Could not open folder' });
+    } else {
+      res.json({ ok: true, path: dir });
+    }
+  });
 });
 
 export default router;

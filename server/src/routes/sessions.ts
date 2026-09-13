@@ -5,9 +5,10 @@ import multer from 'multer';
 
 import { config } from '../config.js';
 import * as sessionManager from '../services/sessionManager.js';
-import { transcribe, ensureWav, boostAudio, checkFfmpegAvailable, getAudioDuration, WhisperError, cancelTranscription, isTranscribing, FFMPEG_MISSING_MESSAGE } from '../services/whisper.js';
+import { transcribe, ensureWav, boostAudio, checkFfmpegAvailable, getAudioDuration, WhisperError, cancelTranscription, isTranscribing, FFMPEG_MISSING_MESSAGE, fileExists } from '../services/whisper.js';
 import { mergeSingleStream, mergeDualStream, renderTranscript } from '../services/transcriptMerger.js';
 import { recordCompletion, getEstimatedDuration } from '../services/performanceTracker.js';
+import { getModelStatus } from '../services/modelDownloader.js';
 import type { TranscriptionLanguage } from '../types.js';
 
 const router = Router();
@@ -313,6 +314,30 @@ router.post('/:id/retranscribe', async (req, res) => {
       res.status(400).json({ error: FFMPEG_MISSING_MESSAGE });
       return;
     }
+  }
+
+  // Preflight: ensure whisper-cli and model are present before flipping status
+  const whisperBinOk = await fileExists(config.whisperBinPath);
+  if (!whisperBinOk) {
+    const binName = path.basename(config.whisperBinPath);
+    res.status(400).json({
+      error: `${binName} not found at "${config.whisperBinPath}". Run \`npm run setup\` to download it.`,
+    });
+    return;
+  }
+  const whisperModelOk = await fileExists(config.whisperModelPath);
+  if (!whisperModelOk) {
+    const modelStatus = getModelStatus();
+    if (modelStatus.state === 'downloading') {
+      res.status(400).json({
+        error: `Whisper model is still downloading (${modelStatus.percent}%). Try again when it finishes.`,
+      });
+    } else {
+      res.status(400).json({
+        error: `Whisper model not found. Restart the server to auto-download it.`,
+      });
+    }
+    return;
   }
 
   // Cancel any running transcription before restarting

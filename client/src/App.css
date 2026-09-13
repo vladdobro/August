@@ -51,6 +51,9 @@
   --btn-radius: 12px;
   --input-radius: 12px;
 
+  --font-gothic: 'UnifrakturMaguntia', cursive;
+  --font-terminal: 'Cascadia Code', 'Fira Code', 'Consolas', monospace;
+
   color-scheme: light dark;
   font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, Helvetica, Arial, sans-serif,
     'Apple Color Emoji', 'Segoe UI Emoji';
@@ -144,13 +147,14 @@ body {
   padding: 20px 18px 16px;
   border-bottom: 1px solid var(--sidebar-border);
   position: relative;
-  z-index: 2;
+  z-index: 20;
 }
 
 .app-title {
   font-size: 22px;
   font-weight: 800;
   margin: 0;
+  line-height: 1;
   letter-spacing: -0.02em;
   background: linear-gradient(135deg, #00c876, #2dd690);
   -webkit-background-clip: text;
@@ -301,20 +305,19 @@ body {
   width: 100%;
   padding: 9px 14px 9px 12px;
   border-radius: 2px;
-  border: 1px solid rgba(0, 200, 118, 0.12);
-  border-left: 3px solid rgba(0, 200, 118, 0.25);
-  background: rgba(0, 10, 6, 0.3);
-  color: var(--sidebar-text);
+  border: 1px solid rgba(0, 200, 118, 0.4);
+  border-left: 3px solid rgba(0, 200, 118, 0.7);
+  background: rgba(0, 20, 12, 0.6);
+  color: var(--necron-100);
   font-size: 13px;
-  font-family: inherit;
+  font-family: var(--font-terminal);
   outline: none;
   transition: border-color 0.15s ease, background 0.15s ease, box-shadow 0.15s ease;
   letter-spacing: 0.02em;
 }
 
 .session-search-input::placeholder {
-  color: var(--sidebar-text-muted);
-  opacity: 0.7;
+  color: rgba(0, 200, 118, 0.65);
 }
 
 .session-search-input:focus {
@@ -357,9 +360,9 @@ body {
   font-size: 8px;
   font-weight: 800;
   letter-spacing: 0.04em;
-  border: 1.5px solid rgba(0, 200, 118, 0.12);
+  border: 1.5px solid rgba(0, 200, 118, 0.25);
   background: var(--sidebar-bg);
-  color: var(--sidebar-text-muted);
+  color: var(--necron-100);
   cursor: pointer;
   transition: all 0.25s ease;
   text-transform: uppercase;
@@ -757,30 +760,32 @@ body {
 }
 
 .dropzone-title {
-  font-size: 14px;
-  font-weight: 800;
+  font-family: var(--font-terminal);
+  font-size: 13px;
+  font-weight: 700;
   margin: 0 0 8px;
-  color: var(--text-primary);
-  letter-spacing: 0.12em;
+  color: var(--necron-300);
+  letter-spacing: 0.08em;
   text-transform: uppercase;
 }
 
 .dropzone-subtitle {
-  font-size: 12px;
-  color: var(--text-secondary);
+  font-family: var(--font-terminal);
+  font-size: 11px;
+  color: var(--necron-500);
   margin: 0 0 16px;
-  letter-spacing: 0.06em;
+  letter-spacing: 0.04em;
   text-transform: uppercase;
 }
 
 .dropzone-formats {
-  font-size: 10px;
-  color: var(--text-secondary);
+  font-family: var(--font-terminal);
+  font-size: 11px;
+  color: var(--necron-300);
   margin: 0;
-  letter-spacing: 0.08em;
-  font-weight: 700;
-  text-transform: uppercase;
-  opacity: 0.5;
+  letter-spacing: 0.06em;
+  font-weight: 400;
+  opacity: 0.6;
 }
 
 .upload-progress {
@@ -1000,6 +1005,25 @@ body {
   opacity: 0.5;
   cursor: not-allowed;
   transform: none;
+}
+
+.failed-recovery {
+  position: relative;
+  margin-top: 12px;
+}
+
+.failed-no-audio {
+  font-size: 13px;
+  color: var(--text-secondary);
+  margin: 0;
+  font-style: italic;
+}
+
+.failed-recovery .retranscribe-menu--above {
+  bottom: calc(100% + 6px);
+  top: auto;
+  left: 50%;
+  transform: translateX(-50%);
 }
 
 .retranscribe-dropdown {
@@ -1232,8 +1256,8 @@ body {
 }
 
 :root[data-theme='dark'] .session-filter-chip {
-  border-color: rgba(0, 200, 118, 0.15);
-  color: var(--sidebar-text-muted);
+  border-color: rgba(0, 200, 118, 0.25);
+  color: var(--necron-100);
 }
 
 :root[data-theme='dark'] .session-filter-chip:hover {
@@ -2186,6 +2210,95 @@ body {
 }
 
 /* ========== Sidebar Circuit Touches ========== */
+/* ========== Sidebar Menu ========== */
+.session-header-left {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+}
+
+.sidebar-menu {
+  position: relative;
+  top: 3px;
+}
+
+.sidebar-menu-trigger {
+  width: 28px;
+  height: 28px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  background: transparent;
+  color: var(--necron-500);
+  border: 1px solid transparent;
+  border-radius: 6px;
+  cursor: pointer;
+  padding: 0;
+  transition: color 0.15s ease, border-color 0.15s ease;
+}
+
+.sidebar-menu-trigger:hover,
+.sidebar-menu-trigger[aria-expanded="true"] {
+  color: var(--necron-300);
+  border-color: var(--necron-600);
+}
+
+.sidebar-menu-dropdown {
+  position: absolute;
+  top: calc(100% + 8px);
+  left: 0;
+  min-width: 180px;
+  background: var(--necron-900);
+  border: 1px solid var(--necron-700);
+  border-radius: 0;
+  padding: 6px 0;
+  z-index: 1000;
+  box-shadow: 0 8px 24px rgba(0, 0, 0, 0.5);
+  animation: sidebar-menu-open 0.18s ease-out;
+}
+
+@keyframes sidebar-menu-open {
+  from { opacity: 0; transform: translateY(-6px); }
+  to   { opacity: 1; transform: translateY(0); }
+}
+
+.sidebar-menu-item {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  width: 100%;
+  padding: 9px 16px;
+  background: none;
+  border: none;
+  color: var(--necron-100);
+  font-family: var(--font-terminal);
+  font-size: 12.5px;
+  cursor: pointer;
+  text-decoration: none;
+  transition: background 0.12s ease, color 0.12s ease;
+  opacity: 0;
+  animation: sidebar-menu-fade-in 0.25s ease forwards;
+}
+
+.sidebar-menu-item--1 { animation-delay: 0.04s; }
+.sidebar-menu-item--2 { animation-delay: 0.12s; }
+.sidebar-menu-item--3 { animation-delay: 0.20s; }
+
+@keyframes sidebar-menu-fade-in {
+  from { opacity: 0; transform: translateX(-8px); }
+  to   { opacity: 1; transform: translateX(0); }
+}
+
+.sidebar-menu-item:hover {
+  background: var(--necron-800);
+  color: var(--necron-300);
+}
+
+.sidebar-menu-item svg {
+  flex-shrink: 0;
+  opacity: 0.7;
+}
+
 .new-session-node {
   width: 40px;
   height: 40px;
@@ -3685,4 +3798,805 @@ body {
   .model-download-fill {
     transition: none;
   }
+}
+
+/* ========== August Diagnostics ========== */
+.diag-page {
+  max-width: 600px;
+  margin: 0 auto;
+  padding: 40px 24px;
+  width: 100%;
+}
+
+.diag-card {
+  background: var(--necron-950);
+  border: 2px solid rgba(0, 200, 118, 0.18);
+  border-radius: 0;
+  padding: 32px 28px;
+  box-shadow: 0 0 40px rgba(0, 200, 118, 0.06), inset 0 1px 0 rgba(0, 200, 118, 0.08);
+  color: var(--necron-50);
+}
+
+/* --- Header --- */
+.diag-header {
+  text-align: center;
+  margin-bottom: 28px;
+}
+
+.diag-logo {
+  color: var(--necron-300);
+  filter: drop-shadow(0 0 8px rgba(0, 200, 118, 0.35));
+  margin-bottom: 14px;
+}
+
+.diag-title {
+  margin: 0 0 6px;
+  font-size: 22px;
+  font-weight: 800;
+  letter-spacing: 0.06em;
+  text-transform: uppercase;
+  color: var(--necron-50);
+}
+
+.diag-subtitle {
+  margin: 0;
+  font-size: 13px;
+  color: var(--necron-100);
+  line-height: 1.5;
+  font-family: var(--font-terminal);
+}
+
+/* --- Hint popup --- */
+.diag-hint-wrap {
+  position: relative;
+  display: inline-block;
+  margin-left: 4px;
+}
+
+.diag-hint-trigger {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 16px;
+  height: 16px;
+  border-radius: 50%;
+  border: 1px solid var(--necron-600);
+  background: transparent;
+  color: var(--necron-500);
+  font-size: 10px;
+  font-weight: 700;
+  cursor: pointer;
+  padding: 0;
+  vertical-align: middle;
+  transition: border-color 0.15s, color 0.15s;
+}
+.diag-hint-trigger:hover {
+  border-color: var(--necron-300);
+  color: var(--necron-300);
+}
+
+.diag-hint-popup {
+  position: absolute;
+  bottom: calc(100% + 8px);
+  left: 50%;
+  transform: translateX(-50%);
+  width: 220px;
+  padding: 8px 10px;
+  background: var(--necron-850);
+  border: 1px solid rgba(0, 200, 118, 0.2);
+  border-radius: 0;
+  color: var(--necron-100);
+  font-size: 11px;
+  line-height: 1.45;
+  z-index: 10;
+  box-shadow: 0 4px 16px rgba(0, 0, 0, 0.5);
+  pointer-events: none;
+  font-family: var(--font-terminal);
+}
+
+/* --- Circuit node layout --- */
+.diag-circuit {
+  position: relative;
+  height: 290px;
+  margin-bottom: 24px;
+}
+
+.diag-circuit-lines {
+  position: absolute;
+  inset: 0;
+  width: 100%;
+  height: 100%;
+  pointer-events: none;
+}
+
+@keyframes diag-dash-flow {
+  to { stroke-dashoffset: -20; }
+}
+.diag-line-anim {
+  animation: diag-dash-flow 1.5s linear infinite;
+}
+
+/* --- Node base --- */
+.diag-node {
+  position: absolute;
+  display: flex;
+  align-items: center;
+  gap: 12px;
+}
+
+.diag-node-circle {
+  flex-shrink: 0;
+  border-radius: 50%;
+  border: 2px solid;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  transition: box-shadow 0.2s, border-color 0.2s;
+}
+
+.diag-node-dot {
+  width: 6px;
+  height: 6px;
+  border-radius: 50%;
+  background: rgba(255, 255, 255, 0.3);
+}
+
+.diag-download-arrow {
+  animation: diag-arrow-pulse 1.4s ease-in-out infinite;
+}
+
+@keyframes diag-arrow-pulse {
+  0%, 100% { opacity: 0.4; transform: scale(0.9); }
+  50%      { opacity: 1; transform: scale(1.1); }
+}
+
+/* --- Node positions: circle centers at percentage coords matching SVG lines --- */
+
+/* Whisper: circle 70px, center at (30%, 18%), text to right */
+.diag-node--whisper {
+  left: calc(30% - 35px);
+  top: calc(18% - 35px);
+}
+.diag-node--whisper .diag-node-circle {
+  width: 70px;
+  height: 70px;
+}
+.diag-circle--yellow {
+  background: rgba(212, 170, 60, 0.25);
+  border-color: #d4a028;
+  box-shadow: 0 0 14px rgba(212, 160, 40, 0.2);
+}
+
+/* GGML: circle 84px, center at (70%, 48%), text to left */
+/* right = 100%-70%-42px puts circle center at 70% from left */
+.diag-node--ggml {
+  right: calc(30% - 42px);
+  top: calc(48% - 42px);
+}
+.diag-node--ggml .diag-node-circle {
+  width: 84px;
+  height: 84px;
+}
+.diag-circle--red {
+  background: rgba(212, 80, 80, 0.22);
+  border-color: #d44040;
+  box-shadow: 0 0 14px rgba(212, 64, 64, 0.2);
+}
+
+/* FFmpeg: circle 62px, center at (34%, 80%), text to right */
+.diag-node--ffmpeg {
+  left: calc(34% - 31px);
+  top: calc(80% - 31px);
+}
+.diag-node--ffmpeg .diag-node-circle {
+  width: 62px;
+  height: 62px;
+}
+.diag-circle--green {
+  background: rgba(0, 200, 118, 0.18);
+  border-color: #00c876;
+  box-shadow: 0 0 14px rgba(0, 200, 118, 0.2);
+}
+
+/* --- OK state: keeps fill color, adds green glow --- */
+.diag-circle--ok {
+  box-shadow: 0 0 20px rgba(0, 200, 118, 0.3);
+}
+
+/* --- Downloading pulse --- */
+.diag-circle--pulse {
+  animation: diag-pulse 1.5s ease-in-out infinite;
+}
+
+@keyframes diag-pulse {
+  0%, 100% { box-shadow: 0 0 10px rgba(212, 64, 64, 0.2); }
+  50%      { box-shadow: 0 0 24px rgba(212, 64, 64, 0.4); }
+}
+
+/* --- Text left of circle (GGML) --- */
+.diag-node-info--left {
+  text-align: right;
+}
+
+/* --- Node info text --- */
+.diag-node-info {
+  display: flex;
+  flex-direction: column;
+  gap: 1px;
+  white-space: nowrap;
+}
+
+.diag-node-label {
+  font-size: 12px;
+  font-weight: 700;
+  color: var(--necron-50);
+  text-transform: uppercase;
+  letter-spacing: 0.04em;
+}
+
+.diag-node-status {
+  font-size: 11px;
+  color: var(--necron-200);
+  font-family: var(--font-terminal);
+}
+.diag-node-status--ready {
+  color: #00c876;
+}
+
+.diag-tag-optional {
+  font-size: 9px;
+  font-weight: 600;
+  color: var(--necron-500);
+  border: 1px solid var(--necron-700);
+  padding: 0 4px;
+  margin-left: 4px;
+  text-transform: uppercase;
+  letter-spacing: 0.04em;
+  vertical-align: middle;
+}
+
+/* --- Sections --- */
+.diag-section {
+  margin-bottom: 20px;
+}
+
+.diag-section-title {
+  font-size: 12px;
+  font-weight: 700;
+  color: var(--necron-50);
+  margin-bottom: 8px;
+  text-transform: uppercase;
+  letter-spacing: 0.06em;
+}
+
+.diag-section-desc {
+  font-size: 12px;
+  color: var(--necron-100);
+  margin: 0 0 10px;
+  line-height: 1.5;
+  font-family: var(--font-terminal);
+}
+
+/* --- Code block --- */
+.diag-code-block {
+  display: flex;
+  align-items: center;
+  gap: 0;
+  background: #030605;
+  border: 1px solid rgba(0, 200, 118, 0.12);
+  border-radius: 0;
+  overflow: hidden;
+}
+
+.diag-code-text {
+  flex: 1;
+  font-family: var(--font-terminal);
+  font-size: 12px;
+  color: var(--necron-100);
+  white-space: nowrap;
+  padding: 10px 12px;
+  overflow-x: auto;
+  min-width: 0;
+  scrollbar-width: thin;
+  scrollbar-color: var(--necron-700) transparent;
+}
+.diag-code-text::-webkit-scrollbar { height: 3px; }
+.diag-code-text::-webkit-scrollbar-thumb { background: var(--necron-700); }
+
+.diag-code-copy {
+  flex-shrink: 0;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  width: 36px;
+  height: 100%;
+  min-height: 38px;
+  border: none;
+  border-left: 1px solid rgba(0, 200, 118, 0.12);
+  border-radius: 0;
+  background: rgba(0, 200, 118, 0.04);
+  color: var(--necron-200);
+  cursor: pointer;
+  transition: background 0.15s ease;
+  padding: 0;
+}
+.diag-code-copy:hover {
+  background: rgba(0, 200, 118, 0.12);
+}
+
+/* --- Model path & download --- */
+.diag-download-btn {
+  display: block;
+  width: 100%;
+  box-sizing: border-box;
+  text-align: center;
+  background: #d4a028;
+  color: var(--necron-950);
+  border: none;
+  border-radius: 0;
+  padding: 8px 18px;
+  font-size: 12px;
+  font-weight: 700;
+  text-transform: uppercase;
+  letter-spacing: 0.04em;
+  cursor: pointer;
+  text-decoration: none;
+  transition: background 0.15s, transform 0.15s;
+}
+.diag-download-btn:hover {
+  background: #e0b030;
+  transform: translateY(-1px);
+}
+
+/* --- Progress --- */
+.diag-progress {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+}
+
+.diag-progress-track {
+  width: 100%;
+  height: 6px;
+  background: var(--necron-800);
+  border-radius: 0;
+  overflow: hidden;
+}
+
+.diag-progress-fill {
+  height: 100%;
+  background: var(--necron-300);
+  border-radius: 0;
+  transition: width 0.3s ease;
+  box-shadow: 0 0 8px rgba(0, 200, 118, 0.25);
+}
+
+.diag-progress-text {
+  font-size: 12px;
+  font-weight: 600;
+  color: var(--necron-500);
+  font-variant-numeric: tabular-nums;
+  text-align: center;
+}
+
+/* --- Error --- */
+.diag-error {
+  margin-bottom: 16px;
+  padding: 10px 14px;
+  background: rgba(212, 64, 64, 0.1);
+  color: #e05555;
+  border-radius: 0;
+  border: 1px solid rgba(212, 64, 64, 0.25);
+  font-size: 12px;
+  font-weight: 600;
+}
+
+/* --- Skip warning --- */
+.diag-skip-warning {
+  margin-bottom: 14px;
+  padding: 10px 14px;
+  background: rgba(212, 160, 40, 0.08);
+  color: #d4a028;
+  border: 1px solid rgba(212, 160, 40, 0.2);
+  border-radius: 0;
+  font-size: 12px;
+  font-weight: 600;
+  font-family: var(--font-terminal);
+}
+
+/* --- Proceed button (W40K CRT terminal style, necron palette) --- */
+.diag-proceed {
+  display: flex;
+  flex-direction: column;
+  align-items: stretch;
+  width: 100%;
+  margin-top: 16px;
+  padding: 0;
+  border: 3px solid var(--necron-700);
+  border-radius: 0;
+  background: var(--necron-900);
+  cursor: pointer;
+  position: relative;
+  overflow: hidden;
+  transition: border-color 0.2s, box-shadow 0.2s;
+  font-family: inherit;
+  box-shadow: inset 0 0 8px rgba(0, 0, 0, 0.6), 0 2px 8px rgba(0, 0, 0, 0.4);
+}
+.diag-proceed:hover {
+  border-color: var(--necron-600);
+  box-shadow: inset 0 0 8px rgba(0, 0, 0, 0.6), 0 0 20px rgba(0, 200, 118, 0.12);
+}
+.diag-proceed:active {
+  transform: translateY(1px);
+}
+
+.diag-proceed-subtitle {
+  display: block;
+  padding: 5px 24px;
+  background: var(--necron-850);
+  border-bottom: 2px solid var(--necron-700);
+  font-size: 10px;
+  font-weight: 700;
+  text-transform: uppercase;
+  letter-spacing: 0.14em;
+  color: var(--necron-500);
+  text-align: center;
+  position: relative;
+}
+.diag-proceed-subtitle::before,
+.diag-proceed-subtitle::after {
+  content: '';
+  position: absolute;
+  top: 50%;
+  transform: translateY(-50%);
+  width: 0;
+  height: 0;
+  border-top: 5px solid transparent;
+  border-bottom: 5px solid transparent;
+}
+.diag-proceed-subtitle::before {
+  left: 10px;
+  border-left: 6px solid var(--necron-600);
+}
+.diag-proceed-subtitle::after {
+  right: 10px;
+  border-right: 6px solid var(--necron-600);
+}
+
+.diag-proceed-title {
+  display: block;
+  padding: 16px 16px;
+  font-size: 24px;
+  font-weight: 800;
+  text-transform: uppercase;
+  letter-spacing: 0.1em;
+  color: var(--necron-950);
+  text-align: center;
+  background: linear-gradient(180deg, var(--necron-100) 0%, var(--necron-200) 50%, var(--necron-300) 100%);
+  border: 2px solid var(--necron-600);
+  border-top: none;
+  margin: 4px;
+  margin-top: 0;
+  box-shadow: inset 0 1px 0 rgba(160, 226, 192, 0.3), inset 0 -2px 4px rgba(0, 0, 0, 0.15);
+}
+.diag-proceed:hover .diag-proceed-title {
+  background: linear-gradient(180deg, var(--necron-50) 0%, var(--necron-100) 50%, var(--necron-200) 100%);
+}
+
+.diag-proceed-scanlines {
+  position: absolute;
+  inset: 0;
+  pointer-events: none;
+  background: repeating-linear-gradient(
+    0deg,
+    transparent,
+    transparent 2px,
+    rgba(0, 0, 0, 0.1) 2px,
+    rgba(0, 0, 0, 0.1) 4px
+  );
+  mix-blend-mode: multiply;
+}
+
+/* --- "I don't need GPU support" button --- */
+.diag-btn--nogpu {
+  display: block;
+  width: 100%;
+  background: transparent;
+  color: var(--necron-500);
+  border: 1px dashed rgba(0, 200, 118, 0.2);
+  margin-bottom: 12px;
+}
+.diag-btn--nogpu:hover {
+  color: var(--necron-300);
+  border-color: rgba(0, 200, 118, 0.35);
+}
+
+/* --- Expanded no-GPU options --- */
+.diag-nogpu-options {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 12px;
+  margin-bottom: 16px;
+}
+
+.diag-info-line {
+  font-size: 12px;
+  color: var(--necron-100);
+  text-align: center;
+  margin: 0;
+  font-family: var(--font-terminal);
+}
+.diag-info-line--small {
+  font-size: 11px;
+  color: var(--necron-200);
+}
+
+.diag-inline-path {
+  color: var(--necron-300);
+  font-family: var(--font-terminal);
+  background: none;
+  border: none;
+  padding: 0;
+  cursor: pointer;
+  text-decoration: underline;
+  text-underline-offset: 2px;
+  font-size: inherit;
+  transition: color 0.15s;
+}
+.diag-inline-path:hover {
+  color: var(--necron-50);
+}
+
+/* --- Staggered reveal animation --- */
+@keyframes diag-fade-in {
+  from { opacity: 0; transform: translateY(8px); }
+  to   { opacity: 1; transform: translateY(0); }
+}
+.diag-reveal {
+  opacity: 0;
+  animation: diag-fade-in 0.4s ease forwards;
+}
+.diag-reveal--1 { animation-delay: 0.15s; }
+.diag-reveal--2 { animation-delay: 0.45s; }
+.diag-reveal--3 { animation-delay: 0.75s; }
+
+/* --- Actions (not-ready state, horizontal centered) --- */
+.diag-actions {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: 10px;
+  padding-top: 12px;
+  border-top: 1px solid rgba(0, 200, 118, 0.1);
+}
+
+.diag-btn {
+  border-radius: 0;
+  font-size: 12px;
+  font-weight: 700;
+  cursor: pointer;
+  font-family: inherit;
+  text-transform: uppercase;
+  letter-spacing: 0.04em;
+  transition: all 0.15s ease;
+  padding: 8px 18px;
+}
+
+.diag-btn--refresh {
+  flex: 1;
+  text-align: center;
+  background: transparent;
+  color: var(--necron-50);
+  border: 1px solid rgba(0, 200, 118, 0.2);
+}
+.diag-btn--refresh:hover {
+  border-color: var(--necron-300);
+  color: var(--necron-300);
+}
+.diag-btn--refresh:disabled {
+  opacity: 0.4;
+  cursor: not-allowed;
+}
+
+.diag-btn--skip {
+  flex: 1;
+  text-align: center;
+  background: transparent;
+  color: var(--necron-500);
+  border: 1px solid rgba(0, 200, 118, 0.1);
+}
+.diag-btn--skip:hover {
+  color: #e05555;
+  border-color: rgba(224, 85, 85, 0.35);
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .diag-line-anim { animation: none; }
+  .diag-node--active .diag-node-circle { animation: none; }
+  .diag-download-arrow { animation: none; opacity: 0.7; }
+  .diag-reveal { animation: none; opacity: 1; }
+}
+
+/* ========== Praxis Modal ========== */
+
+.praxis-backdrop {
+  position: fixed;
+  inset: 0;
+  z-index: 50;
+  display: grid;
+  place-items: center;
+  padding: 16px;
+  background: rgba(0, 0, 0, 0.45);
+  backdrop-filter: blur(8px);
+  animation: modePickerFadeIn 0.12s ease-out;
+}
+
+.praxis-modal {
+  width: min(460px, 100%);
+  background: var(--card-bg);
+  border: 1px solid var(--card-border);
+  border-radius: var(--card-radius);
+  box-shadow: var(--card-shadow);
+  padding: 28px;
+  color: var(--text-primary);
+}
+
+.praxis-modal-header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  margin-bottom: 4px;
+}
+
+.praxis-modal-title {
+  font-size: 16px;
+  font-weight: 700;
+  margin: 0;
+}
+
+.praxis-modal-close {
+  background: none;
+  border: none;
+  cursor: pointer;
+  padding: 4px;
+  color: var(--text-secondary);
+  border-radius: 6px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  transition: color 120ms ease, background 120ms ease;
+}
+
+.praxis-modal-close svg {
+  width: 18px;
+  height: 18px;
+}
+
+.praxis-modal-close:hover {
+  color: var(--text-primary);
+  background: var(--accent-light);
+}
+
+.praxis-modal-subtitle {
+  font-size: 13px;
+  color: var(--text-secondary);
+  margin: 0 0 20px;
+  line-height: 1.5;
+}
+
+.praxis-modal-subtitle strong {
+  color: var(--text-primary);
+}
+
+.praxis-label {
+  display: block;
+  font-size: 12px;
+  font-weight: 600;
+  color: var(--text-secondary);
+  margin-bottom: 16px;
+}
+
+.praxis-input {
+  display: block;
+  width: 100%;
+  margin-top: 6px;
+  padding: 10px 12px;
+  font-size: 13px;
+  font-family: var(--font-terminal);
+  background: var(--main-bg);
+  color: var(--text-primary);
+  border: 1px solid var(--border-color);
+  border-radius: var(--input-radius);
+  outline: none;
+  transition: border-color 120ms ease, box-shadow 120ms ease;
+}
+
+.praxis-input:focus {
+  border-color: var(--accent);
+  box-shadow: 0 0 0 2px var(--accent-light);
+}
+
+.praxis-input:disabled {
+  opacity: 0.6;
+}
+
+.praxis-error {
+  font-size: 13px;
+  color: var(--status-failed);
+  margin: 0 0 16px;
+  line-height: 1.5;
+}
+
+.praxis-actions {
+  display: flex;
+  gap: 10px;
+  justify-content: flex-end;
+  margin-top: 8px;
+}
+
+.praxis-btn {
+  padding: 8px 20px;
+  font-size: 13px;
+  font-weight: 600;
+  border: none;
+  border-radius: var(--btn-radius);
+  cursor: pointer;
+  transition: background 120ms ease, opacity 120ms ease;
+}
+
+.praxis-btn:disabled {
+  opacity: 0.5;
+  cursor: not-allowed;
+}
+
+.praxis-btn--cancel {
+  background: transparent;
+  color: var(--text-secondary);
+}
+
+.praxis-btn--cancel:hover:not(:disabled) {
+  background: var(--accent-light);
+  color: var(--text-primary);
+}
+
+.praxis-btn--send {
+  background: var(--accent);
+  color: #fff;
+}
+
+.praxis-btn--send:hover:not(:disabled) {
+  background: var(--accent-hover);
+}
+
+.praxis-success {
+  text-align: center;
+  padding: 20px 0;
+}
+
+.praxis-success-icon {
+  width: 48px;
+  height: 48px;
+  color: var(--accent);
+  margin-bottom: 12px;
+}
+
+.praxis-success p {
+  font-size: 14px;
+  font-weight: 600;
+  margin: 0 0 8px;
+}
+
+.praxis-task-id {
+  display: inline-block;
+  font-family: var(--font-terminal);
+  font-size: 12px;
+  color: var(--text-secondary);
+  background: var(--accent-light);
+  padding: 4px 10px;
+  border-radius: 6px;
+}
+
+.export-menu-item--praxis {
+  color: var(--accent) !important;
 }

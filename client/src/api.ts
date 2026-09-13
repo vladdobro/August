@@ -169,3 +169,21 @@ export async function fetchSetupStatus(): Promise<ModelSetupStatus> {
 }
 
 export const SETUP_PROGRESS_URL = `${API_BASE}/setup/download-progress`;
+
+export async function validatePraxisProject(projectPath: string): Promise<{ valid: boolean; projectPath: string }> {
+  const res = await fetch(`${API_BASE}/praxis/validate`, {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({ projectPath }),
+  });
+  return handleJsonResponse<{ valid: boolean; projectPath: string }>(res);
+}
+
+export async function sendToPraxis(sessionId: string, projectPath: string): Promise<{ ok: boolean; taskId: string; taskPath: string; projectTag: string | null }> {
+  const res = await fetch(`${API_BASE}/praxis/send`, {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({ sessionId, projectPath }),
+  });
+  return handleJsonResponse<{ ok: boolean; taskId: string; taskPath: string; projectTag: string | null }>(res);
+}

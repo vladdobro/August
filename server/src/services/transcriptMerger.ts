@@ -35,6 +35,15 @@ const JOIN_GAP_THRESHOLD = 2.0;
 const DEDUP_WINDOW = 30.0;
 const NO_SPEECH_PROB_THRESHOLD = 0.6;
 
+/// Regex patterns for the "Редактор субтитров А.Семкин Корректор А.Егорова"
+/// credit-line hallucination. Applied in order: full line first, then individual
+/// halves, so a complete credit line produces one [OOPS] not two.
+const CREDIT_PATTERNS: RegExp[] = [
+  /редактор\s+субтитров[\s.,;:]+(?:а[\s.,;:]*)?семкин[а-яёa-z]*[\s.,;:]+корректор[\s.,;:]+(?:а[\s.,;:]*)?егоров[а-яёa-z]*[.,;:]*/gi,
+  /редактор\s+субтитров[\s.,;:]+(?:а[\s.,;:]*)?семкин[а-яёa-z]*[.,;:]*/gi,
+  /корректор[\s.,;:]+(?:а[\s.,;:]*)?егоров[а-яёa-z]*[.,;:]*/gi,
+];
+
 /// Lowercases, replaces punctuation with whitespace (so "[BLANK_AUDIO]"
 /// normalizes to the same thing as "blank audio"), and collapses whitespace,
 /// so near-identical hallucinated segments compare equal. Direct port of
@@ -59,6 +68,29 @@ export function isHallucination(normalizedText: string): boolean {
     return true;
   }
   return normalizedText.includes('субтитры') && normalizedText.includes('dimatorzok');
+}
+
+/// Replaces credit-line hallucination fragments with [OOPS] in the original
+/// text. Returns cleaned text with collapsed whitespace and trimmed.
+export function stripCreditHallucination(text: string): string {
+  let result = text;
+  for (const pattern of CREDIT_PATTERNS) {
+    pattern.lastIndex = 0;
+    result = result.replace(pattern, '[OOPS]');
+  }
+  return result.replace(/\s{2,}/g, ' ').trim();
+}
+
+/// Strips credit-line fragments from segments, replacing them with [OOPS].
+/// Runs before dedup/join so cleaned segments participate correctly in merging.
+function stripCreditLines(segments: MergedUtterance[]): MergedUtterance[] {
+  const result: MergedUtterance[] = [];
+  for (const seg of segments) {
+    const stripped = stripCreditHallucination(seg.text);
+    if (stripped.length === 0) continue;
+    result.push({ ...seg, text: stripped });
+  }
+  return result;
 }
 
 /// Drops empty/filler segments, drops blacklisted hallucinations, and dedups
@@ -146,7 +178,8 @@ export function mergeSingleStream(segments: TranscriptSegment[]): MergedUtteranc
     text: s.text,
   }));
 
-  const deduped = dedupHallucinations(utterances);
+  const cleaned = stripCreditLines(utterances);
+  const deduped = dedupHallucinations(cleaned);
   return joinAdjacentSameRole(deduped);
 }
 
@@ -172,7 +205,8 @@ export function mergeDualStream(
   }));
 
   const combined = [...micUtterances, ...systemUtterances].sort((a, b) => a.start - b.start);
-  const deduped = dedupHallucinations(combined);
+  const cleaned = stripCreditLines(combined);
+  const deduped = dedupHallucinations(cleaned);
   return joinAdjacentSameRole(deduped);
 }
 

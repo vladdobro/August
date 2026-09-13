@@ -10,6 +10,7 @@ interface SessionListProps {
   onUndoDelete: () => void;
   onRename: (id: string, title: string) => void;
   onNewSession: () => void;
+  onDiagnostics: () => void;
 }
 
 const ALL_STATUSES: SessionStatus[] = ['uploading', 'transcribing', 'failed', 'completed'];
@@ -61,7 +62,10 @@ const SessionList: React.FC<SessionListProps> = ({
   onUndoDelete,
   onRename,
   onNewSession,
+  onDiagnostics,
 }) => {
+  const [menuOpen, setMenuOpen] = useState(false);
+  const menuRef = useRef<HTMLDivElement>(null);
   const [editingId, setEditingId] = useState<string | null>(null);
   const [editValue, setEditValue] = useState('');
   const [searchQuery, setSearchQuery] = useState('');
@@ -70,6 +74,17 @@ const SessionList: React.FC<SessionListProps> = ({
   const listRef = useRef<HTMLDivElement>(null);
   const chipsRef = useRef<HTMLDivElement>(null);
   const [rayLines, setRayLines] = useState<{ x1: number; y1: number; x2: number; y2: number }[]>([]);
+
+  useEffect(() => {
+    if (!menuOpen) return;
+    const handleClick = (e: MouseEvent) => {
+      if (menuRef.current && !menuRef.current.contains(e.target as Node)) {
+        setMenuOpen(false);
+      }
+    };
+    document.addEventListener('mousedown', handleClick);
+    return () => document.removeEventListener('mousedown', handleClick);
+  }, [menuOpen]);
 
   useEffect(() => {
     if (editingId && inputRef.current) {
@@ -201,7 +216,53 @@ const SessionList: React.FC<SessionListProps> = ({
         <rect width="100%" height="100%" fill="url(#sidebar-hex-grid)"/>
       </svg>
       <div className="session-list-header">
-        <h1 className="app-title">August</h1>
+        <div className="session-header-left">
+          <h1 className="app-title">August</h1>
+          <div className="sidebar-menu" ref={menuRef}>
+            <button
+              type="button"
+              className="sidebar-menu-trigger"
+              onClick={() => setMenuOpen(v => !v)}
+              aria-label="Menu"
+              aria-expanded={menuOpen}
+            >
+              <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round">
+                <line x1="4" y1="6" x2="20" y2="6" />
+                <line x1="4" y1="12" x2="20" y2="12" />
+                <line x1="4" y1="18" x2="20" y2="18" />
+              </svg>
+            </button>
+            {menuOpen && (
+              <div className="sidebar-menu-dropdown">
+                <button
+                  type="button"
+                  className="sidebar-menu-item sidebar-menu-item--1"
+                  onClick={() => { setMenuOpen(false); onDiagnostics(); }}
+                >
+                  <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+                    <circle cx="12" cy="12" r="3" />
+                    <path d="M12 1v4M12 19v4M4.22 4.22l2.83 2.83M16.95 16.95l2.83 2.83M1 12h4M19 12h4M4.22 19.78l2.83-2.83M16.95 7.05l2.83-2.83" />
+                  </svg>
+                  Diagnostics
+                </button>
+                <a
+                  className="sidebar-menu-item sidebar-menu-item--2"
+                  href="https://youtu.be/dQw4w9WgXcQ"
+                  target="_blank"
+                  rel="noopener noreferrer"
+                  onClick={() => setMenuOpen(false)}
+                >
+                  <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+                    <circle cx="12" cy="12" r="10" />
+                    <line x1="12" y1="8" x2="12" y2="12" />
+                    <line x1="12" y1="16" x2="12.01" y2="16" />
+                  </svg>
+                  tooltip_missing
+                </a>
+              </div>
+            )}
+          </div>
+        </div>
         <button type="button" className="new-session-node" onClick={onNewSession} aria-label="New session">
           +
         </button>

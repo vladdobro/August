@@ -4,7 +4,9 @@
 - whisper-cli (whisper.cpp), built for Windows and macOS, transcribes session audio locally; output is raw timestamped segments in milliseconds.
 - runWhisper() in whisper.ts is the single whisper-cli invocation path for both batch and live transcription.
 - TranscriptMerger filters hallucinations and filler, dedupes near-duplicate segments, and joins nearby segments into readable lines.
+- stripCreditHallucination replaces the "Редактор субтитров А.Семкин Корректор А.Егорова" hallucination with [OOPS] via regex, not silent drop.
 - A session moves through uploading, transcribing, then completed or failed — the client polls status until it leaves transcribing.
+- Failed sessions can be retranscribed from the UI; the retranscribe endpoint runs a whisper-cli and model preflight check before flipping status.
 - Dual-track recording (mic + system) produces one session; mergeDualStream interleaves both streams with [Me]/[Them] role labels.
 - TranscriptMerger constants are a faithful port from SplitVox's C# implementation — never re-tune without re-validating against known audio.
 - Single-track transcripts have no role prefix; dual-track transcripts prefix each line with [Me] or [Them].
@@ -32,6 +34,7 @@ Document the exact mechanics of turning a recorded or uploaded audio file into a
 - Dual-stream merge: mergeDualStream takes mic and system segments, tags them with roles (Me/Them), sorts chronologically, then applies the same dedup/join pipeline — joinAdjacentSameRole only joins segments with matching roles.
 - Process tracking: whisper.ts maintains a Map<string, ChildProcess[]> keyed by session ID. Each transcribe() call registers its child process; dual-track sessions register two processes under the same key. Processes are deregistered in the execFile callback.
 - Cancellation: cancelTranscription(sessionId) kills all tracked child processes for that session. The cancel endpoint (POST /api/sessions/:id/cancel) calls this and sets status to "failed" with "Cancelled by user". The catch block in runTranscription/runDualTranscription skips overwriting if status is already "failed" to avoid a race with the cancel endpoint.
+- Failed-session recovery: when a session is in "failed" state, the UI shows a "Transcribe again" button with language and boost options. Clicking it calls POST /api/sessions/:id/retranscribe, which runs a preflight check (whisper-cli binary exists, model file exists) before flipping the session to "transcribing". If audio files are missing, the endpoint returns 400 and the UI shows "Audio file no longer exists" with the action disabled. The header Redo node also triggers retranscription independently.
 - Orphan recovery: recoverOrphanedSessions() runs on server startup — any session in "transcribing" state with no active tracked process is moved to "failed" with an explanatory error message.
 - Transcription metadata: SessionMetadata includes transcriptionStartedAt (ISO timestamp set when transcription begins) used by the client to display elapsed time.
 - Audio boost preprocessing: boostAudio() in whisper.ts applies an ffmpeg filter chain (highpass 100Hz, lowpass 4000Hz, 5x volume gain, loudnorm normalization) and converts to 16kHz mono WAV. Used when the retranscribe endpoint receives boost=true. Boosted files are saved as {basename}-boosted.wav next to the original and deleted after transcription completes.
@@ -45,6 +48,10 @@ Document the exact mechanics of turning a recorded or uploaded audio file into a
 - TranscriptMerger constants are copied exactly from SplitVox's original C# implementation — never re-tune them without re-validating against known reference audio.
 - FILLER_ONLY_TEXTS are dropped outright: blank audio, silence, music, typing, inaudible, no audio, background noise.
 - HALLUCINATION_BLACKLIST phrases (e.g. "thank you", "thanks for watching") are dropped, plus a co-occurrence check that drops Russian subtitles-credit hallucinations when both "субтитры" and "dimatorzok" appear.
+- The "Редактор субтитров А.Семкин Корректор А.Егорова" credit-line hallucination is handled by stripCreditHallucination (regex-based, case-insensitive, spacing/punctuation-tolerant) which replaces matched fragments with [OOPS] — not silently dropped like HALLUCINATION_BLACKLIST entries.
+- stripCreditLines runs before dedupHallucinations in both mergeSingleStream and mergeDualStream, so [OOPS]-replaced segments participate correctly in dedup and join.
+- The credit-line detection covers three patterns applied in order: full line (both halves), first half only ("Редактор субтитров" + "Семкин"), second half only ("Корректор" + "Егорова").
+- Live transcription applies stripCreditHallucination to each chunk after the isLikelyFiller check, matching batch behavior.
 - JOIN_GAP_THRESHOLD = 2.0 seconds — segments closer together than this are joined into one line.
 - joinAdjacentSameRole respects the role field — segments are only joined when they share the same role AND are within the gap threshold.
 - DEDUP_WINDOW = 30.0 seconds — near-duplicate text within this window is collapsed to one segment.
@@ -61,6 +68,10 @@ Document the exact mechanics of turning a recorded or uploaded audio file into a
 - Boosted audio files ({basename}-boosted.wav) are temporary artifacts deleted in a finally block after transcription completes or fails.
 - boostAudio replaces ensureWav in the pipeline when boost is active — it already produces 16kHz mono WAV output.
 - The retranscribe API (POST /api/sessions/:id/retranscribe) accepts an optional boost boolean; when true, ffmpeg availability is validated before proceeding.
+- The retranscribe endpoint validates whisper-cli and model presence before setting status to "transcribing" — prevents flip-then-fail loops.
+- If the whisper model is mid-download, the retranscribe preflight returns the download percentage in the error message.
+- A failed transcription never deletes or modifies the session's audio files — the <30s auto-delete rule applies only after successful completion.
+- When a failed session has no audio files on disk, the UI disables the "Transcribe again" button and shows an explanatory message.
 - For dual-track sessions with boost enabled, both mic and system tracks are boosted independently in parallel.
 - The client renders a Chronometer Ring (Tomb Amber SVG progress ring) with MM:SS:mm countdown, elapsed time, and ETA during the transcribing state.
 - The Chronometer Ring transitions from amber to red (#e05555) when < 60 seconds remain, and shows pulsing zeroed digits with "Exterminatus Initiated" at 0:00:00.

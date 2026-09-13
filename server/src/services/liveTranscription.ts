@@ -15,7 +15,7 @@ import { WebSocketServer, WebSocket, type RawData } from 'ws';
 
 import { config } from '../config.js';
 import { runWhisper } from './whisper.js';
-import { FILLER_ONLY_TEXTS, isHallucination, normalize } from './transcriptMerger.js';
+import { FILLER_ONLY_TEXTS, isHallucination, normalize, stripCreditHallucination } from './transcriptMerger.js';
 
 type Speaker = 'Me' | 'Them';
 
@@ -157,7 +157,10 @@ export function setupLiveTranscription(server: HttpServer): void {
           consecutiveFailures = 0;
 
           if (!isLikelyFiller(text)) {
-            send({ type: 'transcript', speaker: chunk.speaker, text });
+            const cleaned = stripCreditHallucination(text);
+            if (cleaned.length > 0 && !isLikelyFiller(cleaned)) {
+              send({ type: 'transcript', speaker: chunk.speaker, text: cleaned });
+            }
           }
         } catch (err) {
           consecutiveFailures++;

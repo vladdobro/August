@@ -9,6 +9,7 @@ import { config, whisperPlatformDir } from './config.js';
 import healthRouter from './routes/health.js';
 import sessionsRouter, { recoverOrphanedSessions } from './routes/sessions.js';
 import setupRouter from './routes/setup.js';
+import praxisRouter from './routes/praxis.js';
 import { setupLiveTranscription } from './services/liveTranscription.js';
 import { checkFfmpegAvailable, FFMPEG_MISSING_MESSAGE, fileExists } from './services/whisper.js';
 import { ensureWhisperModel } from './services/modelDownloader.js';
@@ -46,6 +47,7 @@ async function main() {
   app.use('/api', healthRouter);
   app.use('/api/sessions', sessionsRouter);
   app.use('/api/setup', setupRouter);
+  app.use('/api/praxis', praxisRouter);
 
   const isDev = process.env.NODE_ENV !== 'production';
 
@@ -83,7 +85,8 @@ async function main() {
     console.log(`  Sessions dir: ${config.sessionsDir}`);
     console.log(`  Whisper binary: ${config.whisperBinPath}`);
     console.log(`  Whisper model: ${config.whisperModelPath}`);
-    console.log(`  Platform: ${process.platform}-${process.arch} (GPU: ${config.whisperUseGpu ? 'Metal' : 'off'})`);
+    const gpuBackend = process.platform === 'darwin' ? 'Metal' : 'Vulkan';
+    console.log(`  Platform: ${process.platform}-${process.arch} (GPU: ${config.whisperUseGpu ? gpuBackend : 'off'})`);
     console.log(`  Live transcription: ws://localhost:${config.port}/api/live-transcribe`);
   });
 

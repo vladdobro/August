@@ -1,5 +1,6 @@
 import React, { useMemo, useState, useRef, useEffect } from 'react';
 import type { SessionMetadata } from '../types';
+import PraxisModal from './PraxisModal';
 
 interface TranscriptViewProps {
   session: SessionMetadata;
@@ -274,6 +275,9 @@ const TranscriptView: React.FC<TranscriptViewProps> = ({ session, transcript, on
   const retranscribeRef = useRef<HTMLDivElement>(null);
   const [cancelling, setCancelling] = useState(false);
   const [boostEnabled, setBoostEnabled] = useState(false);
+  const [failedMenuOpen, setFailedMenuOpen] = useState(false);
+  const failedMenuRef = useRef<HTMLDivElement>(null);
+  const [showPraxisModal, setShowPraxisModal] = useState(false);
 
   useEffect(() => {
     if (!dropdownOpen) return;
@@ -297,10 +301,32 @@ const TranscriptView: React.FC<TranscriptViewProps> = ({ session, transcript, on
     return () => document.removeEventListener('mousedown', handleClickOutside);
   }, [retranscribeOpen]);
 
+  useEffect(() => {
+    if (!failedMenuOpen) return;
+    const handleClickOutside = (e: MouseEvent) => {
+      if (failedMenuRef.current && !failedMenuRef.current.contains(e.target as Node)) {
+        setFailedMenuOpen(false);
+      }
+    };
+    document.addEventListener('mousedown', handleClickOutside);
+    return () => document.removeEventListener('mousedown', handleClickOutside);
+  }, [failedMenuOpen]);
+
   const handleRetranscribe = async (language?: string) => {
     if (!onRetranscribe || retrying) return;
     setRetrying(true);
     setRetranscribeOpen(false);
+    try {
+      await onRetranscribe(language, boostEnabled);
+    } finally {
+      setRetrying(false);
+    }
+  };
+
+  const handleFailedRetranscribe = async (language?: string) => {
+    if (!onRetranscribe || retrying) return;
+    setRetrying(true);
+    setFailedMenuOpen(false);
     try {
       await onRetranscribe(language, boostEnabled);
     } finally {
@@ -357,6 +383,11 @@ const TranscriptView: React.FC<TranscriptViewProps> = ({ session, transcript, on
     const safeName = session.title.replace(/[^a-zA-Z0-9_\- ]/g, '').trim() || 'transcript';
     downloadFile(content, `${safeName}.srt`, 'application/x-subrip');
     setDropdownOpen(false);
+  };
+
+  const handleSendToPraxis = () => {
+    setDropdownOpen(false);
+    setShowPraxisModal(true);
   };
 
   return (
@@ -426,6 +457,8 @@ const TranscriptView: React.FC<TranscriptViewProps> = ({ session, transcript, on
                     <div className="export-menu-divider" />
                     <button type="button" className="export-menu-item" onClick={handleDownloadTxt}>Download .txt</button>
                     <button type="button" className="export-menu-item" onClick={handleDownloadSrt}>Download .srt</button>
+                    <div className="export-menu-divider" />
+                    <button type="button" className="export-menu-item export-menu-item--praxis" onClick={handleSendToPraxis}>Send to Praxis</button>
                   </div>
                 )}
               </div>
@@ -528,6 +561,44 @@ const TranscriptView: React.FC<TranscriptViewProps> = ({ session, transcript, on
           <div className="transcript-status-panel error">
             <p className="error-title">Transcription failed</p>
             <p className="error-message">{session.error || 'An unknown error occurred.'}</p>
+            {onRetranscribe && (
+              <div className="failed-recovery" ref={failedMenuRef}>
+                {session.error?.includes('Audio file no longer exists') ? (
+                  <p className="failed-no-audio">Audio file no longer exists — this session cannot be re-transcribed.</p>
+                ) : (
+                  <>
+                    <button
+                      type="button"
+                      className="retry-button"
+                      onClick={() => setFailedMenuOpen(prev => !prev)}
+                      disabled={retrying}
+                    >
+                      {retrying ? 'Starting...' : 'Transcribe again'}
+                    </button>
+                    {failedMenuOpen && (
+                      <div className="retranscribe-menu retranscribe-menu--above">
+                        <label
+                          className={`retranscribe-boost-toggle${!ffmpegAvailable ? ' retranscribe-boost-toggle--disabled' : ''}`}
+                          title={!ffmpegAvailable ? 'Requires ffmpeg' : 'Amplify quiet audio before transcription'}
+                        >
+                          <input
+                            type="checkbox"
+                            checked={boostEnabled}
+                            onChange={(e) => setBoostEnabled(e.target.checked)}
+                            disabled={!ffmpegAvailable}
+                          />
+                          <span>Boost audio</span>
+                        </label>
+                        <div className="retranscribe-menu-divider" />
+                        <button type="button" className="retranscribe-menu-item" onClick={() => handleFailedRetranscribe('ru')}>Russian</button>
+                        <button type="button" className="retranscribe-menu-item" onClick={() => handleFailedRetranscribe('en')}>English</button>
+                        <button type="button" className="retranscribe-menu-item" onClick={() => handleFailedRetranscribe('auto')}>Auto-detect</button>
+                      </div>
+                    )}
+                  </>
+                )}
+              </div>
+            )}
           </div>
         )}
 
@@ -546,6 +617,14 @@ const TranscriptView: React.FC<TranscriptViewProps> = ({ session, transcript, on
           </div>
         )}
       </div>
+
+      {showPraxisModal && (
+        <PraxisModal
+          sessionId={session.id}
+          sessionTitle={session.title}
+          onClose={() => setShowPraxisModal(false)}
+        />
+      )}
     </div>
   );
 };

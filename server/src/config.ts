@@ -31,10 +31,10 @@ export function whisperBinName(): string {
 }
 
 export const WHISPER_MODEL = {
-  fileName: 'ggml-large-v3-turbo.bin',
-  url: 'https://huggingface.co/ggerganov/whisper.cpp/resolve/main/ggml-large-v3-turbo.bin',
-  sha256: '1fc70f774d38eb169993ac391eea357ef47c88757ef72ee5943879b7e8e2bc69',
-  sizeBytes: 1624555275,
+  fileName: 'ggml-large-v3-turbo-q8_0.bin',
+  url: 'https://huggingface.co/ggerganov/whisper.cpp/resolve/main/ggml-large-v3-turbo-q8_0.bin',
+  sha256: '317eb69c11673c9de1e1f0d459b253999804ec71ac4c23c17ecf5fbe24e259a1',
+  sizeBytes: 874188075,
 } as const;
 
 function defaultWhisperModelPath(): string {
@@ -51,7 +51,7 @@ export interface AppConfig {
   whisperModelPath: string;
   sessionsDir: string;
   uploadsDir: string;
-  // Metal on Apple Silicon; all other platforms keep --no-gpu.
+  // Metal on Apple Silicon, Vulkan on Windows x64; other platforms keep --no-gpu.
   whisperUseGpu: boolean;
 }
 
@@ -65,7 +65,9 @@ export const config: AppConfig = {
     : defaultWhisperModelPath(),
   sessionsDir: path.resolve(serverRoot, 'data', 'sessions'),
   uploadsDir: path.resolve(serverRoot, 'data', 'uploads'),
-  whisperUseGpu: process.platform === 'darwin' && process.arch === 'arm64',
+  whisperUseGpu:
+    (process.platform === 'darwin' && process.arch === 'arm64') ||
+    (process.platform === 'win32' && process.arch === 'x64'),
 };
 
 export const AUDIO_BOOST = {

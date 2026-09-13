@@ -10,6 +10,7 @@
 - Production mode: server serves the built client from client/dist via express.static.
 - Agentation widget is mounted in App.tsx for dev mode only, gated by import.meta.env.DEV.
 - The server loads the repo-root .env from config.ts before building config.
+- Praxis integration: POST /api/praxis/send creates a task directly in a target PraxisOS project's .praxis/tasks/new/ directory from a session transcript.
 
 This route documents the August web app's technical architecture: how the client, server, and local whisper.cpp inference fit together.
 
@@ -34,7 +35,7 @@ Give any agent working on the codebase a map of the client/server split, how a s
 ## Key implementation details
 
 - Binaries live in whisper/bin/{win-x64,darwin-arm64,darwin-x64}/, installed by npm run setup (whisper.cpp v1.8.4), git-ignored.
-- The whisper model ggml-large-v3-turbo.bin (~1.6GB) lives at whisper/models/ and is auto-downloaded on first server start — see project-context/transcription/whisper-setup/.
+- The whisper model ggml-large-v3-turbo-q8_0.bin (~874 MB, 8-bit quantized) lives at whisper/models/ and is auto-downloaded on first server start — see project-context/transcription/whisper-setup/.
 - Windows non-ASCII paths are converted to 8.3 short paths via a toSafePath helper before invoking the binary; toSafePath is a passthrough on macOS.
 - The repo-root .env is loaded in config.ts before config is built; WHISPER_BIN_PATH and WHISPER_MODEL_PATH env vars override the default binary and model paths.
 - Timestamp offsets in this build's whisper-cli --output-json-full output are milliseconds, not centiseconds — do not assume centiseconds when reading segment timestamps.
@@ -43,6 +44,11 @@ Give any agent working on the codebase a map of the client/server split, how a s
 - Sessions shorter than 30 seconds are auto-deleted by the server after transcription completes (likely wrong audio source in dual-track recording).
 - Sessions can be renamed via PATCH /api/sessions/:id with a JSON body { title }; the client triggers this by double-clicking the session title in the sidebar.
 - Dev/prod static serving: when NODE_ENV !== 'production' (dev mode), server/src/index.ts redirects browser requests to the Vite dev server at http://127.0.0.1:5173 instead of serving stale client/dist files; in production, express.static serves client/dist normally.
+- Praxis integration writes task files directly to the target project's .praxis/tasks/new/ directory — no dependency on a running Praxis MCP server.
+- Task ID allocation mirrors the Praxis Python logic: reads .praxis/config/task_counter, scans .praxis/tasks/*/ for the filesystem max, increments, and writes the counter back.
+- Task tag prefix is read from .praxis/config/general.yaml (taskTitleTag field); composite ID format is TAG-NUMBER-SUFFIX (e.g., POS-42-a7x3mq).
+- POST /api/praxis/validate checks whether a directory contains .praxis/ before attempting task creation.
+- The acceptance criteria template embedded in the export includes 4 deliverables: summary, action items, commitments (CMT-NNN), and route updates.
 
 ## Key files
 
@@ -53,6 +59,8 @@ Give any agent working on the codebase a map of the client/server split, how a s
 - client/src/App.tsx — client app shell and top-level routing/state.
 - client/src/vite-env.d.ts — Vite client type declarations (import.meta.env).
 - server/src/config.ts — platform binary resolution, model constants, .env loading.
+- server/src/services/praxisIntegration.ts — Praxis task creation: counter management, ID allocation, atomic file write to target project.
+- server/src/routes/praxis.ts — POST /api/praxis/validate and POST /api/praxis/send endpoints.
 
 ## Dev Tooling: Agentation Widget
 

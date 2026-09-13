@@ -9,9 +9,15 @@
 - Sidebar uses V3 Bracketed design with [ bracket — node — bracket ] rows, hex grid background, orbital-circle filter chips with connecting rays, and "planet parade" layout.
 - FileUpload uses a circuit-node radial layout with SVG connection lines and positioned circular control nodes.
 - TranscriptView header uses a circuit diagram with info node and action nodes (Copy, Export, Retranscribe).
+- Export dropdown includes "Send to Praxis" option that opens a modal for entering a target Praxis project path.
 - During recording, the center node turns red with SVG pulse rings and 12 radial frequency bars from AnalyserNode data.
 - ThemeToggle renders as a circuit node inside FileUpload; it renders as a fixed button only when TranscriptView is active.
 - Chronometer Ring (Tomb Amber palette) replaces the shimmer bar during transcription with an animated SVG countdown and phase transitions.
+- Diagnostics page uses W40K CRT terminal aesthetic: monospace font stack, 0 border-radius, scan-line overlays, staggered fade-in animations.
+- Font stacks are defined as CSS custom properties: --font-gothic (UnifrakturMaguntia, reserved for future decorative use), --font-terminal (Cascadia Code stack), and the system UI font.
+- Terminal font (--font-terminal) applies to diagnostics page, sidebar menu items, and code blocks — never use hardcoded font-family for terminal fonts.
+- Titles (.app-title, .diag-title) use the system UI font — gothic font was too hard to read for headings.
+- Sidebar menu (.sidebar-menu) opens a staggered fade-in dropdown from the header, next to the "August" title.
 
 The frontend design system defines the Necron-themed visual language, color tokens, theme switching, and component styling rules for the August web app.
 
@@ -106,6 +112,49 @@ Bracket colors use hardcoded rgba(0, 200, 118, ...) since the sidebar background
 Pulse animations are disabled under prefers-reduced-motion: reduce.
 Responsive: at 720px, center node shrinks to 84px, corner nodes to 56px.
 
+### Font Standards
+
+Three font stacks are defined as CSS custom properties in :root of App.css.
+Gothic display font: var(--font-gothic) — 'UnifrakturMaguntia', cursive — loaded from Google Fonts in index.html, reserved for future decorative use (too stylized for headings).
+Terminal/diagnostic font: var(--font-terminal) — 'Cascadia Code', 'Fira Code', 'Consolas', monospace — used wherever a CRT/terminal aesthetic is needed.
+Default UI font: the system font stack inherited from the browser (used for titles, labels, body text, general UI).
+Terminal font applies to: diagnostics page text (.diag-subtitle, .diag-section-desc, .diag-info-line, .diag-hint-popup, .diag-node-status, .diag-skip-warning), sidebar menu items (.sidebar-menu-item), and code blocks.
+JetBrains Mono (Google Fonts) is used exclusively for Chronometer Ring timer digits.
+New terminal-styled components must use var(--font-terminal), not hardcode the font-family stack.
+Gothic font (--font-gothic) is available but not currently applied — too stylized for heading readability.
+
+### Sidebar Menu
+
+The sidebar header contains a hamburger menu button (.sidebar-menu-trigger) next to the "August" title.
+Clicking the trigger opens a dropdown (.sidebar-menu-dropdown) with angular styling (0 border-radius, necron-900 background, necron-700 border).
+Menu items appear with staggered slide-in animation (.sidebar-menu-item--1 at 0.04s, --2 at 0.12s, --3 at 0.20s) via sidebar-menu-fade-in keyframes.
+Menu closes on click-outside via a mousedown document listener registered only while open.
+Current menu items: Diagnostics (opens diagnostics page), tooltip_missing (external link).
+Menu z-index (1000) requires the header z-index (20) to be above the filters section below.
+
+### Diagnostics Page (SetupGuide)
+
+The diagnostics page (.diag-page) renders when components are missing or when triggered from the sidebar menu.
+It uses a W40K CRT terminal aesthetic: angular corners (0 border-radius), monospace terminal font, necron palette.
+A 45°-rotated Necron symbol SVG logo (.diag-logo) is centered at the top.
+Circuit-node layout: three absolutely positioned circles connected by animated dashed SVG lines with percentage-based coordinates.
+Node colors are fixed fills: Whisper (yellow, rgba(212,170,60,0.25)), GGML (red, rgba(212,80,80,0.22)), FFmpeg (green, rgba(0,200,118,0.18)).
+Only checkmark icons use green (#00c876) — circle fills keep their assigned color even when operational.
+FFmpeg node renders only on Windows (isMac detection via navigator.userAgent).
+Adaptive reveal logic: GPU button when whisper missing, direct download when only model missing, staggered fade-in via diag-reveal--1/2/3 classes.
+Proceed button uses W40K CRT styling: metallic frame, arrow pseudo-elements, scan-line overlay, necron palette gradient.
+Refresh and Skip buttons share a horizontal row (.diag-actions) with equal flex:1 width. Skip turns red on hover.
+The ?diagnostics query param forces the diagnostics view; ?mock=whisper,model,ffmpeg simulates missing components.
+Clickable whisper/models/ path opens the native file manager via POST /api/setup/open-model-folder.
+
+### Praxis Modal
+
+PraxisModal (.praxis-backdrop + .praxis-modal) opens from the "Send to Praxis" export menu item in TranscriptView.
+The modal reuses the same backdrop pattern as ModelDownloadModal: fixed overlay with blur, modePickerFadeIn animation.
+Project path input uses --font-terminal and persists the last-used path in localStorage under "august-praxis-project-path".
+Success state shows a checkmark icon with the created task ID in a code-style badge (.praxis-task-id).
+The "Send to Praxis" export menu item is accent-colored (.export-menu-item--praxis) to distinguish it from download actions.
+
 ## Invariants
 
 Every color in the UI must reference a CSS custom property, never a hardcoded hex value (except within :root definitions).
@@ -114,6 +163,8 @@ ThemeProvider must wrap the entire component tree; it must be the outermost prov
 The theme toggle renders as a circuit node in FileUpload and as a fixed bottom-right button in TranscriptView.
 New UI components must use the existing design token variables, not introduce new color values.
 Chronometer Ring colors use scoped CSS custom properties (--chrono-*) on .chrono-container, not the global Necron palette — phase transitions swap all chrono tokens at once.
+Terminal-styled components must use var(--font-terminal) — do not hardcode the font-family stack or introduce alternative monospace fonts.
+Gothic font (--font-gothic) is loaded but reserved — not applied to titles due to readability concerns.
 
 ## Route-Specific Constraints
 
@@ -132,3 +183,5 @@ Status badge colors (uploading, transcribing, completed, failed) must remain dis
 - client/src/components/FileUpload.tsx — Circuit-node radial layout for recording and upload controls
 - client/src/components/SessionList.tsx — Sidebar with V3 Bracketed session items, hex grid SVG, orbital-circle filter chips, hexagonal New Session node
 - client/src/components/RecordingModePicker.tsx — Radial expanding mode picker (DEFAULT / LIVE) rendered inside circuit-diagram with SVG connection lines
+- client/src/components/PraxisModal.tsx — Modal for entering a target Praxis project path and creating a task from a session transcript.
+- client/src/components/SetupGuide.tsx — Diagnostics page with circuit-node layout, W40K CRT aesthetic, adaptive GPU/model reveal logic

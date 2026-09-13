@@ -20,6 +20,7 @@ const App: React.FC = () => {
   const selectedSessionIdRef = useRef<string | null>(null);
   const [healthStatus, setHealthStatus] = useState<HealthStatus | null>(null);
   const [setupDismissed, setSetupDismissed] = useState(false);
+  const [showDiagnostics, setShowDiagnostics] = useState(false);
   const [pendingDelete, setPendingDelete] = useState<{
     session: SessionMetadata;
     timeoutId: ReturnType<typeof setTimeout>;
@@ -161,9 +162,21 @@ const App: React.FC = () => {
     }
   };
 
+  const searchParams = new URLSearchParams(window.location.search);
+  const forceDiag = searchParams.has('diagnostics');
+  const mockParam = searchParams.get('mock');
   const needsSetup = healthStatus !== null
-    && (!healthStatus.whisperAvailable || !healthStatus.modelAvailable)
+    && (forceDiag || showDiagnostics || !healthStatus.whisperAvailable || !healthStatus.modelAvailable)
     && !setupDismissed;
+
+  const diagHealth: HealthStatus | null = healthStatus && forceDiag && mockParam
+    ? {
+        ...healthStatus,
+        whisperAvailable: !mockParam.includes('whisper'),
+        modelAvailable: !mockParam.includes('model'),
+        ffmpegAvailable: !mockParam.includes('ffmpeg'),
+      }
+    : healthStatus;
 
   const shouldEnableAgentation = import.meta.env.DEV;
   const agentationEndpoint = import.meta.env.VITE_AGENTATION_ENDPOINT || 'http://127.0.0.1:4747';
@@ -174,9 +187,9 @@ const App: React.FC = () => {
         <div className="app-layout">
           <main className="main-content">
             <SetupGuide
-              health={healthStatus!}
+              health={diagHealth!}
               onRefresh={refreshHealth}
-              onDismiss={() => setSetupDismissed(true)}
+              onDismiss={() => { setSetupDismissed(true); setShowDiagnostics(false); }}
             />
           </main>
         </div>
@@ -197,6 +210,7 @@ const App: React.FC = () => {
           onUndoDelete={handleUndoDelete}
           onRename={handleRename}
           onNewSession={handleNewSession}
+          onDiagnostics={() => { setSetupDismissed(false); setShowDiagnostics(true); }}
         />
 
         <main className="main-content">
