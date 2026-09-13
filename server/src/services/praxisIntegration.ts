@@ -85,6 +85,21 @@ export async function validatePraxisProject(projectPath: string): Promise<boolea
   }
 }
 
+const ASSIGNEE_PRIORITY = ['recap-master.json', 'cartographer.json'];
+
+async function resolveAssignee(projectRoot: string): Promise<string | null> {
+  const assigneesDir = path.join(projectRoot, '.praxis', 'assignees');
+  for (const candidate of ASSIGNEE_PRIORITY) {
+    try {
+      await fs.access(path.join(assigneesDir, candidate));
+      return candidate;
+    } catch {
+      // candidate not found, try next
+    }
+  }
+  return null;
+}
+
 export async function createPraxisTask(
   projectRoot: string,
   title: string,
@@ -118,10 +133,11 @@ export async function createPraxisTask(
     ? `[${normalizedTag}-${nextId}] ${title}`
     : `[${nextId}] ${title}`;
 
+  const assignee = await resolveAssignee(projectRoot);
   const now = Date.now();
   const task = {
     id: compositeId,
-    assignee: null,
+    assignee,
     status: 'new',
     title: formattedTitle,
     why_we_need_this: why,
