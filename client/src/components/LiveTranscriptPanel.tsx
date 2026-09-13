@@ -12,6 +12,7 @@ interface LiveTranscriptPanelProps {
   lines: LiveLine[];
   status: LiveStatus;
   error: string | null;
+  warning: string | null;
   micUnavailable: boolean;
   onPause: () => void;
   onResume: () => void;
@@ -29,7 +30,7 @@ const STATUS_LABEL: Record<LiveStatus, string> = {
 };
 
 const LiveTranscriptPanel: React.FC<LiveTranscriptPanelProps> = ({
-  lines, status, error, micUnavailable, onPause, onResume, onCopyAll, onClose, onStop,
+  lines, status, error, warning, micUnavailable, onPause, onResume, onCopyAll, onClose, onStop,
 }) => {
   const bodyRef = useRef<HTMLDivElement>(null);
   const [autoScroll, setAutoScroll] = useState(true);
@@ -83,6 +84,7 @@ const LiveTranscriptPanel: React.FC<LiveTranscriptPanelProps> = ({
           <div className="live-panel-notice">Microphone unavailable — showing Them only</div>
         )}
         {error && <div className="live-panel-warning">{error}</div>}
+        {warning && <div className="live-panel-notice">{warning}</div>}
         <div className="live-panel-actions">
           <button
             type="button"

@@ -18,6 +18,7 @@ router.get('/health', async (_req, res) => {
     modelAvailable,
     ffmpegAvailable,
     ffmpegMessage: ffmpegAvailable ? null : FFMPEG_MISSING_MESSAGE,
+    groqAvailable: !!config.groqApiKey,
   });
 });
 

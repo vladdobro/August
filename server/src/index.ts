@@ -88,6 +88,7 @@ async function main() {
     const gpuBackend = process.platform === 'darwin' ? 'Metal' : 'Vulkan';
     console.log(`  Platform: ${process.platform}-${process.arch} (GPU: ${config.whisperUseGpu ? gpuBackend : 'off'})`);
     console.log(`  Live transcription: ws://localhost:${config.port}/api/live-transcribe`);
+    console.log(`  Groq API: ${config.groqApiKey ? 'configured' : 'not configured (live mode uses local whisper only)'}`);
   });
 
   void ensureWhisperModel();

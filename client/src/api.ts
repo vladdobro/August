@@ -187,3 +187,8 @@ export async function sendToPraxis(sessionId: string, projectPath: string): Prom
   });
   return handleJsonResponse<{ ok: boolean; taskId: string; taskPath: string; projectTag: string | null }>(res);
 }
+
+export async function browsePraxisFolder(): Promise<{ path: string | null }> {
+  const res = await fetch(`${API_BASE}/praxis/browse`, { method: 'POST' });
+  return handleJsonResponse<{ path: string | null }>(res);
+}

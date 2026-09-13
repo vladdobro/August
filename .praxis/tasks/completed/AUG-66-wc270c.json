@@ -2,7 +2,7 @@
   "id": "AUG-66-wc270c",
   "assignee": "jarvis.json",
   "priority": "medium",
-  "status": "new",
+  "status": "to_review",
   "title": "[AUG-66] Choose folder to send task Praxis",
   "why_we_need_this": "you need to add an option to choose folder to send task Praxis\nAs for now I have to type it manually",
   "acceptance_criteria": "",
@@ -11,5 +11,5 @@
   "on_hold_reason": "",
   "contextRouterIncluded": false,
   "created_at": 1789316265118,
-  "column_entered_at": 1789316265118
+  "column_entered_at": 1789327882414
 }

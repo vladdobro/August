@@ -23,6 +23,7 @@ export interface HealthStatus {
   modelAvailable: boolean;
   ffmpegAvailable: boolean;
   ffmpegMessage?: string | null;
+  groqAvailable: boolean;
 }
 
 export type ModelState = 'present' | 'downloading' | 'missing';

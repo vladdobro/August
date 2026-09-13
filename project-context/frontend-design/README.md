@@ -505,7 +505,7 @@ Clickable whisper/models/ path opens the native file manager via POST /api/setup
 
 ### Praxis Modal
 
-PraxisModal (.praxis-backdrop + .praxis-modal) opens from the "Send to Praxis" export menu item in TranscriptView.
+PraxisModal (.praxis-backdrop + .praxis-modal) opens from the "Send to Praxis" export menu item in TranscriptView. Includes an "Open" browse button that opens the OS native folder picker for selecting the project path.
 The modal reuses the same backdrop pattern as ModelDownloadModal: fixed overlay with blur, modePickerFadeIn animation.
 Project path input uses --font-terminal and persists the last-used path in localStorage under "august-praxis-project-path".
 Success state shows a checkmark icon with the created task ID in a code-style badge (.praxis-task-id).
@@ -551,5 +551,5 @@ Status badge colors (uploading, transcribing, completed, failed) must remain dis
 - client/src/components/FileUpload.tsx — Circuit-node radial layout for recording and upload controls
 - client/src/components/SessionList.tsx — Sidebar with V3 Bracketed session items, hex grid SVG, orbital-circle filter chips, hexagonal New Session node
 - client/src/components/RecordingModePicker.tsx — Radial expanding mode picker (DEFAULT / LIVE) rendered inside circuit-diagram with SVG connection lines
-- client/src/components/PraxisModal.tsx — Modal for entering a target Praxis project path and creating a task from a session transcript.
+- client/src/components/PraxisModal.tsx — Modal for selecting a target Praxis project path (via browse or manual input) and creating a task from a session transcript.
 - client/src/components/SetupGuide.tsx — Diagnostics page with circuit-node layout, W40K CRT aesthetic, adaptive GPU/model reveal logic

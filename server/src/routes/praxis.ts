@@ -1,9 +1,13 @@
 import path from 'node:path';
+import { exec, execFile } from 'node:child_process';
+import { promisify } from 'node:util';
 import { Router } from 'express';
 
 import * as sessionManager from '../services/sessionManager.js';
 import { validatePraxisProject, createPraxisTask } from '../services/praxisIntegration.js';
 
+const execAsync = promisify(exec);
+const execFileAsync = promisify(execFile);
 const router = Router();
 
 const ACCEPTANCE_CRITERIA_TEMPLATE = `Process this meeting transcript following these instructions:
@@ -108,6 +112,49 @@ router.post('/send', async (req, res) => {
     });
   } catch (err) {
     res.status(500).json({ error: (err as Error)?.message || 'Failed to create Praxis task' });
+  }
+});
+
+// POST /api/praxis/browse — open native OS folder picker dialog
+router.post('/browse', async (_req, res) => {
+  try {
+    let selectedPath = '';
+
+    if (process.platform === 'win32') {
+      const ps = [
+        'Add-Type -AssemblyName System.Windows.Forms',
+        '[System.Windows.Forms.Application]::EnableVisualStyles()',
+        '$owner = New-Object System.Windows.Forms.Form',
+        '$owner.TopMost = $true',
+        '$owner.ShowInTaskbar = $false',
+        '$owner.WindowState = [System.Windows.Forms.FormWindowState]::Minimized',
+        '$owner.Show()',
+        '$d = New-Object System.Windows.Forms.FolderBrowserDialog',
+        "$d.Description = 'Select Praxis project folder'",
+        '$result = $d.ShowDialog($owner)',
+        '$owner.Close()',
+        '$owner.Dispose()',
+        'if ($result -eq [System.Windows.Forms.DialogResult]::OK) { $d.SelectedPath }',
+      ].join('; ');
+      const { stdout } = await execFileAsync('powershell.exe', ['-STA', '-NoProfile', '-Command', ps], { timeout: 120_000 });
+      selectedPath = stdout.trim();
+    } else if (process.platform === 'darwin') {
+      const { stdout } = await execAsync(
+        `osascript -e 'POSIX path of (choose folder with prompt "Select Praxis project folder")'`,
+        { timeout: 120_000 },
+      );
+      selectedPath = stdout.trim();
+    } else {
+      const { stdout } = await execAsync(
+        `zenity --file-selection --directory --title="Select Praxis project folder" 2>/dev/null`,
+        { timeout: 120_000 },
+      );
+      selectedPath = stdout.trim();
+    }
+
+    res.json({ path: selectedPath || null });
+  } catch {
+    res.json({ path: null });
   }
 });
 

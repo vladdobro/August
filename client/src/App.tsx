@@ -231,7 +231,7 @@ const App: React.FC = () => {
 
           {(showFileUpload || isRecording) && (
             <div style={showFileUpload ? undefined : { display: 'none' }}>
-              <FileUpload onUploaded={handleUploaded} onRecordingChange={setIsRecording} />
+              <FileUpload onUploaded={handleUploaded} onRecordingChange={setIsRecording} groqAvailable={healthStatus?.groqAvailable ?? false} />
             </div>
           )}
         </main>

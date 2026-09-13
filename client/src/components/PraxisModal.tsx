@@ -1,5 +1,5 @@
 import React, { useState, useEffect, useRef } from 'react';
-import { sendToPraxis, validatePraxisProject } from '../api';
+import { sendToPraxis, validatePraxisProject, browsePraxisFolder } from '../api';
 
 const AugustLogo: React.FC = () => (
   <svg
@@ -69,6 +69,7 @@ const STORAGE_KEY = 'august-praxis-project-path';
 
 const PraxisModal: React.FC<PraxisModalProps> = ({ sessionId, sessionTitle, onClose }) => {
   const [projectPath, setProjectPath] = useState('');
+  const [browsing, setBrowsing] = useState(false);
   const [sending, setSending] = useState(false);
   const [validating, setValidating] = useState(false);
   const [error, setError] = useState<string | null>(null);
@@ -88,6 +89,18 @@ const PraxisModal: React.FC<PraxisModalProps> = ({ sessionId, sessionTitle, onCl
 
   const handleBackdropClick = (e: React.MouseEvent) => {
     if (e.target === backdropRef.current) onClose();
+  };
+
+  const handleBrowse = async () => {
+    setBrowsing(true);
+    try {
+      const result = await browsePraxisFolder();
+      if (result.path) setProjectPath(result.path);
+    } catch {
+      // dialog cancelled or error
+    } finally {
+      setBrowsing(false);
+    }
   };
 
   const handleSend = async () => {
@@ -161,15 +174,25 @@ const PraxisModal: React.FC<PraxisModalProps> = ({ sessionId, sessionTitle, onCl
           <>
             <label className="praxis-label">
               Project path
-              <input
-                ref={inputRef}
-                type="text"
-                className="praxis-input"
-                value={projectPath}
-                onChange={(e) => setProjectPath(e.target.value)}
-                placeholder="D:\path\to\project"
-                disabled={sending || validating}
-              />
+              <div className="praxis-input-row">
+                <input
+                  ref={inputRef}
+                  type="text"
+                  className="praxis-input"
+                  value={projectPath}
+                  onChange={(e) => setProjectPath(e.target.value)}
+                  placeholder="D:\path\to\project"
+                  disabled={sending || validating}
+                />
+                <button
+                  type="button"
+                  className="praxis-btn praxis-btn--browse"
+                  onClick={handleBrowse}
+                  disabled={sending || validating || browsing}
+                >
+                  {browsing ? '...' : 'Open'}
+                </button>
+              </div>
             </label>
 
             {error && <p className="praxis-error">{error}</p>}

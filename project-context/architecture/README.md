@@ -10,8 +10,9 @@
 - Production mode: server serves the built client from client/dist via express.static.
 - Agentation widget is mounted in App.tsx for dev mode only, gated by import.meta.env.DEV.
 - The server loads the repo-root .env from config.ts before building config.
-- Praxis integration: POST /api/praxis/send creates a task directly in a target PraxisOS project's .praxis/tasks/new/ directory from a session transcript.
+- Praxis integration: POST /api/praxis/send creates a task directly in a target PraxisOS project's .praxis/tasks/new/ directory from a session transcript. POST /api/praxis/browse opens the OS native folder picker dialog so users can select the project path visually.
 - App.tsx uses a single unified render — no early returns that unmount the layout; FileUpload stays mounted (hidden) during active recording to preserve MediaRecorder state.
+- Recording crash recovery: audio chunks auto-save to IndexedDB every 30 seconds; on reload, recovered audio is offered for upload via a recovery banner.
 
 This route documents the August web app's technical architecture: how the client, server, and local whisper.cpp inference fit together.
 
@@ -42,6 +43,9 @@ Give any agent working on the codebase a map of the client/server split, how a s
 - Windows non-ASCII paths are converted to 8.3 short paths via a toSafePath helper before invoking the binary; toSafePath is a passthrough on macOS.
 - The repo-root .env is loaded in config.ts before config is built; WHISPER_BIN_PATH and WHISPER_MODEL_PATH env vars override the default binary and model paths.
 - Timestamp offsets in this build's whisper-cli --output-json-full output are milliseconds, not centiseconds — do not assume centiseconds when reading segment timestamps.
+- MediaRecorder.start(30000) uses a 30-second timeslice so ondataavailable fires periodically, enabling IndexedDB auto-save during recording.
+- Recording crash recovery uses IndexedDB database "august-recording-recovery" — saves mic (and optionally system) Blob, mimeType, language, and dualTrack flag; client/src/services/recordingRecovery.ts is the helper.
+- A beforeunload handler prevents accidental tab close during active recording.
 - The browser recorder supports selecting a microphone and an optional "Capture system audio" toggle — when enabled, getDisplayMedia() captures system audio and both tracks are recorded as separate files, then uploaded together in a single request to create one session with dualTrack: true.
 - Dual-track sessions transcribe mic and system audio in parallel, then mergeDualStream interleaves segments chronologically with [Me]/[Them] role labels.
 - Sessions shorter than 30 seconds are auto-deleted by the server after transcription completes (likely wrong audio source in dual-track recording).

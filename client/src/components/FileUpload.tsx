@@ -6,7 +6,8 @@ import RecordingModePicker, { type RecordingMode } from './RecordingModePicker';
 import LanguagePicker from './LanguagePicker';
 import MicPicker from './MicPicker';
 import LiveTranscriptPanel, { type LiveLine, type LiveStatus } from './LiveTranscriptPanel';
-import { LiveTranscriptionClient } from '../services/liveTranscriptionClient';
+import { LiveTranscriptionClient, type LiveEngine } from '../services/liveTranscriptionClient';
+import { saveRecordingProgress, getRecoveredRecording, clearRecoveredRecording, type RecoveredRecording } from '../services/recordingRecovery';
 
 const ACCEPTED_EXTENSIONS = ['.wav', '.mp3', '.ogg', '.flac', '.m4a'];
 const AUDIO_BARS_COUNT = 12;
@@ -15,6 +16,7 @@ const BAR_BASE_HEIGHT = [14, 8, 12, 6, 15, 10, 7, 13, 6, 11, 9, 14];
 interface FileUploadProps {
   onUploaded: () => void;
   onRecordingChange?: (recording: boolean) => void;
+  groqAvailable?: boolean;
 }
 
 function isAcceptedFile(file: File): boolean {
@@ -33,7 +35,7 @@ function formatBytes(bytes: number): string {
   return `${Math.round(bytes / (1024 * 1024))} MB`;
 }
 
-const FileUpload: React.FC<FileUploadProps> = ({ onUploaded, onRecordingChange }) => {
+const FileUpload: React.FC<FileUploadProps> = ({ onUploaded, onRecordingChange, groqAvailable }) => {
   const { theme, toggle: toggleTheme } = useTheme();
   const [language, setLanguage] = useState<TranscriptionLanguage>('ru');
   const [isDragging, setIsDragging] = useState(false);
@@ -54,7 +56,9 @@ const FileUpload: React.FC<FileUploadProps> = ({ onUploaded, onRecordingChange }
   const [liveLines, setLiveLines] = useState<LiveLine[]>([]);
   const [liveStatus, setLiveStatus] = useState<LiveStatus>('connecting');
   const [liveError, setLiveError] = useState<string | null>(null);
+  const [liveWarning, setLiveWarning] = useState<string | null>(null);
   const [liveMicUnavailable, setLiveMicUnavailable] = useState(false);
+  const [recoveredRecording, setRecoveredRecording] = useState<RecoveredRecording | null>(null);
   const liveClientRef = useRef<LiveTranscriptionClient | null>(null);
 
   const fileInputRef = useRef<HTMLInputElement>(null);
@@ -149,9 +153,10 @@ const FileUpload: React.FC<FileUploadProps> = ({ onUploaded, onRecordingChange }
   }, []);
 
   const startLiveTranscription = useCallback(
-    (micStream: MediaStream | null, systemStream: MediaStream | null) => {
+    (micStream: MediaStream | null, systemStream: MediaStream | null, engine: LiveEngine = 'local') => {
       setLiveLines([]);
       setLiveError(null);
+      setLiveWarning(null);
       setLiveMicUnavailable(false);
       setLiveStatus('connecting');
       setLiveActive(true);
@@ -170,17 +175,20 @@ const FileUpload: React.FC<FileUploadProps> = ({ onUploaded, onRecordingChange }
         },
         onStatusChange: setLiveStatus,
         onError: setLiveError,
+        onWarning: setLiveWarning,
         onMicUnavailable: () => setLiveMicUnavailable(true),
       });
       liveClientRef.current = client;
-      client.start(micStream, systemStream, language);
+      client.start(micStream, systemStream, language, engine);
     },
     [language],
   );
 
-  const startRecording = useCallback(async (liveMode: boolean = false) => {
+  const startRecording = useCallback(async (liveMode: boolean = false, engine: LiveEngine = 'local') => {
     setError(null);
     try {
+      void clearRecoveredRecording();
+      setRecoveredRecording(null);
       const micConstraints: MediaTrackConstraints | boolean = selectedMicId
         ? { deviceId: { exact: selectedMicId } }
         : true;
@@ -230,7 +238,16 @@ const FileUpload: React.FC<FileUploadProps> = ({ onUploaded, onRecordingChange }
         : new MediaRecorder(micStream);
 
       micRecorder.ondataavailable = (event) => {
-        if (event.data.size > 0) recordedChunksRef.current.push(event.data);
+        if (event.data.size > 0) {
+          recordedChunksRef.current.push(event.data);
+          void saveRecordingProgress(
+            recordedChunksRef.current,
+            captureSystemAudio ? soundChunksRef.current : null,
+            micRecorder.mimeType || 'audio/webm',
+            language,
+            captureSystemAudio,
+          );
+        }
       };
 
       micRecorder.onstop = async () => {
@@ -304,7 +321,7 @@ const FileUpload: React.FC<FileUploadProps> = ({ onUploaded, onRecordingChange }
         };
 
         soundRecorderRef.current = soundRecorder;
-        soundRecorder.start();
+        soundRecorder.start(30000);
 
         const ctx = new AudioContext();
         audioContextRef.current = ctx;
@@ -316,7 +333,7 @@ const FileUpload: React.FC<FileUploadProps> = ({ onUploaded, onRecordingChange }
         levelStream = dest.stream;
       }
 
-      micRecorder.start();
+      micRecorder.start(30000);
 
       setElapsedSeconds(0);
       const startTime = Date.now();
@@ -356,7 +373,7 @@ const FileUpload: React.FC<FileUploadProps> = ({ onUploaded, onRecordingChange }
       onRecordingChange?.(true);
 
       if (liveMode) {
-        startLiveTranscription(micStream, liveSystemStream);
+        startLiveTranscription(micStream, liveSystemStream, engine);
       }
     } catch (err) {
       setError(
@@ -396,12 +413,26 @@ const FileUpload: React.FC<FileUploadProps> = ({ onUploaded, onRecordingChange }
     }
     analyserRef.current = null;
     setAudioLevels(new Array(AUDIO_BARS_COUNT).fill(0));
+    void clearRecoveredRecording();
   }, []);
 
   useEffect(() => {
     return () => {
       liveClientRef.current?.stop();
     };
+  }, []);
+
+  useEffect(() => {
+    if (!isRecording) return;
+    const handler = (e: BeforeUnloadEvent) => { e.preventDefault(); };
+    window.addEventListener('beforeunload', handler);
+    return () => window.removeEventListener('beforeunload', handler);
+  }, [isRecording]);
+
+  useEffect(() => {
+    getRecoveredRecording().then((rec) => {
+      if (rec) setRecoveredRecording(rec);
+    }).catch(() => {});
   }, []);
 
   const handleRecordButtonClick = useCallback(() => {
@@ -413,9 +444,9 @@ const FileUpload: React.FC<FileUploadProps> = ({ onUploaded, onRecordingChange }
   }, [isRecording, stopRecording]);
 
   const handleModeSelect = useCallback(
-    (mode: RecordingMode) => {
+    (mode: RecordingMode, engine?: LiveEngine) => {
       setShowModePicker(false);
-      void startRecording(mode === 'live');
+      void startRecording(mode === 'live', engine);
     },
     [startRecording],
   );
@@ -437,7 +468,41 @@ const FileUpload: React.FC<FileUploadProps> = ({ onUploaded, onRecordingChange }
     setLiveHidden(false);
     setLiveLines([]);
     setLiveError(null);
+    setLiveWarning(null);
     setLiveMicUnavailable(false);
+  }, []);
+
+  const handleRecoveryUpload = useCallback(async () => {
+    if (!recoveredRecording) return;
+    const { micBlob, systemBlob, mimeType, language: recLang, dualTrack } = recoveredRecording;
+    setRecoveredRecording(null);
+    setIsUploading(true);
+    setUploadProgress(null);
+    setError(null);
+    try {
+      const ext = mimeType.includes('wav') ? 'wav' : 'webm';
+      const ts = Date.now();
+      if (dualTrack && systemBlob) {
+        const micFile = new File([micBlob], `recovered-${ts}-mic.${ext}`, { type: mimeType });
+        const sysFile = new File([systemBlob], `recovered-${ts}-system.${ext}`, { type: mimeType });
+        await uploadDualAudio(micFile, sysFile, recLang, setUploadProgress);
+      } else {
+        const micFile = new File([micBlob], `recovered-${ts}.${ext}`, { type: mimeType });
+        await uploadAudio(micFile, recLang, setUploadProgress);
+      }
+      onUploaded();
+    } catch (err) {
+      setError((err as Error).message || 'Recovery upload failed');
+    } finally {
+      setIsUploading(false);
+      setUploadProgress(null);
+    }
+    void clearRecoveredRecording();
+  }, [recoveredRecording, onUploaded]);
+
+  const handleRecoveryDismiss = useCallback(() => {
+    setRecoveredRecording(null);
+    void clearRecoveredRecording();
   }, []);
 
   return (
@@ -543,7 +608,7 @@ const FileUpload: React.FC<FileUploadProps> = ({ onUploaded, onRecordingChange }
         </button>
 
         {showModePicker && (
-          <RecordingModePicker onSelect={handleModeSelect} onClose={() => setShowModePicker(false)} />
+          <RecordingModePicker onSelect={handleModeSelect} onClose={() => setShowModePicker(false)} groqAvailable={groqAvailable} />
         )}
       </div>
 
@@ -558,6 +623,18 @@ const FileUpload: React.FC<FileUploadProps> = ({ onUploaded, onRecordingChange }
               LIVE
             </button>
           )}
+        </div>
+      )}
+
+      {recoveredRecording && !isRecording && !isUploading && (
+        <div className="recording-recovery-banner">
+          <span className="recovery-banner-text">
+            Recovered {formatBytes(recoveredRecording.micBlob.size + (recoveredRecording.systemBlob?.size || 0))} from interrupted session
+          </span>
+          <div className="recovery-banner-actions">
+            <button type="button" className="recovery-btn recovery-btn--upload" onClick={handleRecoveryUpload}>Upload</button>
+            <button type="button" className="recovery-btn recovery-btn--dismiss" onClick={handleRecoveryDismiss}>Dismiss</button>
+          </div>
         </div>
       )}
 
@@ -605,6 +682,7 @@ const FileUpload: React.FC<FileUploadProps> = ({ onUploaded, onRecordingChange }
           lines={liveLines}
           status={liveStatus}
           error={liveError}
+          warning={liveWarning}
           micUnavailable={liveMicUnavailable}
           onPause={handleLivePause}
           onResume={handleLiveResume}

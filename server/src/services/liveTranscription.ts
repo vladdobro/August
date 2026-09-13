@@ -16,6 +16,7 @@ import { WebSocketServer, WebSocket, type RawData } from 'ws';
 import { config } from '../config.js';
 import { runWhisper } from './whisper.js';
 import { FILLER_ONLY_TEXTS, isHallucination, normalize, stripCreditHallucination } from './transcriptMerger.js';
+import { transcribeWithGroq, GroqRateLimitError, GroqApiError } from './groqTranscription.js';
 
 type Speaker = 'Me' | 'Them';
 
@@ -129,6 +130,8 @@ export function setupLiveTranscription(server: HttpServer): void {
     let stopped = false;
     let paused = false;
     let consecutiveFailures = 0;
+    let engine: 'local' | 'groq' = 'local';
+    let groqFallbackWarned = false;
 
     const send = (payload: unknown) => {
       if (ws.readyState === WebSocket.OPEN) {
@@ -153,7 +156,27 @@ export function setupLiveTranscription(server: HttpServer): void {
 
         try {
           await writeWav(wavPath, chunk.samples);
-          const text = await transcribeChunk(wavPath, chunk.language);
+          let text: string;
+
+          if (engine === 'groq') {
+            try {
+              text = await transcribeWithGroq(wavPath, chunk.language);
+            } catch (groqErr) {
+              if (groqErr instanceof GroqRateLimitError) {
+                if (!groqFallbackWarned) {
+                  send({ type: 'warning', message: 'Groq rate limit — falling back to local whisper' });
+                  groqFallbackWarned = true;
+                }
+              } else {
+                send({ type: 'warning', message: 'Groq unavailable — switching to local whisper' });
+                engine = 'local';
+              }
+              text = await transcribeChunk(wavPath, chunk.language);
+            }
+          } else {
+            text = await transcribeChunk(wavPath, chunk.language);
+          }
+
           consecutiveFailures = 0;
 
           if (!isLikelyFiller(text)) {
@@ -208,6 +231,11 @@ export function setupLiveTranscription(server: HttpServer): void {
           case 'resume':
             paused = false;
             if (queue.length > 0) void processQueue();
+            break;
+          case 'config':
+            if (msg.engine === 'groq' || msg.engine === 'local') {
+              engine = msg.engine;
+            }
             break;
         }
       } catch {

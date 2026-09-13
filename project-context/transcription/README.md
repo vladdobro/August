@@ -16,7 +16,8 @@
 - getAudioDuration() uses ffprobe to measure audio length before transcription starts, enabling accurate time estimates.
 - SessionMetadata.estimatedDuration (seconds) is computed at transcription start and sent to the client for countdown display.
 - Orphaned sessions stuck in "transcribing" with no active process are auto-recovered to "failed" on server startup.
-- Live transcription mode streams real-time audio chunks over WebSocket to whisper-cli — see child route live-transcription/.
+- Live transcription mode streams real-time audio chunks over WebSocket to whisper-cli or Groq Whisper API (opt-in) — see child route live-transcription/.
+- Live transcription supports two engines: local whisper-cli (default) and Groq Whisper API (opt-in via GROQ_API_KEY); post-recording transcription is always local.
 - Per-platform binaries, the setup script, and model auto-download live in the whisper-setup child route.
 
 This route governs how audio becomes a transcript: the whisper.cpp CLI wrapper, the TranscriptMerger cleanup pass, and the session states in between.

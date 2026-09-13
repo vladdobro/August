@@ -53,6 +53,7 @@ export interface AppConfig {
   uploadsDir: string;
   // Metal on Apple Silicon, Vulkan on Windows x64; other platforms keep --no-gpu.
   whisperUseGpu: boolean;
+  groqApiKey: string | null;
 }
 
 export const config: AppConfig = {
@@ -68,6 +69,7 @@ export const config: AppConfig = {
   whisperUseGpu:
     (process.platform === 'darwin' && process.arch === 'arm64') ||
     (process.platform === 'win32' && process.arch === 'x64'),
+  groqApiKey: process.env.GROQ_API_KEY?.trim() || null,
 };
 
 export const AUDIO_BOOST = {

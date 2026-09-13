@@ -9,6 +9,7 @@
 
 export type Speaker = 'Me' | 'Them';
 export type LiveStatus = 'connecting' | 'listening' | 'paused' | 'interrupted' | 'stopped';
+export type LiveEngine = 'local' | 'groq';
 
 const CHUNK_DURATION_SEC = 4.0;
 const OVERLAP_DURATION_SEC = 1.0;
@@ -22,6 +23,7 @@ interface LiveTranscriptionCallbacks {
   onTranscript: (speaker: Speaker, text: string) => void;
   onStatusChange: (status: LiveStatus) => void;
   onError: (message: string) => void;
+  onWarning: (message: string) => void;
   onMicUnavailable: () => void;
 }
 
@@ -117,14 +119,16 @@ export class LiveTranscriptionClient {
   private paused = false;
   private stopped = false;
   private language = 'auto';
+  private engine: LiveEngine = 'local';
   private callbacks: LiveTranscriptionCallbacks;
 
   constructor(callbacks: LiveTranscriptionCallbacks) {
     this.callbacks = callbacks;
   }
 
-  start(micStream: MediaStream | null, systemStream: MediaStream | null, language: string): void {
+  start(micStream: MediaStream | null, systemStream: MediaStream | null, language: string, engine: LiveEngine = 'local'): void {
     this.language = language;
+    this.engine = engine;
     this.stopped = false;
     this.paused = false;
     this.callbacks.onStatusChange('connecting');
@@ -137,6 +141,9 @@ export class LiveTranscriptionClient {
 
     ws.onopen = () => {
       if (this.stopped) { ws.close(); return; }
+      if (this.engine !== 'local') {
+        ws.send(JSON.stringify({ type: 'config', engine: this.engine }));
+      }
       this.callbacks.onStatusChange('listening');
       this.attachAudio(micStream, systemStream);
     };
@@ -150,6 +157,8 @@ export class LiveTranscriptionClient {
         } else if (msg.type === 'error') {
           this.callbacks.onError(msg.message || 'Live transcription error');
           this.callbacks.onStatusChange('interrupted');
+        } else if (msg.type === 'warning') {
+          this.callbacks.onWarning(msg.message || 'Warning');
         }
       } catch {
         // ignore malformed message
