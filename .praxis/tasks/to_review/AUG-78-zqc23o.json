@@ -1,0 +1,15 @@
+{
+  "id": "AUG-78-zqc23o",
+  "assignee": "jarvis.json",
+  "priority": "medium",
+  "status": "to_review",
+  "title": "[AUG-78] Transcription timer missed",
+  "why_we_need_this": "I've just sent a file to transcription and didnt see the timer how time remain to end the transcription\nWhere did it gone?\n",
+  "acceptance_criteria": "",
+  "important_constraints": "",
+  "labels": [],
+  "on_hold_reason": "",
+  "contextRouterIncluded": false,
+  "created_at": 1789392072743,
+  "column_entered_at": 1789392529690
+}

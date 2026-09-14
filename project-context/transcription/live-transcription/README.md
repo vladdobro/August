@@ -10,6 +10,8 @@
 - Groq fallback: rate limit (20 req/min) falls back to local whisper per-chunk; API errors switch engine to local permanently for that connection.
 - Key files: server/src/services/liveTranscription.ts, server/src/services/groqTranscription.ts, client/src/services/liveTranscriptionClient.ts.
 - Post-recording full-file transcription remains local whisper only — Groq is exclusively a live mode option.
+- Live panel buttons are a 2×2 grid: Pause (yellow) + Copy All (green) top row, Stop (red filled) + Clear All (red frame) bottom row.
+- Stop and Clear All require a confirmation dialog ("Are you sure?") before executing.
 
 One-sentence description: Real-time audio-to-transcript streaming during a live call via WebSocket, with pluggable transcription engines (local whisper-cli or Groq Whisper API).
 
@@ -35,7 +37,11 @@ Document the mechanics of the live transcription mode — how audio is captured 
 - Server-side transcription: each chunk is written as a temporary 16kHz mono 16-bit WAV file in server/data/live-tmp/, routed to either local whisper-cli or Groq based on the connection's engine setting, then the temp files are deleted.
 - Filler and hallucination filtering: the server reuses FILLER_ONLY_TEXTS, isHallucination, and normalize from transcriptMerger.ts to filter live chunks identically to the batch pipeline.
 - JSON control messages: the client sends {type: "config", engine}, {type: "pause"}, {type: "resume"}, {type: "stop"} as text frames; the server sends {type: "transcript", speaker, text}, {type: "warning", message}, and {type: "error", message} back.
-- LiveTranscriptPanel: a fixed 340px right-side panel (client/src/components/LiveTranscriptPanel.tsx) displaying interleaved Me/Them lines with auto-scroll, pause/resume, copy-all, and explicit Stop button.
+- LiveTranscriptPanel: a fixed 340px right-side panel (client/src/components/LiveTranscriptPanel.tsx) displaying interleaved Me/Them lines with auto-scroll and a 2×2 button grid.
+- Panel button grid layout: Row 1 = Pause/Resume + Copy All; Row 2 = Stop + Clear All. CSS uses grid-template-columns: 1fr 1fr.
+- Button color scheme: Pause = yellow frame default / yellow fill on hover; Copy All = green frame default / green fill on hover; Stop = red filled always; Clear All = red frame default / red fill on hover.
+- Confirmation dialog: clicking Stop or Clear All shows an inline confirmation bar ("Are you sure?") with "Yes, proceed" (red) and "No, return" (green) buttons instead of executing immediately.
+- Clear All action: clears all transcript lines (setLiveLines([])) without stopping the WebSocket or audio capture — the session continues recording.
 - Panel hide/reopen: closing the panel (×) sets liveHidden=true, hiding it without stopping the WebSocket or clearing lines. A pulsing LIVE badge appears in the recording info bar; clicking it sets liveHidden=false, reopening the panel with all accumulated lines intact. A separate Stop button in the panel calls handleLiveStop to fully terminate the live client.
 - Line coalescing: consecutive transcript results from the same speaker append to the previous line rather than creating a new line.
 - HTTP server upgrade: server/src/index.ts creates an http.Server wrapping the Express app, passes it to setupLiveTranscription() for WebSocket upgrade handling, then calls httpServer.listen().
@@ -58,6 +64,8 @@ Document the mechanics of the live transcription mode — how audio is captured 
 - LiveTranscriptionClient.stop() disconnects all Web Audio nodes, closes the AudioContext, sends a stop control message, and closes the WebSocket.
 - The live panel closes automatically when recording stops (stopRecording sets liveActive and liveHidden to false).
 - Closing the panel (×) hides it without stopping transcription — only the explicit Stop button or stopRecording terminates the live client.
+- Clear All clears displayed lines without stopping transcription, audio capture, or the WebSocket connection.
+- Stop and Clear All both gate behind a shared confirmAction state ('stop' | 'clearAll' | null) — only one confirmation dialog can be active at a time.
 - The Vite dev proxy must have ws: true on the /api proxy config for WebSocket upgrade forwarding.
 
 ## Route-Specific Constraints

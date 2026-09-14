@@ -14,7 +14,7 @@
 - Audio boost mode applies ffmpeg preprocessing (highpass, lowpass, volume gain, loudnorm) to quiet mic tracks before whisper runs.
 - performanceTracker.ts tracks rolling processingTime/audioDuration ratios (last 10) in data/perf-stats.json for ETA estimation.
 - getAudioDuration() uses ffprobe to measure audio length before transcription starts, enabling accurate time estimates.
-- SessionMetadata.estimatedDuration (seconds) is computed at transcription start and sent to the client for countdown display.
+- SessionMetadata.estimatedDuration (seconds) is computed synchronously in the upload/retranscribe endpoint and included in the response for immediate countdown display.
 - Orphaned sessions stuck in "transcribing" with no active process are auto-recovered to "failed" on server startup.
 - Live transcription mode streams real-time audio chunks over WebSocket to whisper-cli or Groq Whisper API (opt-in) — see child route live-transcription/.
 - Live transcription supports two engines: local whisper-cli (default) and Groq Whisper API (opt-in via GROQ_API_KEY); post-recording transcription is always local.
@@ -37,11 +37,11 @@ Document the exact mechanics of turning a recorded or uploaded audio file into a
 - Cancellation: cancelTranscription(sessionId) kills all tracked child processes for that session. The cancel endpoint (POST /api/sessions/:id/cancel) calls this and sets status to "failed" with "Cancelled by user". The catch block in runTranscription/runDualTranscription skips overwriting if status is already "failed" to avoid a race with the cancel endpoint.
 - Failed-session recovery: when a session is in "failed" state, the UI shows a "Transcribe again" button with language and boost options. Clicking it calls POST /api/sessions/:id/retranscribe, which runs a preflight check (whisper-cli binary exists, model file exists) before flipping the session to "transcribing". If audio files are missing, the endpoint returns 400 and the UI shows "Audio file no longer exists" with the action disabled. The header Redo node also triggers retranscription independently.
 - Orphan recovery: recoverOrphanedSessions() runs on server startup — any session in "transcribing" state with no active tracked process is moved to "failed" with an explanatory error message.
-- Transcription metadata: SessionMetadata includes transcriptionStartedAt (ISO timestamp set when transcription begins) used by the client to display elapsed time.
+- Transcription metadata: SessionMetadata includes transcriptionStartedAt (ISO timestamp) and estimatedDuration (seconds), both set synchronously in the upload/retranscribe endpoint before the response — ensures the client has timer data immediately.
 - Audio boost preprocessing: boostAudio() in whisper.ts applies an ffmpeg filter chain (highpass 100Hz, lowpass 4000Hz, 5x volume gain, loudnorm normalization) and converts to 16kHz mono WAV. Used when the retranscribe endpoint receives boost=true. Boosted files are saved as {basename}-boosted.wav next to the original and deleted after transcription completes.
 - ffmpeg availability: checkFfmpegAvailable() probes ffmpeg at runtime. The /api/health endpoint reports ffmpegAvailable and ffmpegMessage (the shared FFMPEG_MISSING_MESSAGE when unavailable); the client disables the boost toggle when false. Server startup also logs FFMPEG_MISSING_MESSAGE as a pre-flight check. The retranscribe endpoint validates ffmpeg presence before accepting a boost request.
 - Performance tracking: server/src/services/performanceTracker.ts records the ratio of processing time to audio duration after each completed transcription. Stores the last 10 entries in data/perf-stats.json, separated by single vs dual track. Used to estimate future transcription durations.
-- ETA estimation: at transcription start, getAudioDuration() probes the audio file via ffprobe, then getEstimatedDuration() multiplies by the rolling average ratio (default 1.5x for single, 2.85x for dual-track). The result is saved as estimatedDuration on the session metadata.
+- ETA estimation: the upload/retranscribe endpoint calls getAudioDuration() (ffprobe) then getEstimatedDuration() (rolling average ratio: default 1.5x single, 2.85x dual-track) synchronously before responding — the response includes estimatedDuration so the client can render the Chronometer Ring immediately.
 - Chronometer Ring UI: during transcribing state, the client renders a circular SVG progress ring with a requestAnimationFrame-driven MM:SS:mm countdown. Three visual phases: amber (normal), red (< 60 seconds remaining), zeroed (0:00:00 with "Exterminatus Initiated" banner and pulsing digits).
 
 ## Invariants
@@ -62,6 +62,7 @@ Document the exact mechanics of turning a recorded or uploaded audio file into a
 - All whisper-cli spawning goes through runWhisper() — never duplicate invocation logic in callers.
 - ffmpeg-missing errors use the shared FFMPEG_MISSING_MESSAGE with per-platform install commands.
 - Transcription always runs as a background process — the API never blocks a request waiting for whisper-cli to finish.
+- Timer metadata (transcriptionStartedAt, duration, estimatedDuration) must be set in the endpoint handler before responding — never in the fire-and-forget background function, or the client will miss the Chronometer Ring on first render.
 - Retranscription reuses the session's existing audio file but allows a language override — the session's language field is updated to the chosen language.
 - Retranscription defaults to Russian ('ru') when no language is explicitly specified in the request body.
 - Retranscription cancels any active transcription for the session before starting a new one.

@@ -19,6 +19,7 @@ interface LiveTranscriptPanelProps {
   onCopyAll: () => void;
   onClose: () => void;
   onStop: () => void;
+  onClearAll: () => void;
 }
 
 const STATUS_LABEL: Record<LiveStatus, string> = {
@@ -30,10 +31,11 @@ const STATUS_LABEL: Record<LiveStatus, string> = {
 };
 
 const LiveTranscriptPanel: React.FC<LiveTranscriptPanelProps> = ({
-  lines, status, error, warning, micUnavailable, onPause, onResume, onCopyAll, onClose, onStop,
+  lines, status, error, warning, micUnavailable, onPause, onResume, onCopyAll, onClose, onStop, onClearAll,
 }) => {
   const bodyRef = useRef<HTMLDivElement>(null);
   const [autoScroll, setAutoScroll] = useState(true);
+  const [confirmAction, setConfirmAction] = useState<'stop' | 'clearAll' | null>(null);
 
   useEffect(() => {
     if (autoScroll && bodyRef.current) {
@@ -53,6 +55,12 @@ const LiveTranscriptPanel: React.FC<LiveTranscriptPanelProps> = ({
     if (bodyRef.current) {
       bodyRef.current.scrollTop = bodyRef.current.scrollHeight;
     }
+  };
+
+  const handleConfirm = () => {
+    if (confirmAction === 'stop') onStop();
+    else if (confirmAction === 'clearAll') onClearAll();
+    setConfirmAction(null);
   };
 
   const isPaused = status === 'paused';
@@ -88,20 +96,48 @@ const LiveTranscriptPanel: React.FC<LiveTranscriptPanelProps> = ({
         <div className="live-panel-actions">
           <button
             type="button"
-            className={`live-panel-btn${!isPaused ? ' live-panel-btn--pause' : ''}`}
+            className={`live-panel-btn live-panel-btn--pause`}
             onClick={isPaused ? onResume : onPause}
             disabled={isDone}
           >
             {isPaused ? 'Resume' : 'Pause'}
           </button>
-          <button type="button" className="live-panel-btn" onClick={onCopyAll} disabled={lines.length === 0}>
+          <button type="button" className="live-panel-btn live-panel-btn--copy" onClick={onCopyAll} disabled={lines.length === 0}>
             Copy All
           </button>
-          <button type="button" className="live-panel-btn live-panel-btn--stop" onClick={onStop} disabled={isDone}>
+          <button
+            type="button"
+            className="live-panel-btn live-panel-btn--stop"
+            onClick={() => setConfirmAction('stop')}
+            disabled={isDone}
+          >
             Stop
+          </button>
+          <button
+            type="button"
+            className="live-panel-btn live-panel-btn--clear"
+            onClick={() => setConfirmAction('clearAll')}
+            disabled={lines.length === 0}
+          >
+            Clear All
           </button>
         </div>
       </div>
+
+      {confirmAction && (
+        <div className="live-panel-confirm">
+          <span className="live-panel-confirm-text">Are you sure?</span>
+          <div className="live-panel-confirm-actions">
+            <button type="button" className="live-panel-btn live-panel-btn--confirm-yes" onClick={handleConfirm}>
+              Yes, proceed
+            </button>
+            <button type="button" className="live-panel-btn live-panel-btn--confirm-no" onClick={() => setConfirmAction(null)}>
+              No, return
+            </button>
+          </div>
+        </div>
+      )}
+
       <div className="live-panel-divider" aria-hidden="true">
         <span className="live-panel-divider-dot" />
         <span className="live-panel-divider-dot" />

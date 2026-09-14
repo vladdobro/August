@@ -473,6 +473,10 @@ const FileUpload: React.FC<FileUploadProps> = ({ onUploaded, onRecordingChange, 
     setLiveMicUnavailable(false);
   }, []);
 
+  const handleLiveClearAll = useCallback(() => {
+    setLiveLines([]);
+  }, []);
+
   const handleRecoveryUpload = useCallback(async () => {
     if (!recoveredRecording) return;
     const { micBlob, systemBlob, mimeType, language: recLang, dualTrack } = recoveredRecording;
@@ -690,6 +694,7 @@ const FileUpload: React.FC<FileUploadProps> = ({ onUploaded, onRecordingChange, 
           onCopyAll={handleLiveCopyAll}
           onClose={handleLiveHide}
           onStop={handleLiveStop}
+          onClearAll={handleLiveClearAll}
         />
       )}
     </div>

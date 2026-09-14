@@ -1,0 +1,15 @@
+{
+  "id": "AUG-76-m84528",
+  "assignee": "jarvis.json",
+  "priority": "medium",
+  "status": "completed",
+  "title": "[AUG-76] FE bug  Update Groq Key",
+  "why_we_need_this": "\nUpdate Groq Key window doesnt fit FE BB requirements",
+  "acceptance_criteria": "",
+  "important_constraints": "",
+  "labels": [],
+  "on_hold_reason": "",
+  "contextRouterIncluded": false,
+  "created_at": 1789340373282,
+  "column_entered_at": 1789374998844
+}

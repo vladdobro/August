@@ -44,9 +44,8 @@ const GroqKeyModal: React.FC<GroqKeyModalProps> = ({ groqAvailable, onClose, onS
   };
 
   return (
-    <>
-      <div className="mode-picker-backdrop" onClick={onClose} />
-      <div className="groq-setup-card">
+    <div className="groq-setup-backdrop" onClick={onClose}>
+      <div className="groq-setup-card" onClick={e => e.stopPropagation()}>
         <div className="groq-setup-header">
           <span className="groq-setup-icon">&#9889;</span>
           <span>{groqAvailable ? 'Update Groq Key' : 'Set up Groq API'}</span>
@@ -101,7 +100,7 @@ const GroqKeyModal: React.FC<GroqKeyModalProps> = ({ groqAvailable, onClose, onS
           </button>
         </div>
       </div>
-    </>
+    </div>
   );
 };
 

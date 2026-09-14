@@ -1,0 +1,15 @@
+{
+  "id": "AUG-77-7ck6xf",
+  "assignee": "jarvis.json",
+  "priority": "medium",
+  "status": "to_review",
+  "title": "[AUG-77] Light Green Main titles",
+  "why_we_need_this": "I expected that Main titles on each page will be light green, but after the FE audit they all are normal green\nCan we check why this happen and fix?",
+  "acceptance_criteria": "",
+  "important_constraints": "",
+  "labels": [],
+  "on_hold_reason": "",
+  "contextRouterIncluded": false,
+  "created_at": 1789375092389,
+  "column_entered_at": 1789392118777
+}

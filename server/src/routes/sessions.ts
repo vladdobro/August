@@ -33,14 +33,6 @@ function normalizeLanguage(value: unknown): TranscriptionLanguage {
 async function runTranscription(sessionId: string, audioPath: string, language: TranscriptionLanguage, boost = false) {
   let boostedPath: string | null = null;
   try {
-    const audioDur = await getAudioDuration(audioPath);
-    const estDur = audioDur > 0 ? await getEstimatedDuration(audioDur, false) : 0;
-    await sessionManager.updateSession(sessionId, {
-      transcriptionStartedAt: new Date().toISOString(),
-      duration: audioDur > 0 ? audioDur : undefined,
-      ...(estDur > 0 ? { estimatedDuration: estDur } : {}),
-    });
-
     let inputPath: string;
     if (boost) {
       boostedPath = await boostAudio(audioPath);
@@ -96,14 +88,6 @@ async function runDualTranscription(
   let boostedMicPath: string | null = null;
   let boostedSystemPath: string | null = null;
   try {
-    const audioDur = await getAudioDuration(micPath);
-    const estDur = audioDur > 0 ? await getEstimatedDuration(audioDur, true) : 0;
-    await sessionManager.updateSession(sessionId, {
-      transcriptionStartedAt: new Date().toISOString(),
-      duration: audioDur > 0 ? audioDur : undefined,
-      ...(estDur > 0 ? { estimatedDuration: estDur } : {}),
-    });
-
     let micInput: string;
     let systemInput: string;
     if (boost) {
@@ -289,7 +273,14 @@ router.post('/upload', upload.fields([
       await fs.copyFile(systemFile!.path, sysDest);
       await fs.unlink(systemFile!.path).catch(() => {});
 
-      const inProgress = await sessionManager.updateSession(session.id, { status: 'transcribing' });
+      const audioDur = await getAudioDuration(micDest);
+      const estDur = audioDur > 0 ? await getEstimatedDuration(audioDur, true) : 0;
+      const inProgress = await sessionManager.updateSession(session.id, {
+        status: 'transcribing',
+        transcriptionStartedAt: new Date().toISOString(),
+        duration: audioDur > 0 ? audioDur : undefined,
+        ...(estDur > 0 ? { estimatedDuration: estDur } : {}),
+      });
       void runDualTranscription(session.id, micDest, sysDest, language);
       res.status(201).json(inProgress ?? session);
     } else {
@@ -298,7 +289,14 @@ router.post('/upload', upload.fields([
       await fs.copyFile(micFile.path, destPath);
       await fs.unlink(micFile.path).catch(() => {});
 
-      const inProgress = await sessionManager.updateSession(session.id, { status: 'transcribing' });
+      const audioDur = await getAudioDuration(destPath);
+      const estDur = audioDur > 0 ? await getEstimatedDuration(audioDur, false) : 0;
+      const inProgress = await sessionManager.updateSession(session.id, {
+        status: 'transcribing',
+        transcriptionStartedAt: new Date().toISOString(),
+        duration: audioDur > 0 ? audioDur : undefined,
+        ...(estDur > 0 ? { estimatedDuration: estDur } : {}),
+      });
       void runTranscription(session.id, destPath, language);
       res.status(201).json(inProgress ?? session);
     }
@@ -376,16 +374,26 @@ router.post('/:id/retranscribe', async (req, res) => {
   const audioFiles = await findAudioFiles(audioDir);
 
   if (session.dualTrack && audioFiles.mic && audioFiles.system) {
+    const audioDur = await getAudioDuration(audioFiles.mic);
+    const estDur = audioDur > 0 ? await getEstimatedDuration(audioDur, true) : 0;
     const updated = await sessionManager.updateSession(req.params.id, {
       status: 'transcribing',
       error: undefined,
+      transcriptionStartedAt: new Date().toISOString(),
+      duration: audioDur > 0 ? audioDur : undefined,
+      ...(estDur > 0 ? { estimatedDuration: estDur } : {}),
     });
     void runDualTranscription(req.params.id, audioFiles.mic, audioFiles.system, language, !!boost);
     res.json(updated ?? session);
   } else if (audioFiles.single) {
+    const audioDur = await getAudioDuration(audioFiles.single);
+    const estDur = audioDur > 0 ? await getEstimatedDuration(audioDur, false) : 0;
     const updated = await sessionManager.updateSession(req.params.id, {
       status: 'transcribing',
       error: undefined,
+      transcriptionStartedAt: new Date().toISOString(),
+      duration: audioDur > 0 ? audioDur : undefined,
+      ...(estDur > 0 ? { estimatedDuration: estDur } : {}),
     });
     void runTranscription(req.params.id, audioFiles.single, language, !!boost);
     res.json(updated ?? session);

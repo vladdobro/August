@@ -1,0 +1,15 @@
+{
+  "id": "AUG-79-fo9iaa",
+  "assignee": "jarvis.json",
+  "priority": "medium",
+  "status": "to_review",
+  "title": "[AUG-79] Live transcription: clean all",
+  "why_we_need_this": "I need a button Clean All alongside the existing buttons: \nPause Copy All (first row)\nStop Clear All (second row)\n\nColours: \nPause - yellow frame, yellow filled on target\nCopy All - green frame, green filled on target\nStop - red filled\nClear All - red frame, red filled on target\n\nboth Stop and Clear All should have a confirmation dialogue window: \"are you sure?\"\nButtons there: \nYes, proceed - red frame, red filled on target\nNo, return - green frame, green filled on target",
+  "acceptance_criteria": "",
+  "important_constraints": "",
+  "labels": [],
+  "on_hold_reason": "",
+  "contextRouterIncluded": false,
+  "created_at": 1789392562897,
+  "column_entered_at": 1789392846639
+}
