@@ -273,7 +273,8 @@ router.post('/upload', upload.fields([
       await fs.copyFile(systemFile!.path, sysDest);
       await fs.unlink(systemFile!.path).catch(() => {});
 
-      const audioDur = await getAudioDuration(micDest);
+      const micWav = await ensureWav(micDest);
+      const audioDur = await getAudioDuration(micWav);
       const estDur = audioDur > 0 ? await getEstimatedDuration(audioDur, true) : 0;
       const inProgress = await sessionManager.updateSession(session.id, {
         status: 'transcribing',
@@ -289,7 +290,8 @@ router.post('/upload', upload.fields([
       await fs.copyFile(micFile.path, destPath);
       await fs.unlink(micFile.path).catch(() => {});
 
-      const audioDur = await getAudioDuration(destPath);
+      const wavPath = await ensureWav(destPath);
+      const audioDur = await getAudioDuration(wavPath);
       const estDur = audioDur > 0 ? await getEstimatedDuration(audioDur, false) : 0;
       const inProgress = await sessionManager.updateSession(session.id, {
         status: 'transcribing',
@@ -374,7 +376,8 @@ router.post('/:id/retranscribe', async (req, res) => {
   const audioFiles = await findAudioFiles(audioDir);
 
   if (session.dualTrack && audioFiles.mic && audioFiles.system) {
-    const audioDur = await getAudioDuration(audioFiles.mic);
+    const micWav = await ensureWav(audioFiles.mic);
+    const audioDur = await getAudioDuration(micWav);
     const estDur = audioDur > 0 ? await getEstimatedDuration(audioDur, true) : 0;
     const updated = await sessionManager.updateSession(req.params.id, {
       status: 'transcribing',
@@ -386,7 +389,8 @@ router.post('/:id/retranscribe', async (req, res) => {
     void runDualTranscription(req.params.id, audioFiles.mic, audioFiles.system, language, !!boost);
     res.json(updated ?? session);
   } else if (audioFiles.single) {
-    const audioDur = await getAudioDuration(audioFiles.single);
+    const wavPath = await ensureWav(audioFiles.single);
+    const audioDur = await getAudioDuration(wavPath);
     const estDur = audioDur > 0 ? await getEstimatedDuration(audioDur, false) : 0;
     const updated = await sessionManager.updateSession(req.params.id, {
       status: 'transcribing',
