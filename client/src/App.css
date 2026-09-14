@@ -3250,6 +3250,13 @@ body {
   .praxis-backdrop {
     animation: none;
   }
+
+  .mode-ring-arc--local,
+  .mode-ring-arc--groq,
+  .mode-ring-label--local,
+  .mode-ring-label--groq {
+    animation: none;
+  }
 }
 
 /* ---------------------------------------------------------------------- */
@@ -3335,16 +3342,22 @@ body {
 }
 
 .mode-ring-arc--groq {
-  stroke: var(--accent);
-  filter: drop-shadow(0 0 8px rgba(0, 200, 118, 0.3));
+  stroke: #e04040;
+  stroke-width: 14;
+  filter: drop-shadow(0 0 8px rgba(224, 64, 64, 0.3));
+  animation: engine-arc-appear 0.3s ease-out backwards;
+  animation-delay: 0.3s;
 }
 
 .mode-ring-arc--groq:hover {
-  filter: drop-shadow(0 0 16px rgba(0, 200, 118, 0.5));
+  stroke-width: 18;
+  filter: drop-shadow(0 0 16px rgba(224, 64, 64, 0.5));
 }
 
 .mode-ring-label--groq {
-  fill: var(--accent);
+  fill: #e04040;
+  animation: engine-label-appear 0.25s ease-out backwards;
+  animation-delay: 0.35s;
 }
 
 .mode-ring-label--dim {
@@ -3359,9 +3372,57 @@ body {
   font-size: 6.5px;
   font-weight: 600;
   letter-spacing: 0.08em;
-  fill: var(--accent);
+  fill: #e04040;
   opacity: 0.55;
   font-family: inherit;
+  animation: engine-label-appear 0.25s ease-out backwards;
+  animation-delay: 0.4s;
+}
+
+.mode-ring-arc--dimmed {
+  opacity: 0.15 !important;
+  pointer-events: none;
+  cursor: default;
+}
+
+.mode-ring-label--dimmed {
+  opacity: 0.15;
+}
+
+.mode-ring-arc--active {
+  opacity: 1;
+  pointer-events: none;
+  cursor: default;
+}
+
+@keyframes engine-arc-appear {
+  from {
+    opacity: 0;
+    stroke-width: 2;
+  }
+}
+
+@keyframes engine-label-appear {
+  from { opacity: 0; }
+}
+
+.mode-ring-arc--local {
+  stroke: var(--accent);
+  stroke-width: 14;
+  filter: drop-shadow(0 0 8px var(--accent-glow));
+  animation: engine-arc-appear 0.3s ease-out backwards;
+  animation-delay: 0.15s;
+}
+
+.mode-ring-arc--local:hover {
+  stroke-width: 18;
+  filter: drop-shadow(0 0 16px var(--accent-glow));
+}
+
+.mode-ring-label--local {
+  fill: var(--accent);
+  animation: engine-label-appear 0.25s ease-out backwards;
+  animation-delay: 0.2s;
 }
 
 
@@ -4106,21 +4167,34 @@ body {
   fill: #f0c040;
 }
 
-:root[data-theme='dark'] .mode-ring-arc--groq {
-  stroke: var(--accent);
+:root[data-theme='dark'] .mode-ring-arc--local {
+  stroke: #00c876;
   filter: drop-shadow(0 0 12px rgba(0, 200, 118, 0.4));
 }
 
-:root[data-theme='dark'] .mode-ring-arc--groq:hover {
+:root[data-theme='dark'] .mode-ring-arc--local:hover {
   filter: drop-shadow(0 0 20px rgba(0, 200, 118, 0.55));
 }
 
+:root[data-theme='dark'] .mode-ring-label--local {
+  fill: #00c876;
+}
+
+:root[data-theme='dark'] .mode-ring-arc--groq {
+  stroke: #e04040;
+  filter: drop-shadow(0 0 12px rgba(224, 64, 64, 0.4));
+}
+
+:root[data-theme='dark'] .mode-ring-arc--groq:hover {
+  filter: drop-shadow(0 0 20px rgba(224, 64, 64, 0.55));
+}
+
 :root[data-theme='dark'] .mode-ring-label--groq {
-  fill: var(--accent);
+  fill: #e04040;
 }
 
 :root[data-theme='dark'] .mode-ring-sublabel {
-  fill: var(--accent);
+  fill: #e04040;
 }
 
 

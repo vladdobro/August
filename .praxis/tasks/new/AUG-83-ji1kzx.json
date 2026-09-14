@@ -1,0 +1,15 @@
+{
+  "id": "AUG-83-ji1kzx",
+  "assignee": "jarvis.json",
+  "priority": "medium",
+  "status": "new",
+  "title": "[AUG-83] Pulse on target",
+  "why_we_need_this": "Add a pulse effect on every button targeted in a project",
+  "acceptance_criteria": "",
+  "important_constraints": "",
+  "labels": [],
+  "on_hold_reason": "",
+  "contextRouterIncluded": false,
+  "created_at": 1789415089970,
+  "column_entered_at": 1789415089970
+}

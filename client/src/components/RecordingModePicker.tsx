@@ -26,6 +26,8 @@ function describeArc(cx: number, cy: number, r: number, startAngle: number, endA
 
 const RING_R = 72;
 const GAP = 12;
+const ENGINE_R = 108;
+const ENGINE_GAP = 10;
 
 const GROQ_CONSOLE_URL = 'https://console.groq.com/keys';
 
@@ -61,6 +63,11 @@ const RecordingModePicker: React.FC<RecordingModePickerProps> = ({ onSelect, onC
 
   const leftLabelPos = polarToCartesian(0, 0, RING_R + 34, 270);
   const rightLabelPos = polarToCartesian(0, 0, RING_R + 34, 90);
+
+  const topEngineArc = describeArc(0, 0, ENGINE_R, GAP / 2, 90 - ENGINE_GAP / 2);
+  const botEngineArc = describeArc(0, 0, ENGINE_R, 90 + ENGINE_GAP / 2, 180 - GAP / 2);
+  const topEngineLabelPos = polarToCartesian(0, 0, ENGINE_R + 14, 78);
+  const botEngineLabelPos = polarToCartesian(0, 0, ENGINE_R + 14, 102);
 
   const handleGroqClick = () => {
     if (groqAvailable) {
@@ -185,19 +192,52 @@ const RecordingModePicker: React.FC<RecordingModePickerProps> = ({ onSelect, onC
             </>
           ) : (
             <>
+              {/* Mode ring stays visible — DEFAULT dimmed */}
               <path
                 d={leftArc}
-                className="mode-ring-arc mode-ring-arc--default"
+                className="mode-ring-arc mode-ring-arc--default mode-ring-arc--dimmed"
+              />
+              <text
+                x={leftLabelPos.x}
+                y={leftLabelPos.y}
+                className="mode-ring-label mode-ring-label--dimmed"
+                textAnchor="middle"
+                dominantBaseline="middle"
+                pointerEvents="none"
+              >
+                DEFAULT
+              </text>
+
+              {/* LIVE arc stays highlighted */}
+              <path
+                d={rightArc}
+                className="mode-ring-arc mode-ring-arc--live mode-ring-arc--active"
+              />
+              <text
+                x={rightLabelPos.x}
+                y={rightLabelPos.y}
+                className="mode-ring-label mode-ring-label--live"
+                textAnchor="middle"
+                dominantBaseline="middle"
+                pointerEvents="none"
+              >
+                LIVE
+              </text>
+
+              {/* Engine sub-arcs — outer ring, right side only */}
+              <path
+                d={topEngineArc}
+                className="mode-ring-arc mode-ring-arc--local"
                 onClick={(e) => { e.stopPropagation(); onSelect('live', 'local'); }}
                 role="menuitem"
                 tabIndex={0}
                 onKeyDown={(e) => { if (e.key === 'Enter' || e.key === ' ') { e.preventDefault(); onSelect('live', 'local'); } }}
               />
               <text
-                x={leftLabelPos.x}
-                y={leftLabelPos.y}
-                className="mode-ring-label"
-                textAnchor="middle"
+                x={topEngineLabelPos.x}
+                y={topEngineLabelPos.y}
+                className="mode-ring-label mode-ring-label--local"
+                textAnchor="start"
                 dominantBaseline="middle"
                 pointerEvents="none"
               >
@@ -205,7 +245,7 @@ const RecordingModePicker: React.FC<RecordingModePickerProps> = ({ onSelect, onC
               </text>
 
               <path
-                d={rightArc}
+                d={botEngineArc}
                 className={`mode-ring-arc mode-ring-arc--groq${!groqAvailable ? ' mode-ring-arc--needs-setup' : ''}`}
                 onClick={(e) => { e.stopPropagation(); handleGroqClick(); }}
                 role="menuitem"
@@ -213,10 +253,10 @@ const RecordingModePicker: React.FC<RecordingModePickerProps> = ({ onSelect, onC
                 onKeyDown={(e) => { if (e.key === 'Enter' || e.key === ' ') { e.preventDefault(); handleGroqClick(); } }}
               />
               <text
-                x={rightLabelPos.x}
-                y={rightLabelPos.y}
+                x={botEngineLabelPos.x}
+                y={botEngineLabelPos.y}
                 className={`mode-ring-label mode-ring-label--groq${!groqAvailable ? ' mode-ring-label--dim' : ''}`}
-                textAnchor="middle"
+                textAnchor="start"
                 dominantBaseline="middle"
                 pointerEvents="none"
               >
@@ -224,10 +264,10 @@ const RecordingModePicker: React.FC<RecordingModePickerProps> = ({ onSelect, onC
               </text>
               {!groqAvailable && (
                 <text
-                  x={rightLabelPos.x}
-                  y={rightLabelPos.y + 13}
+                  x={botEngineLabelPos.x}
+                  y={botEngineLabelPos.y + 11}
                   className="mode-ring-sublabel"
-                  textAnchor="middle"
+                  textAnchor="start"
                   dominantBaseline="middle"
                   pointerEvents="none"
                 >

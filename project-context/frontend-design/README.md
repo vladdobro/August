@@ -453,7 +453,7 @@ Recording state: center border turns #e05555, SVG pulse rings animate via circui
 Radial audio bars: 12 bars positioned with CSS transform rotate(N*30deg), driven by AnalyserNode frequencyBinCount bucketed into 12 averages.
 Transcript circuit header: info node (44px) at top-center, action nodes (40px) at 25%/50%/75% bottom, connected by SVG lines.
 SessionList New Session button is a 40px hexagonal node (clip-path polygon) with accent background and glow shadow.
-Recording mode picker (RecordingModePicker.tsx) renders as ring segments expanding from the center Record button: two SVG arc paths (left arc = DEFAULT, right arc = LIVE) form a split ring around the button perimeter. Arcs use thick stroke (18px) with hover glow and scale-expand animation. Labels positioned outside each arc. Backdrop click or Escape key closes it.
+Recording mode picker (RecordingModePicker.tsx) renders as ring segments expanding from the center Record button: two SVG arc paths (left arc = DEFAULT, right arc = LIVE) form a split ring (R=72, stroke 18px) around the button perimeter with hover glow and scale-expand animation. When LIVE is selected, the mode ring stays visible (DEFAULT dimmed, LIVE highlighted/active, both non-interactive) and two engine sub-arcs appear on an outer ring (R=108, stroke 14px) on the right side only: top-right quarter = LOCAL (green/accent), bottom-right quarter = GROQ (red #e04040). Labels positioned outside each arc. Backdrop click or Escape key closes it.
 Upload dropzone (.circuit-dropzone) uses W40K CRT terminal styling: 2px border-radius, 2px solid border, large (32px) L-bracket corner accents (3px thick, 0.7 opacity) via ::before/::after, repeating-linear-gradient scan-line overlay on dark background, inset shadow for depth, uppercase industrial typography with wide letter-spacing.
 All circuit animations (stroke-dashoffset, pulse rings, bar transitions, mode-picker pop) are disabled under prefers-reduced-motion.
 
@@ -563,6 +563,6 @@ Status badge colors (uploading, transcribing, completed, failed) must remain dis
 - client/src/components/TranscriptView.tsx — Transcript display, export dropdown with copy/download options; includes the ChronoRing local component for transcription ETA countdown.
 - client/src/components/FileUpload.tsx — Circuit-node radial layout for recording and upload controls
 - client/src/components/SessionList.tsx — Sidebar with V3 Bracketed session items, hex grid SVG, orbital-circle filter chips, hexagonal New Session node
-- client/src/components/RecordingModePicker.tsx — Radial expanding mode picker (DEFAULT / LIVE) rendered inside circuit-diagram with SVG connection lines
+- client/src/components/RecordingModePicker.tsx — Radial expanding mode picker (DEFAULT / LIVE inner ring, LOCAL / GROQ outer right-side sub-arcs) rendered inside circuit-diagram with SVG connection lines
 - client/src/components/PraxisModal.tsx — Modal for selecting a target Praxis project path (via browse or manual input) and creating a task from a session transcript.
 - client/src/components/SetupGuide.tsx — Diagnostics page with circuit-node layout, W40K CRT aesthetic, adaptive GPU/model reveal logic

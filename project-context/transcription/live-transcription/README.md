@@ -22,7 +22,7 @@ Document the mechanics of the live transcription mode — how audio is captured 
 ## Core Concepts
 
 - Recording mode selection: when the user clicks Record, a RecordingModePicker modal offers Default (post-recording transcription) or Live Transcription mode.
-- Transcription engine selection: when Groq is available (GROQ_API_KEY configured, reported via /api/health's groqAvailable flag), RecordingModePicker shows a second sub-step ring (Local / Groq) after selecting Live mode.
+- Transcription engine selection: when Live is selected, RecordingModePicker keeps the mode ring visible (DEFAULT dimmed, LIVE active) and shows two engine sub-arcs on an outer ring to the right — top: LOCAL (green), bottom: GROQ (red). Groq arc appears dimmed with "setup required" sublabel when GROQ_API_KEY is not configured.
 - LiveEngine type: 'local' | 'groq' — chosen in the UI, sent to the server via a {type: "config", engine} JSON control message on WebSocket open.
 - Groq transcription service: server/src/services/groqTranscription.ts POSTs audio chunks to Groq's /openai/v1/audio/transcriptions endpoint using whisper-large-v3 model; uses Node.js native fetch/FormData.
 - Groq rate limiter: a sliding-window counter (20 requests per 60-second window) checked client-side on the server before each API call.
@@ -84,7 +84,7 @@ Document the mechanics of the live transcription mode — how audio is captured 
 - server/src/services/groqTranscription.ts — Groq Whisper API client with sliding-window rate limiter and typed error classes.
 - client/src/services/liveTranscriptionClient.ts — LiveTranscriptionClient class, ChunkAccumulator, resampling, binary encoding, engine config messaging.
 - client/src/components/LiveTranscriptPanel.tsx — real-time transcript display panel with auto-scroll, controls, and warning display.
-- client/src/components/RecordingModePicker.tsx — two-step ring modal: mode selection (Default/Live) then engine selection (Local/Groq).
+- client/src/components/RecordingModePicker.tsx — two-step ring modal: inner ring (Default/Live), outer right-side sub-arcs (Local green / Groq red) when Live is active.
 - client/src/components/FileUpload.tsx — integration point: mode selection, engine wiring, live client lifecycle, state management.
 - server/src/index.ts — HTTP server creation and WebSocket upgrade setup.
 - server/src/config.ts — groqApiKey config read from GROQ_API_KEY env var.

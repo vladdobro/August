@@ -1,0 +1,15 @@
+{
+  "id": "AUG-81-3m8f6t",
+  "assignee": "jarvis.json",
+  "priority": "medium",
+  "status": "to_review",
+  "title": "[AUG-81] Grog and Local arcs position",
+  "why_we_need_this": "As-is Grog and Local arcs buttons are located on th right and on the left from the Record button\nIt confuses user, as these buttons apear right after the choise between Default and Live, as these arcs on the same place and user thinks that nothing has changes after clicking Live button\n\nWhat exactly I suggest: Add two more half arcs on the right from the Live when Live is clicked\nThe one under another\nTop arc is green: Default\nBot arc is red: Groq ",
+  "acceptance_criteria": "",
+  "important_constraints": "",
+  "labels": [],
+  "on_hold_reason": "",
+  "contextRouterIncluded": false,
+  "created_at": 1789411113989,
+  "column_entered_at": 1789413074394
+}
