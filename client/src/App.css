@@ -3185,6 +3185,16 @@ body {
     display: none;
   }
 
+  button:hover:not(:disabled),
+  .mode-ring-arc:hover:not(.mode-ring-arc--local):not(.mode-ring-arc--groq) {
+    animation: none;
+  }
+
+  .mode-ring-arc--local:hover,
+  .mode-ring-arc--groq:hover {
+    animation-play-state: running, paused;
+  }
+
   .circuit-audio-bar {
     transition: none;
   }
@@ -3353,13 +3363,15 @@ body {
   stroke: #e04040;
   stroke-width: 14;
   filter: drop-shadow(0 0 8px rgba(224, 64, 64, 0.3));
-  animation: engine-arc-appear 0.3s ease-out backwards;
-  animation-delay: 0.3s;
+  animation:
+    engine-arc-appear 0.3s ease-out 0.3s backwards,
+    arc-target-pulse 1.2s ease-in-out infinite paused;
 }
 
 .mode-ring-arc--groq:hover {
   stroke-width: 18;
   filter: drop-shadow(0 0 16px rgba(224, 64, 64, 0.5));
+  animation-play-state: running, running;
 }
 
 .mode-ring-label--groq {
@@ -3418,13 +3430,15 @@ body {
   stroke: var(--accent);
   stroke-width: 14;
   filter: drop-shadow(0 0 8px var(--accent-glow));
-  animation: engine-arc-appear 0.3s ease-out backwards;
-  animation-delay: 0.15s;
+  animation:
+    engine-arc-appear 0.3s ease-out 0.15s backwards,
+    arc-target-pulse 1.2s ease-in-out infinite paused;
 }
 
 .mode-ring-arc--local:hover {
   stroke-width: 18;
   filter: drop-shadow(0 0 16px var(--accent-glow));
+  animation-play-state: running, running;
 }
 
 .mode-ring-label--local {
@@ -5477,4 +5491,20 @@ body {
 .session-filter-chip:focus-visible {
   outline: 2px solid var(--accent);
   outline-offset: 2px;
+}
+
+/* --- Breathing glow on hover (buttons + arc selectors) --- */
+@keyframes btn-target-pulse {
+  0%, 100% { filter: brightness(1); }
+  50% { filter: brightness(1.22); }
+}
+
+@keyframes arc-target-pulse {
+  0%, 100% { opacity: 0.7; }
+  50% { opacity: 1; }
+}
+
+button:hover:not(:disabled),
+.mode-ring-arc:hover:not(.mode-ring-arc--local):not(.mode-ring-arc--groq) {
+  animation: btn-target-pulse 1.2s ease-in-out infinite;
 }
