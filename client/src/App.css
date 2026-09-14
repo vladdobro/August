@@ -98,6 +98,14 @@
 /* ========== Reset ========== */
 * { box-sizing: border-box; }
 
+:focus:not(:focus-visible) {
+  outline: none;
+}
+
+button, a, [role="button"], svg, path, [tabindex] {
+  -webkit-tap-highlight-color: transparent;
+}
+
 html, body, #root {
   height: 100%;
   margin: 0;
