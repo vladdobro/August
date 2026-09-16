@@ -69,6 +69,7 @@ const STORAGE_KEY = 'august-praxis-project-path';
 
 const PraxisModal: React.FC<PraxisModalProps> = ({ sessionId, sessionTitle, onClose }) => {
   const [projectPath, setProjectPath] = useState('');
+  const [taskName, setTaskName] = useState(sessionTitle);
   const [browsing, setBrowsing] = useState(false);
   const [sending, setSending] = useState(false);
   const [validating, setValidating] = useState(false);
@@ -130,7 +131,7 @@ const PraxisModal: React.FC<PraxisModalProps> = ({ sessionId, sessionTitle, onCl
     setSending(true);
 
     try {
-      const result = await sendToPraxis(sessionId, trimmed);
+      const result = await sendToPraxis(sessionId, trimmed, taskName.trim() || undefined);
       try {
         localStorage.setItem(STORAGE_KEY, trimmed);
       } catch {
@@ -166,17 +167,25 @@ const PraxisModal: React.FC<PraxisModalProps> = ({ sessionId, sessionTitle, onCl
           </button>
         </div>
 
-        <p className="praxis-modal-subtitle">
-          Create a task from <strong>{sessionTitle}</strong>
-        </p>
-
         {!success ? (
           <>
+            <label className="praxis-label">
+              Task name
+              <input
+                ref={inputRef}
+                type="text"
+                className="praxis-input"
+                value={taskName}
+                onChange={(e) => setTaskName(e.target.value)}
+                placeholder="Process meeting: My Session"
+                disabled={sending || validating}
+              />
+            </label>
+
             <label className="praxis-label">
               Project path
               <div className="praxis-input-row">
                 <input
-                  ref={inputRef}
                   type="text"
                   className="praxis-input"
                   value={projectPath}

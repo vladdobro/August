@@ -1,0 +1,15 @@
+{
+  "id": "AUG-84-oo6cfe",
+  "assignee": "storm.json",
+  "priority": "medium",
+  "status": "to_review",
+  "title": "[AUG-84] Brainstorm the ELectron migration",
+  "why_we_need_this": "My friend strongly suggest (even pushed) me to move my product to Electron\nbut he didnt tell me why I need it\nYour jor is to help me define the real price and profit of this migration\nYou have to be unbiased",
+  "acceptance_criteria": "",
+  "important_constraints": "",
+  "labels": [],
+  "on_hold_reason": "",
+  "contextRouterIncluded": false,
+  "created_at": 1789421766585,
+  "column_entered_at": 1789421866805
+}

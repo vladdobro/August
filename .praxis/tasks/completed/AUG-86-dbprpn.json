@@ -1,0 +1,15 @@
+{
+  "id": "AUG-86-dbprpn",
+  "assignee": "jarvis.json",
+  "priority": "medium",
+  "status": "to_review",
+  "title": "[AUG-86] Rename option on send to Praxis",
+  "why_we_need_this": "Add an option to rename the transcription at to_praxis#1\nThe goal is to send the transcription already renamed to Praxis\nThis will provide a little bit more context both for praxis and a user in praxis\n\n## Page Feedback: /\nViewport: 1647×872\n\n### 1. <App> <TranscriptView> <PraxisModal> praxis modal\nLocation: .main-content > .transcript-view > .praxis-backdrop > .praxis-modal\nSource: D:/claude/August/client/src/components/PraxisModal.tsx:177:7\nReact: <App> <TranscriptView> <PraxisModal>\nFeedback: to_praxis#1",
+  "acceptance_criteria": "",
+  "important_constraints": "",
+  "labels": [],
+  "on_hold_reason": "",
+  "contextRouterIncluded": false,
+  "created_at": 1789557763180,
+  "column_entered_at": 1789557903312
+}

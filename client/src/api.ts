@@ -188,11 +188,11 @@ export async function validatePraxisProject(projectPath: string): Promise<{ vali
   return handleJsonResponse<{ valid: boolean; projectPath: string }>(res);
 }
 
-export async function sendToPraxis(sessionId: string, projectPath: string): Promise<{ ok: boolean; taskId: string; taskPath: string; projectTag: string | null }> {
+export async function sendToPraxis(sessionId: string, projectPath: string, taskName?: string): Promise<{ ok: boolean; taskId: string; taskPath: string; projectTag: string | null }> {
   const res = await fetch(`${API_BASE}/praxis/send`, {
     method: 'POST',
     headers: { 'Content-Type': 'application/json' },
-    body: JSON.stringify({ sessionId, projectPath }),
+    body: JSON.stringify({ sessionId, projectPath, ...(taskName && { taskName }) }),
   });
   return handleJsonResponse<{ ok: boolean; taskId: string; taskPath: string; projectTag: string | null }>(res);
 }

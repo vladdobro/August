@@ -67,7 +67,7 @@ router.post('/validate', async (req, res) => {
 
 // POST /api/praxis/send
 router.post('/send', async (req, res) => {
-  const { sessionId, projectPath } = req.body as { sessionId?: string; projectPath?: string };
+  const { sessionId, projectPath, taskName } = req.body as { sessionId?: string; projectPath?: string; taskName?: string };
 
   if (!sessionId || typeof sessionId !== 'string') {
     res.status(400).json({ error: 'sessionId is required' });
@@ -98,7 +98,7 @@ router.post('/send', async (req, res) => {
   }
 
   try {
-    const taskTitle = `Process meeting: ${session.title}`;
+    const taskTitle = taskName?.trim() || `Process meeting: ${session.title}`;
     const result = await createPraxisTask(
       normalized,
       taskTitle,
