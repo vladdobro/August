@@ -452,13 +452,13 @@ const TranscriptView: React.FC<TranscriptViewProps> = ({ session, transcript, on
                 </button>
                 {dropdownOpen && (
                   <div className="export-menu">
-                    <button type="button" className="export-menu-item" onClick={handleCopyWithTimestamps}>Copy with timestamps</button>
-                    <button type="button" className="export-menu-item" onClick={handleCopyTextOnly}>Copy text only</button>
+                    <button type="button" className="export-menu-item export-menu-item--1" onClick={handleCopyWithTimestamps}>Copy with timestamps</button>
+                    <button type="button" className="export-menu-item export-menu-item--2" onClick={handleCopyTextOnly}>Copy text only</button>
                     <div className="export-menu-divider" />
-                    <button type="button" className="export-menu-item" onClick={handleDownloadTxt}>Download .txt</button>
-                    <button type="button" className="export-menu-item" onClick={handleDownloadSrt}>Download .srt</button>
+                    <button type="button" className="export-menu-item export-menu-item--3" onClick={handleDownloadTxt}>Download .txt</button>
+                    <button type="button" className="export-menu-item export-menu-item--4" onClick={handleDownloadSrt}>Download .srt</button>
                     <div className="export-menu-divider" />
-                    <button type="button" className="export-menu-item export-menu-item--praxis" onClick={handleSendToPraxis}>Send to Praxis</button>
+                    <button type="button" className="export-menu-item export-menu-item--5 export-menu-item--praxis" onClick={handleSendToPraxis}>Send to Praxis</button>
                   </div>
                 )}
               </div>
@@ -488,9 +488,9 @@ const TranscriptView: React.FC<TranscriptViewProps> = ({ session, transcript, on
                       <span>Boost audio</span>
                     </label>
                     <div className="retranscribe-menu-divider" />
-                    <button type="button" className="retranscribe-menu-item" onClick={() => handleRetranscribe('ru')}>Russian</button>
-                    <button type="button" className="retranscribe-menu-item" onClick={() => handleRetranscribe('en')}>English</button>
-                    <button type="button" className="retranscribe-menu-item" onClick={() => handleRetranscribe('auto')}>Auto-detect</button>
+                    <button type="button" className="retranscribe-menu-item retranscribe-menu-item--1" onClick={() => handleRetranscribe('ru')}>Russian</button>
+                    <button type="button" className="retranscribe-menu-item retranscribe-menu-item--2" onClick={() => handleRetranscribe('en')}>English</button>
+                    <button type="button" className="retranscribe-menu-item retranscribe-menu-item--3" onClick={() => handleRetranscribe('auto')}>Auto-detect</button>
                   </div>
                 )}
               </div>
@@ -546,9 +546,9 @@ const TranscriptView: React.FC<TranscriptViewProps> = ({ session, transcript, on
                         <span>Boost audio</span>
                       </label>
                       <div className="retranscribe-menu-divider" />
-                      <button type="button" className="retranscribe-menu-item" onClick={() => handleRetranscribe('ru')}>Russian</button>
-                      <button type="button" className="retranscribe-menu-item" onClick={() => handleRetranscribe('en')}>English</button>
-                      <button type="button" className="retranscribe-menu-item" onClick={() => handleRetranscribe('auto')}>Auto-detect</button>
+                      <button type="button" className="retranscribe-menu-item retranscribe-menu-item--1" onClick={() => handleRetranscribe('ru')}>Russian</button>
+                      <button type="button" className="retranscribe-menu-item retranscribe-menu-item--2" onClick={() => handleRetranscribe('en')}>English</button>
+                      <button type="button" className="retranscribe-menu-item retranscribe-menu-item--3" onClick={() => handleRetranscribe('auto')}>Auto-detect</button>
                     </div>
                   )}
                 </div>
@@ -590,9 +590,9 @@ const TranscriptView: React.FC<TranscriptViewProps> = ({ session, transcript, on
                           <span>Boost audio</span>
                         </label>
                         <div className="retranscribe-menu-divider" />
-                        <button type="button" className="retranscribe-menu-item" onClick={() => handleFailedRetranscribe('ru')}>Russian</button>
-                        <button type="button" className="retranscribe-menu-item" onClick={() => handleFailedRetranscribe('en')}>English</button>
-                        <button type="button" className="retranscribe-menu-item" onClick={() => handleFailedRetranscribe('auto')}>Auto-detect</button>
+                        <button type="button" className="retranscribe-menu-item retranscribe-menu-item--1" onClick={() => handleFailedRetranscribe('ru')}>Russian</button>
+                        <button type="button" className="retranscribe-menu-item retranscribe-menu-item--2" onClick={() => handleFailedRetranscribe('en')}>English</button>
+                        <button type="button" className="retranscribe-menu-item retranscribe-menu-item--3" onClick={() => handleFailedRetranscribe('auto')}>Auto-detect</button>
                       </div>
                     )}
                   </>

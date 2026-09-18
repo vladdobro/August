@@ -1,0 +1,15 @@
+{
+  "id": "AUG-97-0xr7p0",
+  "assignee": "jarvis.json",
+  "priority": "medium",
+  "status": "completed",
+  "title": "[AUG-97] Long click on record button to start the defaults",
+  "why_we_need_this": "Long click on record button to start the defaults.\nNow, when we have all the preferences set for recording it is logicly to have an option to start a \"quick record\" with all the defaults from Settings page",
+  "acceptance_criteria": "",
+  "important_constraints": "",
+  "labels": [],
+  "on_hold_reason": "",
+  "contextRouterIncluded": false,
+  "created_at": 1789760736285,
+  "column_entered_at": 1789762716826
+}

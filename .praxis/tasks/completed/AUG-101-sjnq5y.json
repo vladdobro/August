@@ -1,0 +1,15 @@
+{
+  "id": "AUG-101-sjnq5y",
+  "assignee": "jarvis.json",
+  "priority": "medium",
+  "status": "completed",
+  "title": "[AUG-101] Bug: need 2 clicks on Stop record button",
+  "why_we_need_this": "bug: need 2 clicks on Stop record button to stop the record\nshould work with only 1 click",
+  "acceptance_criteria": "",
+  "important_constraints": "",
+  "labels": [],
+  "on_hold_reason": "",
+  "contextRouterIncluded": false,
+  "created_at": 1789762831664,
+  "column_entered_at": 1789763339636
+}

@@ -39,6 +39,7 @@ Match your task keywords to the routes you need to read:
 | live transcription, real-time transcript, WebSocket audio, live recording mode, chunked whisper | Transcription > Live Transcription |
 | whisper setup, npm run setup, whisper binary, model download, macOS, Windows, multiplatform, Metal GPU, ffmpeg install | Transcription > Whisper Setup |
 | UI design, colors, theme, dark mode, light mode, CSS, styling, brandbook, emerald, jade | Frontend Design |
+| preferences, settings, user defaults, auto-save, mic device, language selection, recording mode | Preferences |
 
 # context-router.md terminology
 
@@ -102,6 +103,10 @@ Directory Path: project-context/transcription/README.md
 ## Frontend Design Route
 Jade-emerald design system, CSS custom properties, dark/light theme toggle, and brandbook-derived visual patterns.
 Directory Path: project-context/frontend-design/README.md
+
+## Preferences Route
+Server-side persistence of user preferences (language, mic, recording mode, etc.) with a Settings UI for review and reset.
+Directory Path: project-context/preferences/README.md
 
 ## Roadmap
 Planned and completed work items organized by phase and milestone.

@@ -1,0 +1,15 @@
+{
+  "id": "AUG-88-nrtjcy",
+  "assignee": "storm.json",
+  "priority": "medium",
+  "status": "completed",
+  "title": "[AUG-88] Brainstorm: save preferences for user",
+  "why_we_need_this": "brainstorm: save preferences for user\nFor example, I've chosen the Auto language for transcription on the main page, defined the Mic device and want this to be remembered for the next time I launch August on this PC\n\nJob is to define to complete list of preferences and suggest a better way to save it as defaults",
+  "acceptance_criteria": "",
+  "important_constraints": "",
+  "labels": [],
+  "on_hold_reason": "",
+  "contextRouterIncluded": false,
+  "created_at": 1789757073906,
+  "column_entered_at": 1789757367079
+}

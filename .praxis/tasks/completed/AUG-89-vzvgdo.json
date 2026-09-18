@@ -1,0 +1,15 @@
+{
+  "id": "AUG-89-vzvgdo",
+  "assignee": "storm.json",
+  "priority": "medium",
+  "status": "completed",
+  "title": "[AUG-89] Brainstorm: Fix light theme",
+  "why_we_need_this": "The current Light theme colour schema is so bad and weird so I'm very upset\nGive me the ideas and examples (макеты) of how it can be",
+  "acceptance_criteria": "",
+  "important_constraints": "",
+  "labels": [],
+  "on_hold_reason": "",
+  "contextRouterIncluded": false,
+  "created_at": 1789757185635,
+  "column_entered_at": 1789759603558
+}

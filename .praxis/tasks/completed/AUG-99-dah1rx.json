@@ -1,0 +1,15 @@
+{
+  "id": "AUG-99-dah1rx",
+  "assignee": "jarvis.json",
+  "priority": "medium",
+  "status": "completed",
+  "title": "[AUG-99] Add an info window to the deault record started",
+  "why_we_need_this": "add an info window to the deault record started\nWhen record using defaults started - add an info message like Record has started with default options, you may set defaults (link)\n\nI think it could be the same info window that appears when record breaks and system suggest to restore it (yellow infobar under the record button on record ubnormally failed to finish)",
+  "acceptance_criteria": "",
+  "important_constraints": "",
+  "labels": [],
+  "on_hold_reason": "",
+  "contextRouterIncluded": false,
+  "created_at": 1789761923293,
+  "column_entered_at": 1789763302375
+}

@@ -1,0 +1,15 @@
+{
+  "id": "AUG-98-ndv8ce",
+  "assignee": "jarvis.json",
+  "priority": "medium",
+  "status": "completed",
+  "title": "[AUG-98] Apply sidebar beathing rules to all dds",
+  "why_we_need_this": "apply sidebar beathing rules to all Settings page dropdowns \nThey all should breath, glow on target and do not dissapear on target or after\nas sb#1 already did (DO NOT BREAK the sb#1)\n\n## Page Feedback: /\nViewport: 1647×872\n\n### 1. <App> <SessionList> sidebar menu\nLocation: .session-list-header > .session-header-left > .sidebar-menu > .sidebar-menu-dropdown\nSource: D:/claude/August/client/src/components/SessionList.tsx:261:13\nReact: <App> <SessionList>\nFeedback: sb#1",
+  "acceptance_criteria": "",
+  "important_constraints": "",
+  "labels": [],
+  "on_hold_reason": "",
+  "contextRouterIncluded": false,
+  "created_at": 1789761530185,
+  "column_entered_at": 1789762712977
+}

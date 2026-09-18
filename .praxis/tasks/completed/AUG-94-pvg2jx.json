@@ -1,0 +1,15 @@
+{
+  "id": "AUG-94-pvg2jx",
+  "assignee": "jarvis.json",
+  "priority": "medium",
+  "status": "completed",
+  "title": "[AUG-94] Update All dropdowns on Settings page",
+  "why_we_need_this": "Update All dropdowns on Settings page from \"system default\" to \"export menu\"-like\nreference is exp#1\n\n## Page Feedback: /\nViewport: 1647×872\n\n### 1. <App> <TranscriptView> export menu\nLocation: .transcript-circuit-header > .transcript-circuit-diagram > .transcript-action-wrap > .export-menu\nSource: D:/claude/August/client/src/components/TranscriptView.tsx:473:13\nReact: <App> <TranscriptView>\nFeedback: exp#1",
+  "acceptance_criteria": "",
+  "important_constraints": "",
+  "labels": [],
+  "on_hold_reason": "",
+  "contextRouterIncluded": false,
+  "created_at": 1789760122669,
+  "column_entered_at": 1789762085536
+}

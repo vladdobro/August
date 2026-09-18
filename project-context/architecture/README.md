@@ -11,6 +11,8 @@
 - Agentation widget is mounted in App.tsx for dev mode only, gated by import.meta.env.DEV.
 - The server loads the repo-root .env from config.ts before building config.
 - Praxis integration: POST /api/praxis/send creates a task directly in a target PraxisOS project's .praxis/tasks/new/ directory from a session transcript. POST /api/praxis/browse opens the OS native folder picker dialog so users can select the project path visually.
+- User preferences persist in server/data/user-preferences.json via GET/PATCH/DELETE /api/preferences endpoints.
+- Settings modal is accessible from the sidebar menu; preferences auto-save on control changes in FileUpload.
 - App.tsx uses a single unified render — no early returns that unmount the layout; FileUpload stays mounted (hidden) during active recording to preserve MediaRecorder state.
 - Recording crash recovery: audio chunks auto-save to IndexedDB every 30 seconds; on reload, recovered audio is offered for upload via a recovery banner.
 
@@ -72,6 +74,9 @@ Give any agent working on the codebase a map of the client/server split, how a s
 - server/src/config.ts — platform binary resolution, model constants, .env loading.
 - server/src/services/praxisIntegration.ts — Praxis task creation: counter management, ID allocation, atomic file write to target project.
 - server/src/routes/praxis.ts — POST /api/praxis/validate and POST /api/praxis/send endpoints.
+- server/src/routes/preferences.ts — GET/PATCH/DELETE /api/preferences for user preferences persistence.
+- client/src/services/preferences.ts — UserPreferences interface, defaults, and API wrappers.
+- client/src/components/SettingsModal.tsx — Settings modal with all preferences displayed/editable.
 
 ## Dev Tooling: Agentation Widget
 

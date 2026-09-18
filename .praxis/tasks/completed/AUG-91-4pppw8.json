@@ -1,0 +1,18 @@
+{
+  "id": "AUG-91-4pppw8",
+  "assignee": "jarvis.json",
+  "priority": "high",
+  "status": "completed",
+  "title": "[AUG-91] User preferences persistence system with Settings page",
+  "why_we_need_this": "Every session launch, users must re-select language, mic device, system audio toggle, recording mode, and other settings. These choices should persist as defaults across sessions. Decided in brainstorm AUG-88: auto-save last choice + dedicated Settings page for overrides/resets, server-side JSON file storage, all non-trivial preferences.",
+  "acceptance_criteria": "## Server — Preferences API\n- [ ] `server/data/user-preferences.json` stores all preferences as a flat JSON object\n- [ ] `GET /api/preferences` returns the current preferences (empty object `{}` if file doesn't exist — client applies defaults)\n- [ ] `PATCH /api/preferences` accepts partial JSON, merges into existing file, returns the merged result\n- [ ] If the file doesn't exist on first PATCH, it is created automatically\n\n## Preferences Schema (all fields optional, client defaults when absent)\n- [ ] `language` — string, default `\"auto\"` (transcription language)\n- [ ] `micDeviceId` — string, default `\"default\"` (saved mic device ID)\n- [ ] `systemAudio` — boolean, default `false` (capture system audio toggle)\n- [ ] `recordingMode` — `\"default\"` | `\"live\"`, default `\"default\"`\n- [ ] `liveEngine` — `\"local\"` | `\"groq\"`, default `\"local\"`\n- [ ] `audioBoost` — boolean, default `false`\n- [ ] `retranscriptionLanguage` — string | null, default `null`\n- [ ] `praxisProjectPath` — string | null, default `null` (last Send to Praxis target)\n- [ ] `sidebarCollapsed` — boolean, default `false`\n- [ ] `sessionSortOrder` — `\"newest\"` | `\"oldest\"` | `\"alphabetical\"`, default `\"newest\"`\n- [ ] `skipStopConfirmation` — boolean, default `false` (skip \"Are you sure?\" on Stop)\n- [ ] `skipClearConfirmation` — boolean, default `false` (skip \"Are you sure?\" on Clear All)\n\n## Client — Auto-Save Behavior\n- [ ] When the user changes language, mic, system audio, recording mode, live engine, or boost — the new value is auto-saved via `PATCH /api/preferences`\n- [ ] On app load, `GET /api/preferences` is called and the returned values are used as initial state for all controls\n- [ ] When the saved `micDeviceId` is not found in available devices, fall back to system default AND show a brief dismissable notice: \"Preferred mic not found — using system default\"\n\n## Client — Settings Page\n- [ ] A Settings page/modal accessible from the main UI (e.g., gear icon or menu item)\n- [ ] Displays all persisted preferences with current values\n- [ ] Each preference is editable from this page\n- [ ] \"Reset to defaults\" button clears the preferences file and restores all defaults\n- [ ] Settings page follows the existing Necron/brutalist design system (0 border-radius, theme tokens, monospace where applicable)\n\n## Constraints\n- [ ] No database — file-based only, consistent with August's local-first architecture\n- [ ] Theme toggle remains in localStorage (already working, do not migrate)\n- [ ] All preferences are optional — the app must work identically to today if the preferences file is missing or empty",
+  "important_constraints": "",
+  "labels": [
+    "feature",
+    "fullstack"
+  ],
+  "on_hold_reason": "",
+  "contextRouterIncluded": false,
+  "created_at": 1789757350344,
+  "column_entered_at": 1789759272275
+}

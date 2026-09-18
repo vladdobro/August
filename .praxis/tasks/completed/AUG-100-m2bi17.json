@@ -1,0 +1,18 @@
+{
+  "id": "AUG-100-m2bi17",
+  "assignee": "jarvis.json",
+  "priority": "medium",
+  "status": "completed",
+  "title": "[AUG-100] Replace long-press progress ring with Double Ring style",
+  "why_we_need_this": "The current long-press indicator on the Record button uses a single clean stroke ring. Replace it with the Double Ring style — two concentric rings filling simultaneously (outer clockwise, inner counter-clockwise) to add visual depth and distinguish the long-press feedback from other ring elements in the UI.",
+  "acceptance_criteria": "- The long-press visual on the Record button uses two concentric SVG circle rings instead of one\n- Outer ring fills clockwise over 500ms\n- Inner ring fills counter-clockwise over 500ms\n- Both rings use the accent color (green in dark, forest green in light) with appropriate opacity differentiation (outer ~0.7, inner ~0.5)\n- The existing long-press detection logic (500ms setTimeout, pointer events, longPressFiredRef guard) remains unchanged\n- Dark theme ring uses #00c876 with glow filter\n- Animations respect prefers-reduced-motion\n- Button still scales to 0.96 during the press",
+  "important_constraints": "",
+  "labels": [
+    "frontend",
+    "UI"
+  ],
+  "on_hold_reason": "",
+  "contextRouterIncluded": false,
+  "created_at": 1789761637744,
+  "column_entered_at": 1789762709477
+}

@@ -1,0 +1,15 @@
+{
+  "id": "AUG-95-ry25ng",
+  "assignee": "jarvis.json",
+  "priority": "medium",
+  "status": "completed",
+  "title": "[AUG-95] Update bullet appearing sequence for all dropdowns",
+  "why_we_need_this": "All dropdowns should appear with bullets one-by-one with a small delay between bullets",
+  "acceptance_criteria": "",
+  "important_constraints": "",
+  "labels": [],
+  "on_hold_reason": "",
+  "contextRouterIncluded": false,
+  "created_at": 1789760314295,
+  "column_entered_at": 1789762719410
+}

@@ -24,6 +24,7 @@
 - Inputs: 0 border-radius, 1px border, focus shows accent border with glow.
 - Status badges use 999px pill radius with ~15% opacity background matching their status color.
 - Modals use rgba(0,0,0,0.45) backdrop with blur(8px), 0 border-radius card with 28px padding, modePickerFadeIn animation.
+- Long-press (≥500ms) on the Record button starts recording with saved preferences, bypassing the RecordingModePicker.
 - All animations and transitions disabled under prefers-reduced-motion: reduce.
 - Responsive: 720px switches to vertical layout, shrinks circuit nodes; 640px makes live panel full-width; 600px shrinks chronometer.
 
@@ -454,6 +455,9 @@ Radial audio bars: 12 bars positioned with CSS transform rotate(N*30deg), driven
 Transcript circuit header: info node (44px) at top-center, action nodes (40px) at 25%/50%/75% bottom, connected by SVG lines.
 SessionList New Session button is a 40px hexagonal node (clip-path polygon) with accent background and glow shadow.
 Recording mode picker (RecordingModePicker.tsx) renders as ring segments expanding from the center Record button: two SVG arc paths (left arc = DEFAULT, right arc = LIVE) form a split ring (R=72, stroke 18px) around the button perimeter with hover glow and scale-expand animation. When LIVE is selected, the mode ring stays visible (DEFAULT dimmed, LIVE highlighted/active, both non-interactive) and two engine sub-arcs appear on an outer ring (R=108, stroke 14px) on the right side only: top-right quarter = LOCAL (green/accent), bottom-right quarter = GROQ (red #e04040). Labels positioned outside each arc. Backdrop click or Escape key closes it.
+Long-press quick-record: holding the center Record button for ≥500ms bypasses the RecordingModePicker and starts recording immediately using saved preferences (recordingMode and liveEngine from UserPreferences).
+Long-press visual feedback: an SVG progress ring (.long-press-ring) animates stroke-dashoffset from 289→0 over 500ms around the button perimeter; the button scales down to 0.96 during the press.
+Long-press detection uses pointer events (onPointerDown/Up/Leave/Cancel) with a 500ms setTimeout; a longPressFiredRef flag prevents the subsequent onClick from also firing the mode picker.
 Upload dropzone (.circuit-dropzone) uses W40K CRT terminal styling: 2px border-radius, 2px solid border, large (32px) L-bracket corner accents (3px thick, 0.7 opacity) via ::before/::after, repeating-linear-gradient scan-line overlay on dark background, inset shadow for depth, uppercase industrial typography with wide letter-spacing.
 All circuit animations (stroke-dashoffset, pulse rings, bar transitions, mode-picker pop) are disabled under prefers-reduced-motion.
 
@@ -546,6 +550,7 @@ Gothic font (--font-gothic) is loaded but reserved — not applied to titles due
 - All error text colors must use var(--status-failed) token — never hardcode #c0392b, #e05555, or #dc2626 directly.
 - Page headings (.circuit-title, .diag-title, .app-title, .live-panel-title) must use accent gradient (linear-gradient(135deg, #00c876, #2dd690) with background-clip: text).
 - Modal and sub-page headings (.praxis-modal-title, .model-download-title, .transcript-circuit-title) must use color: var(--accent).
+- The global `button:hover:not(:disabled)` rule (App.css) applies `animation: btn-target-pulse` to all hovered buttons. Elements with their own animation lifecycle (e.g. `.sidebar-menu-item` stagger fade-in) must be excluded via `:not()` to prevent the shorthand from clobbering `animation-fill-mode: forwards` and resetting opacity. Use animation longhand properties on such elements and add breathing as a second animation-name on :hover to preserve the base animation at index 0.
 
 ## Route-Specific Constraints
 

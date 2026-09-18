@@ -7,6 +7,9 @@ import { checkHealth, deleteSession, fetchSessions, fetchTranscript, renameSessi
 import type { HealthStatus, SessionMetadata } from './types';
 import SetupGuide from './components/SetupGuide';
 import GroqKeyModal from './components/GroqKeyModal';
+import SettingsModal from './components/SettingsModal';
+import { getPreferences, patchPreferences, resetPreferences } from './services/preferences';
+import type { UserPreferences } from './services/preferences';
 import { ThemeToggle } from './theme';
 import { Agentation } from 'agentation';
 
@@ -28,6 +31,9 @@ const App: React.FC = () => {
   } | null>(null);
   const [isRecording, setIsRecording] = useState(false);
   const [showGroqKeyModal, setShowGroqKeyModal] = useState(false);
+  const [preferences, setPreferences] = useState<UserPreferences>({});
+  const [showSettings, setShowSettings] = useState(false);
+  const [audioDevices, setAudioDevices] = useState<MediaDeviceInfo[]>([]);
 
   selectedSessionIdRef.current = selectedSessionId;
 
@@ -64,6 +70,42 @@ const App: React.FC = () => {
   useEffect(() => {
     void refreshHealth();
   }, [refreshHealth]);
+
+  useEffect(() => {
+    getPreferences().then(setPreferences).catch(() => {});
+  }, []);
+
+  useEffect(() => {
+    const enumerate = async () => {
+      try {
+        const initial = await navigator.mediaDevices.enumerateDevices();
+        const hasLabels = initial.some(d => d.kind === 'audioinput' && d.label);
+        if (!hasLabels) {
+          const tempStream = await navigator.mediaDevices.getUserMedia({ audio: true });
+          tempStream.getTracks().forEach(t => t.stop());
+        }
+        const devices = await navigator.mediaDevices.enumerateDevices();
+        setAudioDevices(devices.filter(d => d.kind === 'audioinput'));
+      } catch {}
+    };
+    void enumerate();
+    navigator.mediaDevices.addEventListener('devicechange', enumerate);
+    return () => navigator.mediaDevices.removeEventListener('devicechange', enumerate);
+  }, []);
+
+  const handlePreferenceChange = useCallback(async (patch: Partial<UserPreferences>) => {
+    try {
+      const merged = await patchPreferences(patch);
+      setPreferences(merged);
+    } catch {}
+  }, []);
+
+  const handlePreferencesReset = useCallback(async () => {
+    try {
+      await resetPreferences();
+      setPreferences({});
+    } catch {}
+  }, []);
 
   const selectedSession = sessions.find((s) => s.id === selectedSessionId) ?? null;
 
@@ -203,6 +245,7 @@ const App: React.FC = () => {
           }}
           onDiagnostics={() => { setSetupDismissed(false); setShowDiagnostics(true); }}
           onKeysAndTokens={() => setShowGroqKeyModal(true)}
+          onSettings={() => setShowSettings(true)}
         />
 
         <main className="main-content">
@@ -234,7 +277,16 @@ const App: React.FC = () => {
 
           {(showFileUpload || isRecording) && (
             <div style={showFileUpload ? undefined : { display: 'none' }}>
-              <FileUpload onUploaded={handleUploaded} onRecordingChange={setIsRecording} groqAvailable={healthStatus?.groqAvailable ?? false} onGroqKeySaved={refreshHealth} />
+              <FileUpload
+                onUploaded={handleUploaded}
+                onRecordingChange={setIsRecording}
+                groqAvailable={healthStatus?.groqAvailable ?? false}
+                onGroqKeySaved={refreshHealth}
+                preferences={preferences}
+                onPreferenceChange={handlePreferenceChange}
+                audioDevicesFromApp={audioDevices}
+                onOpenSettings={() => setShowSettings(true)}
+              />
             </div>
           )}
         </main>
@@ -247,6 +299,15 @@ const App: React.FC = () => {
           groqAvailable={healthStatus?.groqAvailable ?? false}
           onClose={() => setShowGroqKeyModal(false)}
           onSaved={refreshHealth}
+        />
+      )}
+      {showSettings && (
+        <SettingsModal
+          preferences={preferences}
+          audioDevices={audioDevices}
+          onPreferenceChange={handlePreferenceChange}
+          onReset={handlePreferencesReset}
+          onClose={() => setShowSettings(false)}
         />
       )}
       {shouldEnableAgentation && <Agentation endpoint={agentationEndpoint} />}

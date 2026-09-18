@@ -8,6 +8,7 @@ import MicPicker from './MicPicker';
 import LiveTranscriptPanel, { type LiveLine, type LiveStatus } from './LiveTranscriptPanel';
 import { LiveTranscriptionClient, type LiveEngine } from '../services/liveTranscriptionClient';
 import { saveRecordingProgress, getRecoveredRecording, clearRecoveredRecording, type RecoveredRecording } from '../services/recordingRecovery';
+import type { UserPreferences } from '../services/preferences';
 
 const ACCEPTED_EXTENSIONS = ['.wav', '.mp3', '.ogg', '.flac', '.m4a'];
 const AUDIO_BARS_COUNT = 12;
@@ -18,6 +19,10 @@ interface FileUploadProps {
   onRecordingChange?: (recording: boolean) => void;
   groqAvailable?: boolean;
   onGroqKeySaved?: () => void;
+  preferences?: UserPreferences;
+  onPreferenceChange?: (patch: Partial<UserPreferences>) => void;
+  audioDevicesFromApp?: MediaDeviceInfo[];
+  onOpenSettings?: () => void;
 }
 
 function isAcceptedFile(file: File): boolean {
@@ -36,7 +41,7 @@ function formatBytes(bytes: number): string {
   return `${Math.round(bytes / (1024 * 1024))} MB`;
 }
 
-const FileUpload: React.FC<FileUploadProps> = ({ onUploaded, onRecordingChange, groqAvailable, onGroqKeySaved }) => {
+const FileUpload: React.FC<FileUploadProps> = ({ onUploaded, onRecordingChange, groqAvailable, onGroqKeySaved, preferences, onPreferenceChange, audioDevicesFromApp, onOpenSettings }) => {
   const { theme, toggle: toggleTheme } = useTheme();
   const [language, setLanguage] = useState<TranscriptionLanguage>('ru');
   const [isDragging, setIsDragging] = useState(false);
@@ -47,6 +52,7 @@ const FileUpload: React.FC<FileUploadProps> = ({ onUploaded, onRecordingChange, 
   const [audioDevices, setAudioDevices] = useState<MediaDeviceInfo[]>([]);
   const [selectedMicId, setSelectedMicId] = useState<string>('');
   const [captureSystemAudio, setCaptureSystemAudio] = useState(true);
+  const [micNotice, setMicNotice] = useState<string | null>(null);
 
   // --- Live Transcription (additive layer; does not alter recording/upload above) ---
   const [showModePicker, setShowModePicker] = useState(false);
@@ -60,6 +66,7 @@ const FileUpload: React.FC<FileUploadProps> = ({ onUploaded, onRecordingChange, 
   const [liveWarning, setLiveWarning] = useState<string | null>(null);
   const [liveMicUnavailable, setLiveMicUnavailable] = useState(false);
   const [recoveredRecording, setRecoveredRecording] = useState<RecoveredRecording | null>(null);
+  const [showDefaultsInfo, setShowDefaultsInfo] = useState(false);
   const liveClientRef = useRef<LiveTranscriptionClient | null>(null);
 
   const fileInputRef = useRef<HTMLInputElement>(null);
@@ -75,6 +82,9 @@ const FileUpload: React.FC<FileUploadProps> = ({ onUploaded, onRecordingChange, 
   const timerIntervalRef = useRef<ReturnType<typeof setInterval> | null>(null);
   const [elapsedSeconds, setElapsedSeconds] = useState(0);
   const [audioLevels, setAudioLevels] = useState<number[]>(new Array(AUDIO_BARS_COUNT).fill(0));
+  const longPressTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
+  const longPressFiredRef = useRef(false);
+  const [longPressing, setLongPressing] = useState(false);
 
   const handleFile = useCallback(
     async (file: File) => {
@@ -152,6 +162,44 @@ const FileUpload: React.FC<FileUploadProps> = ({ onUploaded, onRecordingChange, 
       navigator.mediaDevices.removeEventListener('devicechange', onDeviceChange);
     };
   }, []);
+
+  // Fall back to the device list enumerated at the App level if the local
+  // enumeration above hasn't produced anything yet (e.g. permissions race).
+  useEffect(() => {
+    if (audioDevicesFromApp && audioDevicesFromApp.length > 0 && audioDevices.length === 0) {
+      setAudioDevices(audioDevicesFromApp);
+    }
+  }, [audioDevicesFromApp, audioDevices.length]);
+
+  useEffect(() => {
+    if (preferences?.language) {
+      setLanguage(preferences.language as TranscriptionLanguage);
+    }
+  }, [preferences?.language]);
+
+  useEffect(() => {
+    if (preferences?.micDeviceId && preferences.micDeviceId !== 'default') {
+      setSelectedMicId(preferences.micDeviceId);
+    }
+  }, [preferences?.micDeviceId]);
+
+  useEffect(() => {
+    if (preferences?.systemAudio !== undefined) {
+      setCaptureSystemAudio(preferences.systemAudio);
+    }
+  }, [preferences?.systemAudio]);
+
+  useEffect(() => {
+    if (preferences?.micDeviceId && preferences.micDeviceId !== 'default' && audioDevices.length > 0) {
+      const found = audioDevices.some((d) => d.deviceId === preferences.micDeviceId);
+      if (!found) {
+        setSelectedMicId('');
+        setMicNotice('Preferred mic not found — using system default');
+      } else {
+        setMicNotice(null);
+      }
+    }
+  }, [preferences?.micDeviceId, audioDevices]);
 
   const startLiveTranscription = useCallback(
     (micStream: MediaStream | null, systemStream: MediaStream | null, engine: LiveEngine = 'local') => {
@@ -389,6 +437,7 @@ const FileUpload: React.FC<FileUploadProps> = ({ onUploaded, onRecordingChange, 
     soundRecorderRef.current = null;
     setIsRecording(false);
     onRecordingChange?.(false);
+    setShowDefaultsInfo(false);
 
     if (liveClientRef.current) {
       liveClientRef.current.stop();
@@ -431,6 +480,12 @@ const FileUpload: React.FC<FileUploadProps> = ({ onUploaded, onRecordingChange, 
   }, [isRecording]);
 
   useEffect(() => {
+    if (!showDefaultsInfo) return;
+    const t = setTimeout(() => setShowDefaultsInfo(false), 30000);
+    return () => clearTimeout(t);
+  }, [showDefaultsInfo]);
+
+  useEffect(() => {
     getRecoveredRecording().then((rec) => {
       if (rec) setRecoveredRecording(rec);
     }).catch(() => {});
@@ -438,11 +493,38 @@ const FileUpload: React.FC<FileUploadProps> = ({ onUploaded, onRecordingChange, 
 
   const handleRecordButtonClick = useCallback(() => {
     if (isRecording) {
+      longPressFiredRef.current = false;
       stopRecording();
-    } else {
-      setShowModePicker(true);
+      return;
     }
+    if (longPressFiredRef.current) {
+      longPressFiredRef.current = false;
+      return;
+    }
+    setShowModePicker(true);
   }, [isRecording, stopRecording]);
+
+  const handlePointerDown = useCallback((_e: React.PointerEvent) => {
+    if (isRecording || isUploading) return;
+    longPressFiredRef.current = false;
+    setLongPressing(true);
+    longPressTimerRef.current = setTimeout(() => {
+      longPressFiredRef.current = true;
+      setLongPressing(false);
+      const mode = preferences?.recordingMode || 'default';
+      const engine = preferences?.liveEngine || 'local';
+      void startRecording(mode === 'live', engine);
+      setShowDefaultsInfo(true);
+    }, 500);
+  }, [isRecording, isUploading, preferences?.recordingMode, preferences?.liveEngine, startRecording]);
+
+  const handlePointerUp = useCallback(() => {
+    if (longPressTimerRef.current) {
+      clearTimeout(longPressTimerRef.current);
+      longPressTimerRef.current = null;
+    }
+    setLongPressing(false);
+  }, []);
 
   const handleModeSelect = useCallback(
     (mode: RecordingMode, engine?: LiveEngine) => {
@@ -544,7 +626,7 @@ const FileUpload: React.FC<FileUploadProps> = ({ onUploaded, onRecordingChange, 
         {showLangPicker && (
           <LanguagePicker
             current={language}
-            onSelect={(lang) => { setLanguage(lang); setShowLangPicker(false); }}
+            onSelect={(lang) => { setLanguage(lang); setShowLangPicker(false); onPreferenceChange?.({ language: lang }); }}
             onClose={() => setShowLangPicker(false)}
           />
         )}
@@ -565,12 +647,24 @@ const FileUpload: React.FC<FileUploadProps> = ({ onUploaded, onRecordingChange, 
           <MicPicker
             devices={audioDevices}
             selectedId={selectedMicId}
-            onSelect={(id) => { setSelectedMicId(id); setShowMicPicker(false); }}
+            onSelect={(id) => { setSelectedMicId(id); setShowMicPicker(false); onPreferenceChange?.({ micDeviceId: id || 'default' }); }}
             onClose={() => setShowMicPicker(false)}
           />
         )}
 
-        <button type="button" className="circuit-node circuit-node--center" onClick={handleRecordButtonClick} disabled={isUploading} aria-label={isRecording ? 'Stop recording' : 'Start recording'}>
+        <button type="button" className={`circuit-node circuit-node--center${longPressing ? ' circuit-node--long-pressing' : ''}`} onClick={handleRecordButtonClick} onPointerDown={handlePointerDown} onPointerUp={handlePointerUp} onPointerLeave={handlePointerUp} onPointerCancel={handlePointerUp} disabled={isUploading} aria-label={isRecording ? 'Stop recording' : 'Start recording'}>
+          {longPressing && (
+            <svg className="long-press-ring" viewBox="0 0 100 100" aria-hidden="true">
+              <defs>
+                <filter id="long-press-glow">
+                  <feGaussianBlur stdDeviation="2" result="blur" />
+                  <feMerge><feMergeNode in="blur" /><feMergeNode in="SourceGraphic" /></feMerge>
+                </filter>
+              </defs>
+              <circle className="long-press-ring-outer" cx="50" cy="50" r="46" />
+              <circle className="long-press-ring-inner" cx="50" cy="50" r="36" />
+            </svg>
+          )}
           <span className="circuit-node-ring" aria-hidden="true" />
           <span className="circuit-node-glyph" aria-hidden="true">{isRecording ? <span className="circuit-stop-icon" /> : '●'}</span>
           <span className="circuit-node-text">{isRecording ? 'STOP' : 'REC'}</span>
@@ -598,7 +692,7 @@ const FileUpload: React.FC<FileUploadProps> = ({ onUploaded, onRecordingChange, 
             </svg>
           </span>
           <span className="circuit-node-label">{captureSystemAudio ? 'On' : 'Off'}</span>
-          <input type="checkbox" className="circuit-node-checkbox" checked={captureSystemAudio} onChange={(e) => setCaptureSystemAudio(e.target.checked)} disabled={isUploading || isRecording} aria-label="Capture system audio" />
+          <input type="checkbox" className="circuit-node-checkbox" checked={captureSystemAudio} onChange={(e) => { setCaptureSystemAudio(e.target.checked); onPreferenceChange?.({ systemAudio: e.target.checked }); }} disabled={isUploading || isRecording} aria-label="Capture system audio" />
         </label>
 
         <button type="button" className="circuit-node circuit-node--corner circuit-node--bottom-right" onClick={toggleTheme} aria-label={theme === 'dark' ? 'Switch to light theme' : 'Switch to dark theme'}>
@@ -617,6 +711,13 @@ const FileUpload: React.FC<FileUploadProps> = ({ onUploaded, onRecordingChange, 
         )}
       </div>
 
+      {micNotice && (
+        <div className="mic-notice">
+          <span>{micNotice}</span>
+          <button type="button" className="mic-notice-dismiss" onClick={() => setMicNotice(null)}>×</button>
+        </div>
+      )}
+
       {isRecording && (
         <div className="circuit-recording-info">
           <span className="recording-dot" aria-hidden="true" />
@@ -628,6 +729,18 @@ const FileUpload: React.FC<FileUploadProps> = ({ onUploaded, onRecordingChange, 
               LIVE
             </button>
           )}
+        </div>
+      )}
+
+      {showDefaultsInfo && isRecording && (
+        <div className="recording-defaults-banner">
+          <span className="defaults-banner-text">
+            Recording with default options
+          </span>
+          <div className="defaults-banner-actions">
+            <button type="button" className="defaults-btn defaults-btn--settings" onClick={() => onOpenSettings?.()}>Set defaults</button>
+            <button type="button" className="defaults-btn defaults-btn--dismiss" onClick={() => setShowDefaultsInfo(false)}>&times;</button>
+          </div>
         </div>
       )}
 

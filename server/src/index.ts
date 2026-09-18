@@ -10,6 +10,7 @@ import healthRouter from './routes/health.js';
 import sessionsRouter, { recoverOrphanedSessions } from './routes/sessions.js';
 import setupRouter from './routes/setup.js';
 import praxisRouter from './routes/praxis.js';
+import preferencesRouter from './routes/preferences.js';
 import { setupLiveTranscription } from './services/liveTranscription.js';
 import { checkFfmpegAvailable, FFMPEG_MISSING_MESSAGE, fileExists } from './services/whisper.js';
 import { ensureWhisperModel } from './services/modelDownloader.js';
@@ -48,6 +49,7 @@ async function main() {
   app.use('/api/sessions', sessionsRouter);
   app.use('/api/setup', setupRouter);
   app.use('/api/praxis', praxisRouter);
+  app.use('/api/preferences', preferencesRouter);
 
   const isDev = process.env.NODE_ENV !== 'production';
 

@@ -1,0 +1,15 @@
+{
+  "id": "AUG-96-m0c385",
+  "assignee": "jarvis.json",
+  "priority": "medium",
+  "status": "completed",
+  "title": "[AUG-96] Bug: no button to set a default project",
+  "why_we_need_this": "bug: no button to set a default project in Settings\nit just gives me no option to set it\nno way\n\nThere should be a button to choose the folder for project",
+  "acceptance_criteria": "",
+  "important_constraints": "",
+  "labels": [],
+  "on_hold_reason": "",
+  "contextRouterIncluded": false,
+  "created_at": 1789760609854,
+  "column_entered_at": 1789760838294
+}

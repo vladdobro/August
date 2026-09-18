@@ -1,0 +1,15 @@
+{
+  "id": "AUG-93-rzmxh1",
+  "assignee": "jarvis.json",
+  "priority": "medium",
+  "status": "completed",
+  "title": "[AUG-93] Bug: export menu \"jumps\" on call",
+  "why_we_need_this": "## Page Feedback: /\nViewport: 1647×872\n\n### 1. <App> <TranscriptView> export menu\nLocation: .transcript-circuit-header > .transcript-circuit-diagram > .transcript-action-wrap > .export-menu\nSource: D:/claude/August/client/src/components/TranscriptView.tsx:473:13\nReact: <App> <TranscriptView>\nFeedback: exp#1\n\nexp#1 jumps 70 pix left on call\nIt appears a bit on right from the \"Export\" button but than centets to the button\n\nThe goal is to be centered on call with no jumping",
+  "acceptance_criteria": "",
+  "important_constraints": "",
+  "labels": [],
+  "on_hold_reason": "",
+  "contextRouterIncluded": false,
+  "created_at": 1789760017198,
+  "column_entered_at": 1789760168955
+}
