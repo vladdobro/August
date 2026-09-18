@@ -1,0 +1,15 @@
+{
+  "id": "AUG-87-nfblv1",
+  "assignee": "jarvis.json",
+  "priority": "medium",
+  "status": "to_review",
+  "title": "[AUG-87] Bug: menu buttons dissapear on target",
+  "why_we_need_this": "bug: menu buttons dissapear on target\nFor example, if I move the mouse to the menu_b#1 it simply fades to dark and I can't see what's written\n\nHow I want it to see:\nOn targetting the buttons it glows with a green fillin (the whole button glows, not just an inscription. Inscription colours are reverted to black on target to be in contrast with glowing fillin\n\n## Page Feedback: /\nViewport: 1647×872\n\n### 1. <App> <SessionList> button \"Diagnostics\"\nLocation: .session-header-left > .sidebar-menu > .sidebar-menu-dropdown > .sidebar-menu-item\nSource: D:/claude/August/client/src/components/SessionList.tsx:260:17\nReact: <App> <SessionList>\nFeedback: menu_b#1",
+  "acceptance_criteria": "",
+  "important_constraints": "",
+  "labels": [],
+  "on_hold_reason": "",
+  "contextRouterIncluded": false,
+  "created_at": 1789569921507,
+  "column_entered_at": 1789570013346
+}
