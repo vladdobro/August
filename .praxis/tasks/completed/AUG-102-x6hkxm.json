@@ -1,0 +1,15 @@
+{
+  "id": "AUG-102-x6hkxm",
+  "assignee": "jarvis.json",
+  "priority": "medium",
+  "status": "completed",
+  "title": "[AUG-102] Remove scroll bar on settings page",
+  "why_we_need_this": "remove scroll bar on settings page",
+  "acceptance_criteria": "",
+  "important_constraints": "",
+  "labels": [],
+  "on_hold_reason": "",
+  "contextRouterIncluded": false,
+  "created_at": 1789763815686,
+  "column_entered_at": 1789764176558
+}

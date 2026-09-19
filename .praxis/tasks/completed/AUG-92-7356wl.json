@@ -2,7 +2,7 @@
   "id": "AUG-92-7356wl",
   "assignee": "jarvis.json",
   "priority": "high",
-  "status": "new",
+  "status": "to_review",
   "title": "[AUG-92] Implement \"Sage & Parchment\" light theme",
   "why_we_need_this": "The current light theme has muddy gray-green backgrounds with almost no contrast between surfaces, a near-black sidebar that clashes with the light content area, and hardcoded dark-mode rgba values throughout components. The brainstorm (AUG-89) selected the \"Sage & Parchment\" direction: light sage sidebar from direction #7 + warm parchment main from direction #5.",
   "acceptance_criteria": "1. Update `:root` CSS variables in `@client/src/App.css` to the Sage & Parchment palette:\n   - --page-bg: #f2efe8\n   - --main-bg: #f2efe8\n   - --sidebar-bg: #c8dcd0\n   - --sidebar-bg-hover: #bdd4c8\n   - --sidebar-bg-active: #b0ccbe\n   - --sidebar-text: #1a3326\n   - --sidebar-text-muted: #4a7a60\n   - --sidebar-border: #a8c4b4\n   - --accent: #0d8c5c\n   - --accent-hover: #0a7a50\n   - --accent-light: rgba(13,140,92,0.12)\n   - --accent-glow: rgba(13,140,92,0.18)\n   - --text-primary: #2d3a33\n   - --text-secondary: #6b7a70\n   - --border-color: rgba(45,58,51,0.18)\n   - --card-bg: rgba(250,248,244,0.92)\n   - --circuit-node-bg: #f0ede6\n   - --card-border: rgba(45,58,51,0.14)\n   - --card-shadow: 0 12px 34px rgba(45,58,51,0.08)\n   - --shell-gradient: update to warm parchment tones\n   - --shell-shadow: 0 24px 70px rgba(45,58,51,0.08)\n2. Fix all hardcoded rgba(0,200,118,...) values in light-mode component styles (search input, filter chips, scrollbars, chip rays) — replace with values appropriate for the sage sidebar or use CSS variables\n3. Fix the `.upload-panel h2` color (currently uses --necron-50 which is wrong for light sidebar)\n4. Dark theme (:root[data-theme='dark']) must remain completely unchanged\n5. Visual verification: sidebar is light sage, main content is warm parchment, cards are off-white cream, clear hierarchy between all three surface levels\n6. No border-radius changes (must stay 0 per project brandbook)",
@@ -15,5 +15,5 @@
   "on_hold_reason": "",
   "contextRouterIncluded": false,
   "created_at": 1789759125697,
-  "column_entered_at": 1789759125697
+  "column_entered_at": 1789764540978
 }
