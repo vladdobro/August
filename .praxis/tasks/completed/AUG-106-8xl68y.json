@@ -1,0 +1,19 @@
+{
+  "id": "AUG-106-8xl68y",
+  "assignee": "jarvis.json",
+  "priority": "medium",
+  "status": "completed",
+  "title": "[AUG-106] System capture self-test in the capabilities probe (macOS)",
+  "why_we_need_this": "Follow-up to AUG-105. The BlackHole and audiotee capture paths in @server/src/services/systemCapture.ts were implemented on Windows and have never run on macOS hardware. Today GET /api/capture/capabilities only proves a helper binary exists; it cannot tell whether a capture would produce audible audio (wrong device index, no System Audio Recording permission, BlackHole without a Multi-Output Device all yield a silent or empty file). A short self-test turns \"unverified\" into a green/red light the user sees in Settings before pressing Record.\n\nDesign:\n1. On darwin, after a method is detected, run a ~1 s capture into a temp file under config.capturesDir using the same spawn args as startCapture().\n2. Validate the result with ffprobe (duration > 0.5 s) and ffmpeg volumedetect (mean_volume above roughly -60 dB counts as non-silent).\n3. Extend CaptureCapabilities with selfTest: 'ok' | 'silent' | 'failed' | 'skipped' and selfTestDetail: string (stderr excerpt or measured level). Non-darwin returns 'skipped'.\n4. Settings status line (@client/src/components/SettingsModal.tsx) shows the self-test result: \"available — self-test ok\" / \"available, but capture was silent — check Multi-Output Device / permission\". The System option stays enabled on 'silent' (the user may be testing with nothing playing) but disabled on 'failed'.\n5. Cache the self-test with the existing 30 s capability cache; ?refresh=1 re-runs it.\n6. Add npm script `capture:check` in @server/package.json that prints the parsed avfoundation device list, the chosen method, and the self-test result, for pasting into bug reports.",
+  "acceptance_criteria": "- On macOS with a working helper, GET /api/capture/capabilities returns selfTest 'ok' within 3 seconds and Settings shows \"self-test ok\".\n- On macOS with BlackHole installed but nothing routed to it, the probe returns selfTest 'silent' with a hint naming the Multi-Output Device fix; the System option remains selectable.\n- On macOS when the capture process exits with an error, selfTest is 'failed', selfTestDetail carries the stderr excerpt, and the System option is disabled.\n- On Windows the probe returns selfTest 'skipped' and behaviour is unchanged from AUG-105.\n- The self-test temp file is deleted after validation and never appears in server/data/captures/ after the probe returns.\n- `npm run capture:check` in server/ prints device list, method, and self-test result and exits 0.\n- Unit tests cover the volumedetect parser (silent vs non-silent stderr fixtures).\n- project-context/architecture README documents the selfTest field and thresholds.",
+  "important_constraints": "- Self-test must never run on a non-loopback request path; keep it behind the existing loopbackOnly guard.\n- Do not lengthen the Settings open time on Windows — the self-test is darwin-only.\n- Reuse startCapture() spawn args; do not duplicate the ffmpeg command line.",
+  "labels": [
+    "recording",
+    "macos",
+    "server"
+  ],
+  "on_hold_reason": "",
+  "contextRouterIncluded": false,
+  "created_at": 1789867664314,
+  "column_entered_at": 1789871588570
+}

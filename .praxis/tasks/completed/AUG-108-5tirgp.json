@@ -1,0 +1,19 @@
+{
+  "id": "AUG-108-5tirgp",
+  "assignee": "jarvis.json",
+  "priority": "low",
+  "status": "completed",
+  "title": "[AUG-108] Use first-written-byte time as system capture start for track alignment",
+  "why_we_need_this": "Follow-up to AUG-105. systemOffsetMs is computed as capture.startedAt minus the client's micStartedAt, where startedAt is the moment the server spawned ffmpeg (@server/src/services/systemCapture.ts). Device startup latency between spawn and the first audio sample (typically 100 to 300 ms, more for a cold audiotee tap) is not compensated, so the system track is systematically stamped earlier than it really started. The acceptance target is 500 ms; the current approach probably fits but with little margin and no measurement.\n\nDesign:\n1. After spawn, poll the output WAV file size (fs.stat every 25 ms, max 2 s) and record firstByteAt when the size first exceeds the 44-byte header. Use firstByteAt as the capture startedAt returned by /start and stored on the capture; fall back to spawn time if the poll times out.\n2. Expose both spawnedAt and startedAt in the /start and /stop responses for debugging.\n3. Write the applied systemOffsetMs into the transcript header rendered by renderTranscript (e.g. \"- Track offset: +182 ms\") so a user who sees misordered lines can report the number.\n4. Add a Praxis note (not code) in the architecture README that cross-correlation of the two tracks is the next step if real transcripts still show misordering.",
+  "acceptance_criteria": "- POST /api/capture/start returns startedAt equal to the first-written-byte time, and spawnedAt separately; startedAt minus spawnedAt is logged at debug level.\n- If no bytes are written within 2 s, startedAt falls back to spawnedAt and the response includes startedAtSource: 'spawn'.\n- Dual-track transcripts produced from a server capture include a \"Track offset\" line in the header; browser dual recordings and single uploads do not.\n- A unit test covers the offset header rendering for offset 0 (omitted), positive, and negative values.\n- Existing alignDualSegments tests still pass; no change to mergeDualStream.",
+  "important_constraints": "- Do not change the client micStartedAt contract; only the server side of the offset moves.\n- Polling must stop as soon as the first byte is seen; do not leave an interval running for the capture lifetime.",
+  "labels": [
+    "recording",
+    "macos",
+    "server"
+  ],
+  "on_hold_reason": "",
+  "contextRouterIncluded": false,
+  "created_at": 1789867690656,
+  "column_entered_at": 1789871558402
+}

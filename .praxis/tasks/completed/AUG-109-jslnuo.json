@@ -1,0 +1,19 @@
+{
+  "id": "AUG-109-jslnuo",
+  "assignee": "jarvis.json",
+  "priority": "medium",
+  "status": "completed",
+  "title": "[AUG-109] Untrack user-preferences.json and reconcile its documented path",
+  "why_we_need_this": "Discovered during AUG-105 verification. The preferences route (@server/src/routes/preferences.ts) resolves DATA_DIR relative to import.meta.dirname, so at runtime it reads and writes @server/src/data/user-preferences.json. That file is committed to git, while .gitignore only covers server/data/user-preferences.json (a different path). Consequences: every app session dirties the working tree, personal values (praxisProjectPath, liveEngine) leak into commits, and the preferences README states the file lives at server/data/, which is wrong. A smoke test in AUG-105 modified the tracked file and had to be restored from git.\n\nDesign:\n1. Decide the canonical location. Recommendation: move to server/data/user-preferences.json to match the sessions, uploads, captures, and perf-stats files and the existing .gitignore entry, by resolving DATA_DIR from config (add config.dataDir or reuse path.dirname(config.sessionsDir)).\n2. `git rm --cached server/src/data/user-preferences.json` and add that path to .gitignore as a safety net for old checkouts.\n3. On first server start after the change, if the old file exists and the new one does not, migrate it once and delete the old file; log the migration.\n4. Update project-context/preferences README Key Files and Invariants to the final path.",
+  "acceptance_criteria": "- After `git status` on a fresh clone with the app running and a preference changed, the working tree stays clean.\n- Existing preferences on a developer machine survive the upgrade (migrated once, logged), and PATCH /api/preferences continues to persist across server restarts.\n- server/src/data/ no longer exists in the repository tree; the runtime file lives under server/data/ and is gitignored.\n- project-context/preferences README Key Files, Core Concepts, and Invariants reference the correct path.",
+  "important_constraints": "- Do not change the preferences JSON shape or the ALLOWED_KEYS set in this task.\n- The migration must be idempotent and must not overwrite an existing new-location file.",
+  "labels": [
+    "preferences",
+    "server",
+    "tech-debt"
+  ],
+  "on_hold_reason": "",
+  "contextRouterIncluded": false,
+  "created_at": 1789867701424,
+  "column_entered_at": 1789871585513
+}

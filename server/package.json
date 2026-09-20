@@ -7,6 +7,7 @@
     "build": "tsc",
     "start": "node dist/index.js",
     "setup": "tsx src/scripts/setup.ts",
+    "capture:check": "tsx src/scripts/captureCheck.ts",
     "test": "vitest run"
   },
   "dependencies": {

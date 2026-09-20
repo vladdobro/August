@@ -6,9 +6,10 @@ import multer from 'multer';
 import { config } from '../config.js';
 import * as sessionManager from '../services/sessionManager.js';
 import { transcribe, ensureWav, boostAudio, checkFfmpegAvailable, getAudioDuration, WhisperError, cancelTranscription, isTranscribing, FFMPEG_MISSING_MESSAGE, fileExists } from '../services/whisper.js';
-import { mergeSingleStream, mergeDualStream, renderTranscript } from '../services/transcriptMerger.js';
+import { mergeSingleStream, mergeDualStream, renderTranscript, alignDualSegments } from '../services/transcriptMerger.js';
 import { recordCompletion, getEstimatedDuration } from '../services/performanceTracker.js';
 import { getModelStatus } from '../services/modelDownloader.js';
+import { consumeCapture, hasCapture, CaptureError } from '../services/systemCapture.js';
 import type { TranscriptionLanguage } from '../types.js';
 
 const router = Router();
@@ -84,6 +85,7 @@ async function runDualTranscription(
   systemPath: string,
   language: TranscriptionLanguage,
   boost = false,
+  systemOffsetMs = 0,
 ) {
   let boostedMicPath: string | null = null;
   let boostedSystemPath: string | null = null;
@@ -103,7 +105,8 @@ async function runDualTranscription(
       transcribe(systemInput, language, sessionId),
     ]);
 
-    const utterances = mergeDualStream(micSegments, systemSegments);
+    const aligned = alignDualSegments(micSegments, systemSegments, systemOffsetMs);
+    const utterances = mergeDualStream(aligned.mic, aligned.system);
 
     const session = await sessionManager.getSession(sessionId);
     const startedAt = session?.createdAt ?? new Date().toISOString();
@@ -151,6 +154,17 @@ async function findAudioFiles(sessionDir: string): Promise<{ mic: string | null;
   }
 
   return { mic, system, single };
+}
+
+/// Moves a file across the data dir; falls back to copy+unlink if rename is
+/// refused (e.g. different volumes).
+async function moveFile(from: string, to: string): Promise<void> {
+  try {
+    await fs.rename(from, to);
+  } catch {
+    await fs.copyFile(from, to);
+    await fs.unlink(from).catch(() => {});
+  }
 }
 
 // GET /api/sessions
@@ -224,7 +238,19 @@ router.post('/upload', upload.fields([
 
   const systemFile = files?.['systemAudio']?.[0];
   const language = normalizeLanguage(req.body?.language);
-  const isDual = !!systemFile;
+  // AUG-105: a server-side capture can stand in for the systemAudio multipart file.
+  const captureId = typeof req.body?.captureId === 'string' && req.body.captureId.trim() ? req.body.captureId.trim() : null;
+  const micStartedAt = Number(req.body?.micStartedAt);
+  const isDual = !!systemFile || !!captureId;
+
+  if (systemFile && captureId) {
+    res.status(400).json({ error: 'Send either a systemAudio file or a captureId, not both' });
+    return;
+  }
+  if (captureId && !hasCapture(captureId)) {
+    res.status(400).json({ error: 'Unknown or expired captureId — the system audio capture was not found on the server' });
+    return;
+  }
 
   // Preflight: catch missing dependencies before creating a session
   const needsFfmpeg = !micFile.originalname.toLowerCase().endsWith('.wav')
@@ -268,10 +294,21 @@ router.post('/upload', upload.fields([
       await fs.copyFile(micFile.path, micDest);
       await fs.unlink(micFile.path).catch(() => {});
 
-      const sysExt = path.extname(systemFile!.originalname) || '.wav';
-      const sysDest = path.join(sessionDir, `audio-system${sysExt}`);
-      await fs.copyFile(systemFile!.path, sysDest);
-      await fs.unlink(systemFile!.path).catch(() => {});
+      let sysDest: string;
+      let systemOffsetMs = 0;
+      if (captureId) {
+        const capture = await consumeCapture(captureId);
+        sysDest = path.join(sessionDir, 'audio-system.wav');
+        await moveFile(capture.path, sysDest);
+        if (Number.isFinite(micStartedAt) && micStartedAt > 0) {
+          systemOffsetMs = capture.startedAt - micStartedAt;
+        }
+      } else {
+        const sysExt = path.extname(systemFile!.originalname) || '.wav';
+        sysDest = path.join(sessionDir, `audio-system${sysExt}`);
+        await fs.copyFile(systemFile!.path, sysDest);
+        await fs.unlink(systemFile!.path).catch(() => {});
+      }
 
       const micWav = await ensureWav(micDest);
       const audioDur = await getAudioDuration(micWav);
@@ -281,8 +318,9 @@ router.post('/upload', upload.fields([
         transcriptionStartedAt: new Date().toISOString(),
         duration: audioDur > 0 ? audioDur : undefined,
         ...(estDur > 0 ? { estimatedDuration: estDur } : {}),
+        ...(systemOffsetMs !== 0 ? { systemOffsetMs } : {}),
       });
-      void runDualTranscription(session.id, micDest, sysDest, language);
+      void runDualTranscription(session.id, micDest, sysDest, language, false, systemOffsetMs);
       res.status(201).json(inProgress ?? session);
     } else {
       const ext = path.extname(micFile.originalname) || '.wav';
@@ -303,7 +341,8 @@ router.post('/upload', upload.fields([
       res.status(201).json(inProgress ?? session);
     }
   } catch (err) {
-    res.status(500).json({ error: (err as Error)?.message || 'Failed to start transcription' });
+    const status = err instanceof CaptureError ? 400 : 500;
+    res.status(status).json({ error: (err as Error)?.message || 'Failed to start transcription' });
   }
 });
 
@@ -386,7 +425,7 @@ router.post('/:id/retranscribe', async (req, res) => {
       duration: audioDur > 0 ? audioDur : undefined,
       ...(estDur > 0 ? { estimatedDuration: estDur } : {}),
     });
-    void runDualTranscription(req.params.id, audioFiles.mic, audioFiles.system, language, !!boost);
+    void runDualTranscription(req.params.id, audioFiles.mic, audioFiles.system, language, !!boost, session.systemOffsetMs ?? 0);
     res.json(updated ?? session);
   } else if (audioFiles.single) {
     const wavPath = await ensureWav(audioFiles.single);

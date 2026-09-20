@@ -3,8 +3,8 @@ import SessionList from './components/SessionList';
 import FileUpload from './components/FileUpload';
 import TranscriptView from './components/TranscriptView';
 import ModelDownloadModal from './components/ModelDownloadModal';
-import { checkHealth, deleteSession, fetchSessions, fetchTranscript, renameSession, retranscribeSession, cancelTranscription } from './api';
-import type { HealthStatus, SessionMetadata } from './types';
+import { checkHealth, deleteSession, fetchCaptureCapabilities, fetchSessions, fetchTranscript, renameSession, retranscribeSession, cancelTranscription } from './api';
+import type { CaptureCapabilities, HealthStatus, SessionMetadata } from './types';
 import SetupGuide from './components/SetupGuide';
 import GroqKeyModal from './components/GroqKeyModal';
 import SettingsModal from './components/SettingsModal';
@@ -34,6 +34,7 @@ const App: React.FC = () => {
   const [preferences, setPreferences] = useState<UserPreferences>({});
   const [showSettings, setShowSettings] = useState(false);
   const [audioDevices, setAudioDevices] = useState<MediaDeviceInfo[]>([]);
+  const [captureCapabilities, setCaptureCapabilities] = useState<CaptureCapabilities | null>(null);
 
   selectedSessionIdRef.current = selectedSessionId;
 
@@ -64,6 +65,11 @@ const App: React.FC = () => {
       setFfmpegAvailable(h.ffmpegAvailable);
     } catch {
       setFfmpegAvailable(false);
+    }
+    try {
+      setCaptureCapabilities(await fetchCaptureCapabilities());
+    } catch {
+      setCaptureCapabilities({ systemCapture: false, method: 'none', platform: 'unknown', hint: 'Capability probe failed — server unreachable', selfTest: 'skipped', selfTestDetail: 'capability probe failed' });
     }
   }, []);
 
@@ -285,6 +291,7 @@ const App: React.FC = () => {
                 preferences={preferences}
                 onPreferenceChange={handlePreferenceChange}
                 audioDevicesFromApp={audioDevices}
+                captureCapabilities={captureCapabilities}
                 onOpenSettings={() => setShowSettings(true)}
               />
             </div>
@@ -305,6 +312,7 @@ const App: React.FC = () => {
         <SettingsModal
           preferences={preferences}
           audioDevices={audioDevices}
+          captureCapabilities={captureCapabilities}
           onPreferenceChange={handlePreferenceChange}
           onReset={handlePreferencesReset}
           onClose={() => setShowSettings(false)}

@@ -1,0 +1,15 @@
+{
+  "id": "AUG-103-mew5aw",
+  "assignee": "storm.json",
+  "priority": "medium",
+  "status": "completed",
+  "title": "[AUG-103] Brainstorm: recording type switcher",
+  "why_we_need_this": "Brainstorm: recording type switcher\nAs for now, the August uses Screen-capture mode to record both audio and mic \nIt requires additional actions to be made on recording: choose a screen to capture, allow recording, confirm\nFor windows users it is a good compromise, but for Mac users it is too much, as an application may record both audio and mic straight from the system with no need of browser screen capture\n\nI think we may add users to decide the preferable option - use browser capture, or take it straight from the system (with no need of additional confirmations)\n\nThis toggle may be in settings\n\nThis task should not make changes in August, but create a task for implementation",
+  "acceptance_criteria": "",
+  "important_constraints": "",
+  "labels": [],
+  "on_hold_reason": "",
+  "contextRouterIncluded": false,
+  "created_at": 1789848082622,
+  "column_entered_at": 1789866422164
+}

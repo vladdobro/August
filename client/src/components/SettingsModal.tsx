@@ -1,11 +1,13 @@
 import React, { useEffect, useRef, useState } from 'react';
 import type { UserPreferences } from '../services/preferences';
-import { DEFAULT_PREFERENCES } from '../services/preferences';
+import { DEFAULT_PREFERENCES, isSystemCaptureUsable } from '../services/preferences';
 import { browsePraxisFolder } from '../api';
+import type { CaptureCapabilities, SystemAudioSource } from '../types';
 
 interface SettingsModalProps {
   preferences: UserPreferences;
   audioDevices: MediaDeviceInfo[];
+  captureCapabilities: CaptureCapabilities | null;
   onPreferenceChange: (patch: Partial<UserPreferences>) => void;
   onReset: () => void;
   onClose: () => void;
@@ -80,6 +82,7 @@ const SettingsDropdown: React.FC<SettingsDropdownProps> = ({ value, options, onC
 const SettingsModal: React.FC<SettingsModalProps> = ({
   preferences,
   audioDevices,
+  captureCapabilities,
   onPreferenceChange,
   onReset,
   onClose,
@@ -98,6 +101,23 @@ const SettingsModal: React.FC<SettingsModalProps> = ({
   const language = preferences.language ?? DEFAULT_PREFERENCES.language;
   const micDeviceId = preferences.micDeviceId ?? DEFAULT_PREFERENCES.micDeviceId;
   const systemAudio = preferences.systemAudio ?? DEFAULT_PREFERENCES.systemAudio;
+  const systemAudioSource = preferences.systemAudioSource ?? DEFAULT_PREFERENCES.systemAudioSource;
+  const systemCaptureAvailable = isSystemCaptureUsable(captureCapabilities);
+  const selfTest = captureCapabilities?.selfTest ?? 'skipped';
+  const captureStatusText = captureCapabilities === null
+    ? 'System capture: checking…'
+    : !captureCapabilities.systemCapture
+      ? `System capture: needs setup — ${captureCapabilities.hint}`
+      : selfTest === 'ok'
+        ? `System capture: available — self-test ok (${captureCapabilities.selfTestDetail})`
+        : selfTest === 'silent'
+          ? `System capture: available, but ${captureCapabilities.selfTestDetail}`
+          : selfTest === 'failed'
+            ? `System capture: self-test failed — ${captureCapabilities.selfTestDetail}`
+            : `System capture: available — ${captureCapabilities.hint}`;
+  const captureStatusClass = captureCapabilities === null || !captureCapabilities.systemCapture || selfTest === 'failed'
+    ? ''
+    : selfTest === 'silent' ? ' settings-hint--warn' : ' settings-hint--ok';
   const recordingMode = preferences.recordingMode ?? DEFAULT_PREFERENCES.recordingMode;
   const liveEngine = preferences.liveEngine ?? DEFAULT_PREFERENCES.liveEngine;
   const audioBoost = preferences.audioBoost ?? DEFAULT_PREFERENCES.audioBoost;
@@ -181,6 +201,20 @@ const SettingsModal: React.FC<SettingsModalProps> = ({
                 <span className="settings-toggle-label">{systemAudio ? 'On' : 'Off'}</span>
               </label>
             </div>
+            <div className="settings-row">
+              <label className="settings-label">System Audio Source</label>
+              <SettingsDropdown
+                className="settings-dropdown--wide"
+                value={systemAudioSource}
+                options={[
+                  { value: 'auto', label: 'Auto' },
+                  { value: 'browser', label: 'Browser (screen picker)' },
+                  { value: 'system', label: 'System (direct)', disabled: !systemCaptureAvailable },
+                ]}
+                onChange={(v) => onPreferenceChange({ systemAudioSource: v as SystemAudioSource })}
+              />
+            </div>
+            <div className={`settings-hint${captureStatusClass}`}>{captureStatusText}</div>
             <div className="settings-row">
               <label className="settings-label">Recording Mode</label>
               <SettingsDropdown

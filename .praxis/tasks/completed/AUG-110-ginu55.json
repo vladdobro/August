@@ -1,0 +1,19 @@
+{
+  "id": "AUG-110-ginu55",
+  "assignee": "jarvis.json",
+  "priority": "low",
+  "status": "completed",
+  "title": "[AUG-110] Stop ffmpeg system capture with SIGINT first, not stdin 'q'",
+  "why_we_need_this": "Follow-up to AUG-105. gracefulStop() in @server/src/services/systemCapture.ts ends the BlackHole capture by writing 'q' to ffmpeg's stdin and only sends SIGINT after a 1.5 s soft timeout. That works only while ffmpeg keeps reading stdin; if anyone later adds -nostdin to the spawn args (a common hardening flag) every stop would silently take the 1.5 s fallback, and the recorded durationMs and the tail of the system track would drift by that much. ffmpeg documents SIGINT as its graceful shutdown that finalizes the container header, so it should be the primary mechanism.\n\nDesign:\n1. In gracefulStop for method 'blackhole': send SIGINT immediately, wait up to STOP_HARD_TIMEOUT_MS for exit, then SIGKILL. Remove the stdin 'q' write and set ffmpeg stdin to 'ignore' in the spawn so the flag -nostdin can be added safely.\n2. Keep the audiotee path as is (SIGTERM to the tap closes ffmpeg's stdin pipe, which is the correct EOF-based stop for a piped input).\n3. Add a comment on the spawn args explaining why stdin handling differs between the two methods.",
+  "acceptance_criteria": "- On macOS with BlackHole, POST /api/capture/stop returns within 500 ms of the request and the resulting WAV has a valid header (ffprobe reports a finite duration equal to the capture length within 100 ms).\n- Adding -nostdin to the BlackHole ffmpeg args does not change stop latency or durationMs.\n- The coreaudio-tap stop path is unchanged and still produces a valid WAV.\n- Unit-level: gracefulStop is refactored so the signal sequence per method can be asserted with a fake ChildProcess, and a test covers both methods.",
+  "important_constraints": "- Do not change the public shape of the /stop response.\n- On Windows the code path is unreachable (capabilities return none); tests must run there using a fake process, not real ffmpeg.",
+  "labels": [
+    "recording",
+    "macos",
+    "server"
+  ],
+  "on_hold_reason": "",
+  "contextRouterIncluded": false,
+  "created_at": 1789867712974,
+  "column_entered_at": 1789871577346
+}

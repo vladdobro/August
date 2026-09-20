@@ -1,0 +1,19 @@
+{
+  "id": "AUG-107-vqvq5r",
+  "assignee": "jarvis.json",
+  "priority": "medium",
+  "status": "completed",
+  "title": "[AUG-107] Sniff audiotee PCM sample format instead of assuming s16le",
+  "why_we_need_this": "Follow-up to AUG-105. The coreaudio-tap path in @server/src/services/systemCapture.ts pipes audiotee stdout into ffmpeg as raw PCM and assumes the format from config.audioteeSampleFormat (default s16le, env override AUDIOTEE_SAMPLE_FORMAT). The audiotee README says output is 32-bit float unless a sample-rate conversion happens, in which case it is 16-bit. That rule is undocumented in detail and may differ between builds; a wrong guess produces a WAV of white noise and a garbage [Them] transcript with no error anywhere.\n\nDesign:\n1. Before starting the real capture (or inside the self-test from the sibling task), spawn `audiotee --sample-rate 16000`, read ~200 ms of stdout (about 6400 bytes at 16 kHz mono s16le), then kill it.\n2. Interpret the buffer both ways and score each: as int16 and as float32 little-endian. Real audio has a low zero-crossing rate and a bounded amplitude; a wrong interpretation looks like white noise (zero-crossing rate near 0.5) or contains NaN/inf or values far outside [-1, 1] for float32.\n3. Choose the format with the lower zero-crossing rate; if the float32 view contains any non-finite value, pick s16le.\n4. Cache the detected format alongside the capability cache and report it in CaptureCapabilities as sampleFormat.\n5. Keep AUDIOTEE_SAMPLE_FORMAT as an explicit override that skips detection.",
+  "acceptance_criteria": "- On macOS with audiotee on PATH, GET /api/capture/capabilities reports sampleFormat 's16le' or 'f32le' matching the binary's real output, and the resulting audio-system.wav is audible speech, not noise.\n- Unit tests feed synthetic s16le and f32le sine-wave buffers to the detector and it identifies both correctly; a silent buffer falls back to s16le without throwing.\n- Setting AUDIOTEE_SAMPLE_FORMAT skips detection and is echoed back in the capabilities response.\n- Detection adds no more than 500 ms to the first capabilities probe and nothing to cached probes.\n- project-context/architecture README replaces the \"unverified\" note with the detection rule.",
+  "important_constraints": "- Do not add sox or any other native dependency; pure Node buffer inspection only.\n- The detector must be a pure function over a Buffer so it is unit-testable on Windows.",
+  "labels": [
+    "recording",
+    "macos",
+    "server"
+  ],
+  "on_hold_reason": "",
+  "contextRouterIncluded": false,
+  "created_at": 1789867677590,
+  "column_entered_at": 1789871526429
+}

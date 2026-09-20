@@ -19,6 +19,11 @@ server/data/uploads/*
 server/data/perf-stats.json
 server/data/user-preferences.json
 server/data/live-tmp/
+server/data/captures/
+server/data/tools/
+
+# Legacy pre-AUG-109 preferences location; migrated to server/data/ on server start
+server/src/data/user-preferences.json
 
 # Whisper native binaries (downloaded/built by `npm run setup`; see whisper/README.md)
 whisper/bin/

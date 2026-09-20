@@ -183,6 +183,33 @@ export function mergeSingleStream(segments: TranscriptSegment[]): MergedUtteranc
   return joinAdjacentSameRole(deduped);
 }
 
+/// Shifts every segment by `offsetSec`, clamping at zero. Used to put a
+/// server-captured system track and the browser mic track on one clock.
+export function shiftSegments(segments: TranscriptSegment[], offsetSec: number): TranscriptSegment[] {
+  if (!offsetSec) return segments;
+  return segments.map((s) => ({
+    ...s,
+    start: Math.max(0, s.start + offsetSec),
+    end: Math.max(0, s.end + offsetSec),
+  }));
+}
+
+/// `systemOffsetMs` = systemCaptureStartedAt - micRecorderStartedAt (wall clock,
+/// same machine). Positive → the system track started later, so its segments
+/// move forward; negative → the mic started later, so mic segments move
+/// forward. The earlier-starting track defines t=0, exactly as the browser
+/// dual-recording path does implicitly.
+export function alignDualSegments(
+  micSegments: TranscriptSegment[],
+  systemSegments: TranscriptSegment[],
+  systemOffsetMs: number,
+): { mic: TranscriptSegment[]; system: TranscriptSegment[] } {
+  const offsetSec = (Number.isFinite(systemOffsetMs) ? systemOffsetMs : 0) / 1000;
+  if (offsetSec > 0) return { mic: micSegments, system: shiftSegments(systemSegments, offsetSec) };
+  if (offsetSec < 0) return { mic: shiftSegments(micSegments, -offsetSec), system: systemSegments };
+  return { mic: micSegments, system: systemSegments };
+}
+
 /// Merges two independently-transcribed streams (mic + system audio) into a
 /// single chronological, role-tagged utterance list. Each stream is gated
 /// the same way mergeSingleStream gates its one stream, then the two
@@ -221,10 +248,13 @@ export function formatTimestamp(seconds: number): string {
   return `${pad(hours)}:${pad(minutes)}:${pad(secs)}`;
 }
 
-/// Renders single-stream utterances as transcript.md: a header followed by
-/// one `[HH:MM:SS] text` line per utterance (no role prefix, since
-/// August's imported/recorded media is never split into Me/Them). Direct
-/// port of TranscriptMerger.cs's RenderSingleStream.
+/// Renders utterances as transcript.md: a header followed by one
+/// `[HH:MM:SS] text` line per utterance (`[HH:MM:SS] [Me]/[Them] text` when
+/// utterances carry roles). Direct port of TranscriptMerger.cs's
+/// RenderSingleStream. The header is always exactly Date + Duration: the
+/// server-capture alignment offset (session.systemOffsetMs) is applied by
+/// alignDualSegments before merging and is deliberately not printed here —
+/// it is a diagnostic that belongs in session.json, not in a user-facing transcript.
 export function renderTranscript(
   utterances: MergedUtterance[],
   startedAt: string,

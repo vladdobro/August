@@ -1,4 +1,4 @@
-import type { HealthStatus, ModelSetupStatus, SessionMetadata, TranscriptionLanguage } from './types';
+import type { CaptureCapabilities, HealthStatus, ModelSetupStatus, ServerCapture, SessionMetadata, TranscriptionLanguage } from './types';
 
 export interface UploadProgress {
   loaded: number;
@@ -40,16 +40,8 @@ export async function fetchTranscript(id: string): Promise<string> {
   return res.text();
 }
 
-export function uploadAudio(
-  file: File,
-  language: TranscriptionLanguage | string,
-  onProgress?: (progress: UploadProgress) => void,
-): Promise<SessionMetadata> {
+function postSessionUpload(formData: FormData, onProgress?: (progress: UploadProgress) => void): Promise<SessionMetadata> {
   return new Promise((resolve, reject) => {
-    const formData = new FormData();
-    formData.append('audio', file);
-    formData.append('language', language);
-
     const xhr = new XMLHttpRequest();
     xhr.open('POST', `${API_BASE}/sessions/upload`);
 
@@ -83,49 +75,46 @@ export function uploadAudio(
   });
 }
 
+export function uploadAudio(
+  file: File,
+  language: TranscriptionLanguage | string,
+  onProgress?: (progress: UploadProgress) => void,
+): Promise<SessionMetadata> {
+  const formData = new FormData();
+  formData.append('audio', file);
+  formData.append('language', language);
+  return postSessionUpload(formData, onProgress);
+}
+
 export function uploadDualAudio(
   micFile: File,
   systemFile: File,
   language: TranscriptionLanguage | string,
   onProgress?: (progress: UploadProgress) => void,
 ): Promise<SessionMetadata> {
-  return new Promise((resolve, reject) => {
-    const formData = new FormData();
-    formData.append('audio', micFile);
-    formData.append('systemAudio', systemFile);
-    formData.append('language', language);
+  const formData = new FormData();
+  formData.append('audio', micFile);
+  formData.append('systemAudio', systemFile);
+  formData.append('language', language);
+  return postSessionUpload(formData, onProgress);
+}
 
-    const xhr = new XMLHttpRequest();
-    xhr.open('POST', `${API_BASE}/sessions/upload`);
-
-    xhr.upload.onprogress = (e) => {
-      if (e.lengthComputable && onProgress) {
-        onProgress({ loaded: e.loaded, total: e.total });
-      }
-    };
-
-    xhr.onload = () => {
-      if (xhr.status >= 200 && xhr.status < 300) {
-        try {
-          resolve(JSON.parse(xhr.responseText) as SessionMetadata);
-        } catch {
-          reject(new Error('Invalid response from server'));
-        }
-      } else {
-        let message = `Request failed with status ${xhr.status}`;
-        try {
-          const body = JSON.parse(xhr.responseText);
-          if (body?.error) message = body.error;
-        } catch {
-          // use default message
-        }
-        reject(new Error(message));
-      }
-    };
-
-    xhr.onerror = () => reject(new Error('Upload failed'));
-    xhr.send(formData);
-  });
+/// Dual-track upload where the system track was captured server-side
+/// (AUG-105): the server attaches the capture file by captureId and uses
+/// micStartedAt (wall-clock ms) to offset-align the two tracks.
+export function uploadDualAudioWithCapture(
+  micFile: File,
+  captureId: string,
+  micStartedAt: number,
+  language: TranscriptionLanguage | string,
+  onProgress?: (progress: UploadProgress) => void,
+): Promise<SessionMetadata> {
+  const formData = new FormData();
+  formData.append('audio', micFile);
+  formData.append('captureId', captureId);
+  formData.append('micStartedAt', String(micStartedAt));
+  formData.append('language', language);
+  return postSessionUpload(formData, onProgress);
 }
 
 export async function deleteSession(id: string): Promise<void> {
@@ -200,4 +189,29 @@ export async function sendToPraxis(sessionId: string, projectPath: string, taskN
 export async function browsePraxisFolder(): Promise<{ path: string | null }> {
   const res = await fetch(`${API_BASE}/praxis/browse`, { method: 'POST' });
   return handleJsonResponse<{ path: string | null }>(res);
+}
+
+export async function fetchCaptureCapabilities(): Promise<CaptureCapabilities> {
+  const res = await fetch(`${API_BASE}/capture/capabilities`);
+  return handleJsonResponse<CaptureCapabilities>(res);
+}
+
+/// AUG-113: live=true makes the server tee its capture into the live-transcription
+/// pipeline; the returned captureId is then passed to LiveTranscriptionClient.start().
+export async function startServerCapture(opts: { live?: boolean } = {}): Promise<ServerCapture> {
+  const res = await fetch(`${API_BASE}/capture/start`, {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({ live: opts.live === true }),
+  });
+  return handleJsonResponse<ServerCapture>(res);
+}
+
+export async function stopServerCapture(captureId: string): Promise<ServerCapture & { path: string; durationMs: number }> {
+  const res = await fetch(`${API_BASE}/capture/stop`, {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({ captureId }),
+  });
+  return handleJsonResponse<ServerCapture & { path: string; durationMs: number }>(res);
 }

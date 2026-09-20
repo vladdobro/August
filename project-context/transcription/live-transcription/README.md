@@ -3,12 +3,15 @@
 ## TL;DR
 - Live transcription streams real-time audio chunks over a WebSocket at /api/live-transcribe to either local whisper-cli or the Groq Whisper API.
 - The user selects a transcription engine (Local or Groq) when choosing Live mode; Groq is shown only when GROQ_API_KEY is configured.
-- The browser captures mic (Me) and system (Them) audio via ScriptProcessorNode, resamples to 16kHz, and sends 4-second chunks.
+- With System audio source = Browser, the browser taps mic (Me) and system (Them) MediaStreams via ScriptProcessorNode, resamples to 16kHz, and sends 4-second chunks.
+- With System audio source = System (AUG-113), the server tees its own capture into the live pipeline as Them; the browser sends only mic chunks.
+- Live mode with a server capture shows no screen picker; the client binds the capture with an attach-capture control frame.
 - A binary WebSocket protocol encodes speaker identity, language, and Float32 PCM in each frame.
 - ChunkAccumulator uses 4s windows with 1s overlap and RMS-based VAD silence gate (threshold 0.006) before sending.
 - The server queues at most 6 chunks per connection; 3 consecutive failures trigger interrupted status.
 - Groq fallback: rate limit (20 req/min) falls back to local whisper per-chunk; API errors switch engine to local permanently for that connection.
 - Key files: server/src/services/liveTranscription.ts, server/src/services/groqTranscription.ts, client/src/services/liveTranscriptionClient.ts.
+- Key files also include server/src/services/liveChunking.ts (server ChunkAccumulator, LivePcmFeeder, control-frame parser) and attachLiveSink in server/src/services/systemCapture.ts.
 - Post-recording full-file transcription remains local whisper only — Groq is exclusively a live mode option.
 - Live panel buttons are a 2×2 grid: Pause (yellow) + Copy All (green) top row, Stop (red filled) + Clear All (red frame) bottom row.
 - Stop and Clear All require a confirmation dialog ("Are you sure?") before executing.
@@ -37,6 +40,9 @@ Document the mechanics of the live transcription mode — how audio is captured 
 - Server-side transcription: each chunk is written as a temporary 16kHz mono 16-bit WAV file in server/data/live-tmp/, routed to either local whisper-cli or Groq based on the connection's engine setting, then the temp files are deleted.
 - Filler and hallucination filtering: the server reuses FILLER_ONLY_TEXTS, isHallucination, and normalize from transcriptMerger.ts to filter live chunks identically to the batch pipeline.
 - JSON control messages: the client sends {type: "config", engine}, {type: "pause"}, {type: "resume"}, {type: "stop"} as text frames; the server sends {type: "transcript", speaker, text}, {type: "warning", message}, and {type: "error", message} back.
+- attach-capture control frame (AUG-113): the client sends {type: "attach-capture", captureId, language} as a text frame right after the config frame when the recording uses a server capture; the server replies {type: "capture-attached", captureId} or a {type: "warning"} ("System audio not attached (...) — live transcript continues with the microphone only") when the captureId is unknown, already stopped, not started with live: true, or already attached.
+- Server PCM tee: POST /api/capture/start { live: true } adds a second ffmpeg output (-f s16le -ac 1 -ar 16000 pipe:1) next to the unchanged WAV; systemCapture.ts drains stdout from spawn and forwards bytes to at most one CaptureLiveSink.
+- LivePcmFeeder (server/src/services/liveChunking.ts) converts the s16le bytes to Float32 (carrying an odd trailing byte between chunks) and feeds a server-side ChunkAccumulator with the same 64000/16000/0.006 constants as the browser one; full windows are queued as speaker Them on the same per-connection queue and engine as mic chunks.
 - LiveTranscriptPanel: a fixed 340px right-side panel (client/src/components/LiveTranscriptPanel.tsx) displaying interleaved Me/Them lines with auto-scroll and a 2×2 button grid.
 - Panel button grid layout: Row 1 = Pause/Resume + Copy All; Row 2 = Stop + Clear All. CSS uses grid-template-columns: 1fr 1fr.
 - Button color scheme: Pause = yellow frame default / yellow fill on hover; Copy All = green frame default / green fill on hover; Stop = red filled always; Clear All = red frame default / red fill on hover.
@@ -67,6 +73,10 @@ Document the mechanics of the live transcription mode — how audio is captured 
 - Clear All clears displayed lines without stopping transcription, audio capture, or the WebSocket connection.
 - Stop and Clear All both gate behind a shared confirmAction state ('stop' | 'clearAll' | null) — only one confirmation dialog can be active at a time.
 - The Vite dev proxy must have ws: true on the /api proxy config for WebSocket upgrade forwarding.
+- The binary WebSocket audio frame format is unchanged by AUG-113; attach-capture is a separate JSON text frame parsed by parseLiveControlFrame (malformed frames are ignored).
+- Detach/flush order on stop: stopCapture() ends the tee first (sink.onEnd('stop') flushes the accumulator's partial window into the transcription queue when ≥0.5 s of fresh audio arrived), then stops ffmpeg and finalizes the WAV, so the post-recording dual-track transcript is produced exactly as for a non-live capture.
+- Closing the WebSocket or sending stop only detaches the sink — the server capture keeps recording until POST /api/capture/stop; a WAV from a live-attached capture is format-identical (16 kHz mono pcm_s16le, 44-byte header) to a non-live one.
+- One sink per capture: a second attach-capture for the same captureId gets a warning and the first binding stays.
 
 ## Route-Specific Constraints
 
@@ -89,3 +99,5 @@ Document the mechanics of the live transcription mode — how audio is captured 
 - server/src/index.ts — HTTP server creation and WebSocket upgrade setup.
 - server/src/config.ts — groqApiKey config read from GROQ_API_KEY env var.
 - server/src/routes/health.ts — exposes groqAvailable flag in health endpoint response.
+- server/src/services/liveChunking.ts — ChunkAccumulator (server port), LivePcmFeeder (s16le → Float32 with odd-byte carry), parseLiveControlFrame; unit tests in liveChunking.test.ts.
+- server/src/services/systemCapture.ts — live PCM tee (LIVE_TEE_ARGS, CaptureLiveSink, attachLiveSink) for server-fed Them audio.

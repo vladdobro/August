@@ -6,6 +6,8 @@ import {
   FILLER_ONLY_TEXTS,
   dedupHallucinations,
   mergeSingleStream,
+  alignDualSegments,
+  renderTranscript,
 } from './transcriptMerger.js';
 
 describe('stripCreditHallucination', () => {
@@ -147,5 +149,40 @@ describe('live transcription path simulation', () => {
     expect(normalized.length).toBeGreaterThan(0);
     expect(FILLER_ONLY_TEXTS.has(normalized)).toBe(false);
     expect(isHallucination(normalized)).toBe(false);
+  });
+});
+
+describe('alignDualSegments', () => {
+  const mic = [{ start: 0, end: 1, text: 'hello' }];
+  const system = [{ start: 0, end: 1, text: 'hi' }];
+
+  test('positive offset shifts the system track forward', () => {
+    const { mic: m, system: s } = alignDualSegments(mic, system, 1500);
+    expect(m).toEqual(mic);
+    expect(s[0].start).toBeCloseTo(1.5);
+    expect(s[0].end).toBeCloseTo(2.5);
+  });
+
+  test('negative offset shifts the mic track forward', () => {
+    const { mic: m, system: s } = alignDualSegments(mic, system, -400);
+    expect(s).toEqual(system);
+    expect(m[0].start).toBeCloseTo(0.4);
+  });
+
+  test('zero / NaN offset is a no-op', () => {
+    expect(alignDualSegments(mic, system, 0)).toEqual({ mic, system });
+    expect(alignDualSegments(mic, system, Number.NaN)).toEqual({ mic, system });
+  });
+});
+
+describe('renderTranscript header', () => {
+  const utterances = [{ start: 0, end: 1, text: 'hello', role: 'Me' as const }];
+  const startedAt = '2026-09-20T10:00:00.000Z';
+
+  test('header is exactly Date + Duration — no diagnostic lines such as Track offset', () => {
+    const out = renderTranscript(utterances, startedAt, 1);
+    const header = out.split('[00:00:00]')[0].trim().split('\n');
+    expect(header).toEqual(['# Transcript', '', expect.stringMatching(/^- Date: /), '- Duration: 00:00:01']);
+    expect(out).not.toContain('Track offset');
   });
 });

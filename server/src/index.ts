@@ -11,9 +11,12 @@ import sessionsRouter, { recoverOrphanedSessions } from './routes/sessions.js';
 import setupRouter from './routes/setup.js';
 import praxisRouter from './routes/praxis.js';
 import preferencesRouter from './routes/preferences.js';
+import captureRouter from './routes/capture.js';
 import { setupLiveTranscription } from './services/liveTranscription.js';
 import { checkFfmpegAvailable, FFMPEG_MISSING_MESSAGE, fileExists } from './services/whisper.js';
 import { ensureWhisperModel } from './services/modelDownloader.js';
+import { cleanupOrphanedCaptures } from './services/systemCapture.js';
+import { migrateLegacyPreferences } from './services/preferencesStore.js';
 
 const __filename = fileURLToPath(import.meta.url);
 const __dirname = path.dirname(__filename);
@@ -21,6 +24,7 @@ const __dirname = path.dirname(__filename);
 async function ensureDataDirs(): Promise<void> {
   await fs.mkdir(config.sessionsDir, { recursive: true });
   await fs.mkdir(config.uploadsDir, { recursive: true });
+  await fs.mkdir(config.capturesDir, { recursive: true });
 }
 
 async function runPreflightChecks(): Promise<void> {
@@ -37,7 +41,9 @@ async function runPreflightChecks(): Promise<void> {
 
 async function main() {
   await ensureDataDirs();
+  await migrateLegacyPreferences();
   await recoverOrphanedSessions();
+  await cleanupOrphanedCaptures();
   await runPreflightChecks();
 
   const app = express();
@@ -50,6 +56,7 @@ async function main() {
   app.use('/api/setup', setupRouter);
   app.use('/api/praxis', praxisRouter);
   app.use('/api/preferences', preferencesRouter);
+  app.use('/api/capture', captureRouter);
 
   const isDev = process.env.NODE_ENV !== 'production';
 
@@ -90,6 +97,7 @@ async function main() {
     const gpuBackend = process.platform === 'darwin' ? 'Metal' : 'Vulkan';
     console.log(`  Platform: ${process.platform}-${process.arch} (GPU: ${config.whisperUseGpu ? gpuBackend : 'off'})`);
     console.log(`  Live transcription: ws://localhost:${config.port}/api/live-transcribe`);
+    console.log(`  System capture: GET /api/capture/capabilities (loopback only)`);
     console.log(`  Groq API: ${config.groqApiKey ? 'configured' : 'not configured (live mode uses local whisper only)'}`);
   });
 

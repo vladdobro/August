@@ -6188,6 +6188,23 @@ button:hover:not(:disabled):not(.sidebar-menu-item):not(.export-menu-item):not(.
   flex-shrink: 0;
 }
 
+.settings-hint {
+  font-family: var(--font-terminal);
+  font-size: 11px;
+  line-height: 1.4;
+  color: var(--text-secondary);
+  margin: -4px 0 8px;
+  border-radius: 0;
+}
+
+.settings-hint--ok {
+  color: var(--accent);
+}
+
+.settings-hint--warn {
+  color: #d4a028;
+}
+
 .settings-dropdown {
   position: relative;
   min-width: 140px;

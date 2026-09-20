@@ -1,10 +1,9 @@
 import fs from 'node:fs/promises';
 import path from 'node:path';
 import { Router } from 'express';
+import { PREFS_PATH } from '../services/preferencesStore.js';
 
 const router = Router();
-const DATA_DIR = path.resolve(import.meta.dirname, '..', 'data');
-const PREFS_PATH = path.join(DATA_DIR, 'user-preferences.json');
 
 async function readPrefs(): Promise<Record<string, unknown>> {
   try {
@@ -16,7 +15,7 @@ async function readPrefs(): Promise<Record<string, unknown>> {
 }
 
 async function writePrefs(prefs: Record<string, unknown>): Promise<void> {
-  await fs.mkdir(DATA_DIR, { recursive: true });
+  await fs.mkdir(path.dirname(PREFS_PATH), { recursive: true });
   await fs.writeFile(PREFS_PATH, JSON.stringify(prefs, null, 2), 'utf-8');
 }
 
@@ -24,6 +23,7 @@ const ALLOWED_KEYS = new Set([
   'language',
   'micDeviceId',
   'systemAudio',
+  'systemAudioSource',
   'recordingMode',
   'liveEngine',
   'audioBoost',

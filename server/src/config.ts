@@ -50,8 +50,19 @@ export interface AppConfig {
   port: number;
   whisperBinPath: string;
   whisperModelPath: string;
+  // Root of all runtime server data (sessions, uploads, captures, perf stats, user preferences).
+  dataDir: string;
   sessionsDir: string;
   uploadsDir: string;
+  // Server-side system audio captures (AUG-105) live here until a session upload claims them.
+  capturesDir: string;
+  // Compiled-on-demand helper binaries (AUG-112); gitignored.
+  toolsDir: string;
+  // C# source of the WASAPI loopback helper, committed; compiled into toolsDir with csc.exe.
+  wasapiHelperSourcePath: string;
+  // Explicit override (AUDIOTEE_SAMPLE_FORMAT=s16le|f32le) for the raw PCM format audiotee writes to
+  // stdout. null = sniff it from a short probe of the binary's output (AUG-107, services/pcmSampleFormat.ts).
+  audioteeSampleFormat: string | null;
   // Metal on Apple Silicon, Vulkan on Windows x64; other platforms keep --no-gpu.
   whisperUseGpu: boolean;
   groqApiKey: string | null;
@@ -65,8 +76,13 @@ export const config: AppConfig = {
   whisperModelPath: process.env.WHISPER_MODEL_PATH?.trim()
     ? path.resolve(process.env.WHISPER_MODEL_PATH.trim())
     : defaultWhisperModelPath(),
+  dataDir: path.resolve(serverRoot, 'data'),
   sessionsDir: path.resolve(serverRoot, 'data', 'sessions'),
   uploadsDir: path.resolve(serverRoot, 'data', 'uploads'),
+  capturesDir: path.resolve(serverRoot, 'data', 'captures'),
+  toolsDir: path.resolve(serverRoot, 'data', 'tools'),
+  wasapiHelperSourcePath: path.resolve(serverRoot, 'tools', 'wasapi-loopback', 'WasapiLoopback.cs'),
+  audioteeSampleFormat: process.env.AUDIOTEE_SAMPLE_FORMAT?.trim() || null,
   whisperUseGpu:
     (process.platform === 'darwin' && process.arch === 'arm64') ||
     (process.platform === 'win32' && process.arch === 'x64'),

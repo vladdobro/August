@@ -1,6 +1,6 @@
 import React, { useCallback, useEffect, useRef, useState } from 'react';
-import { uploadAudio, uploadDualAudio, type UploadProgress } from '../api';
-import type { TranscriptionLanguage } from '../types';
+import { uploadAudio, uploadDualAudio, uploadDualAudioWithCapture, startServerCapture, stopServerCapture, type UploadProgress } from '../api';
+import type { CaptureCapabilities, ServerCapture, TranscriptionLanguage } from '../types';
 import { useTheme } from '../theme';
 import RecordingModePicker, { type RecordingMode } from './RecordingModePicker';
 import LanguagePicker from './LanguagePicker';
@@ -8,7 +8,7 @@ import MicPicker from './MicPicker';
 import LiveTranscriptPanel, { type LiveLine, type LiveStatus } from './LiveTranscriptPanel';
 import { LiveTranscriptionClient, type LiveEngine } from '../services/liveTranscriptionClient';
 import { saveRecordingProgress, getRecoveredRecording, clearRecoveredRecording, type RecoveredRecording } from '../services/recordingRecovery';
-import type { UserPreferences } from '../services/preferences';
+import { resolveSystemAudioSource, type UserPreferences } from '../services/preferences';
 
 const ACCEPTED_EXTENSIONS = ['.wav', '.mp3', '.ogg', '.flac', '.m4a'];
 const AUDIO_BARS_COUNT = 12;
@@ -22,6 +22,7 @@ interface FileUploadProps {
   preferences?: UserPreferences;
   onPreferenceChange?: (patch: Partial<UserPreferences>) => void;
   audioDevicesFromApp?: MediaDeviceInfo[];
+  captureCapabilities?: CaptureCapabilities | null;
   onOpenSettings?: () => void;
 }
 
@@ -41,7 +42,7 @@ function formatBytes(bytes: number): string {
   return `${Math.round(bytes / (1024 * 1024))} MB`;
 }
 
-const FileUpload: React.FC<FileUploadProps> = ({ onUploaded, onRecordingChange, groqAvailable, onGroqKeySaved, preferences, onPreferenceChange, audioDevicesFromApp, onOpenSettings }) => {
+const FileUpload: React.FC<FileUploadProps> = ({ onUploaded, onRecordingChange, groqAvailable, onGroqKeySaved, preferences, onPreferenceChange, audioDevicesFromApp, captureCapabilities, onOpenSettings }) => {
   const { theme, toggle: toggleTheme } = useTheme();
   const [language, setLanguage] = useState<TranscriptionLanguage>('ru');
   const [isDragging, setIsDragging] = useState(false);
@@ -53,6 +54,8 @@ const FileUpload: React.FC<FileUploadProps> = ({ onUploaded, onRecordingChange, 
   const [selectedMicId, setSelectedMicId] = useState<string>('');
   const [captureSystemAudio, setCaptureSystemAudio] = useState(true);
   const [micNotice, setMicNotice] = useState<string | null>(null);
+  const [captureNotice, setCaptureNotice] = useState<string | null>(null);
+  const micStartedAtRef = useRef<number>(0);
 
   // --- Live Transcription (additive layer; does not alter recording/upload above) ---
   const [showModePicker, setShowModePicker] = useState(false);
@@ -189,6 +192,8 @@ const FileUpload: React.FC<FileUploadProps> = ({ onUploaded, onRecordingChange, 
     }
   }, [preferences?.systemAudio]);
 
+  const resolvedSystemSource = resolveSystemAudioSource(preferences?.systemAudioSource, captureCapabilities);
+
   useEffect(() => {
     if (preferences?.micDeviceId && preferences.micDeviceId !== 'default' && audioDevices.length > 0) {
       const found = audioDevices.some((d) => d.deviceId === preferences.micDeviceId);
@@ -202,7 +207,7 @@ const FileUpload: React.FC<FileUploadProps> = ({ onUploaded, onRecordingChange, 
   }, [preferences?.micDeviceId, audioDevices]);
 
   const startLiveTranscription = useCallback(
-    (micStream: MediaStream | null, systemStream: MediaStream | null, engine: LiveEngine = 'local') => {
+    (micStream: MediaStream | null, systemStream: MediaStream | null, engine: LiveEngine = 'local', captureId: string | null = null) => {
       setLiveLines([]);
       setLiveError(null);
       setLiveWarning(null);
@@ -228,13 +233,14 @@ const FileUpload: React.FC<FileUploadProps> = ({ onUploaded, onRecordingChange, 
         onMicUnavailable: () => setLiveMicUnavailable(true),
       });
       liveClientRef.current = client;
-      client.start(micStream, systemStream, language, engine);
+      client.start(micStream, systemStream, language, engine, captureId);
     },
     [language],
   );
 
   const startRecording = useCallback(async (liveMode: boolean = false, engine: LiveEngine = 'local') => {
     setError(null);
+    setCaptureNotice(null);
     try {
       void clearRecoveredRecording();
       setRecoveredRecording(null);
@@ -245,6 +251,15 @@ const FileUpload: React.FC<FileUploadProps> = ({ onUploaded, onRecordingChange, 
       const micStream = await navigator.mediaDevices.getUserMedia({ audio: micConstraints });
       streamRef.current = micStream;
       let liveSystemStream: MediaStream | null = null;
+
+      // AUG-105: decide how the system track is captured for this recording.
+      // AUG-113: live mode no longer forces the picker — the server tees its
+      // capture into the live pipeline, so the same decision applies to both modes.
+      let serverCapture: ServerCapture | null = null;
+      const useServerCapture = captureSystemAudio && resolvedSystemSource === 'system';
+      if (captureSystemAudio && preferences?.systemAudioSource === 'system' && resolvedSystemSource === 'browser') {
+        setCaptureNotice(`Direct system capture is unavailable — using the browser screen picker. ${captureCapabilities?.hint ?? ''}`.trim());
+      }
 
       const mimeType = MediaRecorder.isTypeSupported('audio/webm')
         ? 'audio/webm'
@@ -281,6 +296,34 @@ const FileUpload: React.FC<FileUploadProps> = ({ onUploaded, onRecordingChange, 
         }
       };
 
+      const uploadWithServerCapture = async (micBlob: Blob, capture: ServerCapture) => {
+        const micExt = micBlob.type.includes('wav') ? 'wav' : 'webm';
+        const micFile = new File([micBlob], `recording-${ts}-mic.${micExt}`, { type: micBlob.type });
+
+        setIsUploading(true);
+        setUploadProgress(null);
+        try {
+          let captureStopped = true;
+          try {
+            await stopServerCapture(capture.captureId);
+          } catch (err) {
+            captureStopped = false;
+            setCaptureNotice(`System audio track was lost (${(err as Error).message}) — saving the microphone track only.`);
+          }
+          if (captureStopped) {
+            await uploadDualAudioWithCapture(micFile, capture.captureId, micStartedAtRef.current, language, setUploadProgress);
+          } else {
+            await uploadAudio(micFile, language, setUploadProgress);
+          }
+          onUploaded();
+        } catch (err) {
+          setError((err as Error).message || 'Upload failed');
+        } finally {
+          setIsUploading(false);
+          setUploadProgress(null);
+        }
+      };
+
       recordedChunksRef.current = [];
       const micRecorder = mimeType
         ? new MediaRecorder(micStream, { mimeType })
@@ -291,10 +334,10 @@ const FileUpload: React.FC<FileUploadProps> = ({ onUploaded, onRecordingChange, 
           recordedChunksRef.current.push(event.data);
           void saveRecordingProgress(
             recordedChunksRef.current,
-            captureSystemAudio ? soundChunksRef.current : null,
+            captureSystemAudio && !serverCapture ? soundChunksRef.current : null,
             micRecorder.mimeType || 'audio/webm',
             language,
-            captureSystemAudio,
+            captureSystemAudio && !serverCapture,
           );
         }
       };
@@ -307,7 +350,9 @@ const FileUpload: React.FC<FileUploadProps> = ({ onUploaded, onRecordingChange, 
           type: micRecorder.mimeType || 'audio/webm',
         });
 
-        if (captureSystemAudio) {
+        if (captureSystemAudio && serverCapture) {
+          await uploadWithServerCapture(blob, serverCapture);
+        } else if (captureSystemAudio) {
           dualState.mic = blob;
           void tryDualUpload();
         } else {
@@ -332,7 +377,15 @@ const FileUpload: React.FC<FileUploadProps> = ({ onUploaded, onRecordingChange, 
 
       mediaRecorderRef.current = micRecorder;
 
-      if (captureSystemAudio) {
+      if (useServerCapture) {
+        try {
+          serverCapture = await startServerCapture({ live: liveMode });
+        } catch (err) {
+          setCaptureNotice(`Direct system capture failed to start (${(err as Error).message}) — falling back to the browser screen picker.`);
+        }
+      }
+
+      if (captureSystemAudio && !serverCapture) {
         const displayStream = await navigator.mediaDevices.getDisplayMedia({
           audio: true,
           video: true,
@@ -383,6 +436,7 @@ const FileUpload: React.FC<FileUploadProps> = ({ onUploaded, onRecordingChange, 
       }
 
       micRecorder.start(30000);
+      micStartedAtRef.current = Date.now();
 
       setElapsedSeconds(0);
       const startTime = Date.now();
@@ -422,14 +476,14 @@ const FileUpload: React.FC<FileUploadProps> = ({ onUploaded, onRecordingChange, 
       onRecordingChange?.(true);
 
       if (liveMode) {
-        startLiveTranscription(micStream, liveSystemStream, engine);
+        startLiveTranscription(micStream, liveSystemStream, engine, serverCapture?.captureId ?? null);
       }
     } catch (err) {
       setError(
         'Could not access audio device: ' + ((err as Error).message || 'unknown error'),
       );
     }
-  }, [language, onUploaded, selectedMicId, captureSystemAudio, startLiveTranscription]);
+  }, [language, onUploaded, selectedMicId, captureSystemAudio, startLiveTranscription, resolvedSystemSource, preferences?.systemAudioSource, captureCapabilities?.hint]);
 
   const stopRecording = useCallback(() => {
     mediaRecorderRef.current?.stop();
@@ -680,7 +734,7 @@ const FileUpload: React.FC<FileUploadProps> = ({ onUploaded, onRecordingChange, 
           </div>
         )}
 
-        <label className={`circuit-node circuit-node--corner circuit-node--bottom-left${captureSystemAudio ? ' circuit-node--active' : ''}`} title="Captures system audio via screen sharing">
+        <label className={`circuit-node circuit-node--corner circuit-node--bottom-left${captureSystemAudio ? ' circuit-node--active' : ''}`} title={resolvedSystemSource === 'system' ? 'Captures system audio directly on the local server' : 'Captures system audio via screen sharing'}>
           <span className="circuit-node-icon" aria-hidden="true">
             <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
               <path d="M2 10v3a1 1 0 0 0 1 1h3l4 4V5L6 9H3a1 1 0 0 0-1 1z" />
@@ -715,6 +769,12 @@ const FileUpload: React.FC<FileUploadProps> = ({ onUploaded, onRecordingChange, 
         <div className="mic-notice">
           <span>{micNotice}</span>
           <button type="button" className="mic-notice-dismiss" onClick={() => setMicNotice(null)}>×</button>
+        </div>
+      )}
+      {captureNotice && (
+        <div className="mic-notice">
+          <span>{captureNotice}</span>
+          <button type="button" className="mic-notice-dismiss" onClick={() => setCaptureNotice(null)}>×</button>
         </div>
       )}
 

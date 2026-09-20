@@ -8,6 +8,8 @@
 - A session moves through uploading, transcribing, then completed or failed — the client polls status until it leaves transcribing.
 - Failed sessions can be retranscribed from the UI; the retranscribe endpoint runs a whisper-cli and model preflight check before flipping status.
 - Dual-track recording (mic + system) produces one session; mergeDualStream interleaves both streams with [Me]/[Them] role labels.
+- Server-captured system tracks are offset-aligned by alignDualSegments (session.systemOffsetMs) before mergeDualStream; browser-recorded dual tracks have offset 0.
+- Transcript headers never print systemOffsetMs; the alignment offset is a diagnostic kept only in session.json.
 - TranscriptMerger constants are a faithful port from SplitVox's C# implementation — never re-tune without re-validating against known audio.
 - Single-track transcripts have no role prefix; dual-track transcripts prefix each line with [Me] or [Them].
 - Active whisper child processes are tracked per session in a Map; cancelTranscription kills all tracked processes for a session.
@@ -32,6 +34,8 @@ Document the exact mechanics of turning a recorded or uploaded audio file into a
 - TranscriptMerger: server/src/services/transcriptMerger.ts takes raw whisper.cpp segments and produces the cleaned transcript — filtering, deduplication, and join logic.
 - Session lifecycle: a session's status field moves uploading -> transcribing -> completed or transcribing -> failed. A failed session can be retranscribed, which resets it to transcribing.
 - Transcript rendering: the final transcript is markdown — a header followed by [HH:MM:SS] text lines (single-track) or [HH:MM:SS] [Me]/[Them] text lines (dual-track), one per merged segment.
+- Transcript header lines are exactly "- Date:" and "- Duration:"; renderTranscript takes no offset parameter.
+- The former "- Track offset: ±N ms" header (AUG-108) was removed as a user-facing technical detail; existing transcript.md files keep it until retranscribed.
 - Dual-stream merge: mergeDualStream takes mic and system segments, tags them with roles (Me/Them), sorts chronologically, then applies the same dedup/join pipeline — joinAdjacentSameRole only joins segments with matching roles.
 - Process tracking: whisper.ts maintains a Map<string, ChildProcess[]> keyed by session ID. Each transcribe() call registers its child process; dual-track sessions register two processes under the same key. Processes are deregistered in the execFile callback.
 - Cancellation: cancelTranscription(sessionId) kills all tracked child processes for that session. The cancel endpoint (POST /api/sessions/:id/cancel) calls this and sets status to "failed" with "Cancelled by user". The catch block in runTranscription/runDualTranscription skips overwriting if status is already "failed" to avoid a race with the cancel endpoint.
@@ -87,6 +91,10 @@ Document the exact mechanics of turning a recorded or uploaded audio file into a
 - Timestamp offsets from whisper-cli --output-json-full in this build are milliseconds — convert correctly before formatting [HH:MM:SS] lines.
 - On Windows, non-ASCII paths must be converted to 8.3 short paths via toSafePath; toSafePath is a passthrough on macOS.
 - Dual-track sessions store audio as audio-mic.{ext} and audio-system.{ext}; single-track sessions store audio as audio.{ext}.
+- alignDualSegments shifts the later-starting track forward by |systemOffsetMs| (positive → system segments, negative → mic segments) so the earlier track defines t=0; segments are clamped at 0.
+- systemOffsetMs comes only from the server-capture upload path (captureId + micStartedAt); it is absent (treated as 0) for browser dual recordings and file uploads.
+- Retranscribe re-applies the stored systemOffsetMs — never recompute it from file durations.
+- Never add diagnostic lines (offsets, engine names, timings) to the transcript header; put such data in session.json metadata instead.
 - ensureWav derives the output filename from the input basename — never hardcode audio.wav, which would collide in dual-track sessions.
 - Boosted filenames use the pattern {basename}-boosted.wav — findAudioFiles must never match these as original audio (verified: startsWith('audio.') / 'audio-mic.' / 'audio-system.' excludes '-boosted' variants).
 - On Windows, boostAudio must use toSafePath for both input and output paths — same non-ASCII crash risk as whisper-cli.

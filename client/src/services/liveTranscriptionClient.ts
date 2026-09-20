@@ -6,6 +6,7 @@
 // selected and feeds it the same MediaStreams the (unmodified) MediaRecorder
 // pipeline already captured; this class only taps them, it never touches
 // the tracks used for the normal recording/upload path.
+// AUG-113: when the system track is a server capture, start() receives its captureId; the client then sends an attach-capture control frame instead of tapping a system MediaStream, so only mic chunks travel over the socket.
 
 export type Speaker = 'Me' | 'Them';
 export type LiveStatus = 'connecting' | 'listening' | 'paused' | 'interrupted' | 'stopped';
@@ -120,15 +121,17 @@ export class LiveTranscriptionClient {
   private stopped = false;
   private language = 'auto';
   private engine: LiveEngine = 'local';
+  private captureId: string | null = null;
   private callbacks: LiveTranscriptionCallbacks;
 
   constructor(callbacks: LiveTranscriptionCallbacks) {
     this.callbacks = callbacks;
   }
 
-  start(micStream: MediaStream | null, systemStream: MediaStream | null, language: string, engine: LiveEngine = 'local'): void {
+  start(micStream: MediaStream | null, systemStream: MediaStream | null, language: string, engine: LiveEngine = 'local', captureId: string | null = null): void {
     this.language = language;
     this.engine = engine;
+    this.captureId = captureId;
     this.stopped = false;
     this.paused = false;
     this.callbacks.onStatusChange('connecting');
@@ -143,6 +146,9 @@ export class LiveTranscriptionClient {
       if (this.stopped) { ws.close(); return; }
       if (this.engine !== 'local') {
         ws.send(JSON.stringify({ type: 'config', engine: this.engine }));
+      }
+      if (this.captureId) {
+        ws.send(JSON.stringify({ type: 'attach-capture', captureId: this.captureId, language: this.language }));
       }
       this.callbacks.onStatusChange('listening');
       this.attachAudio(micStream, systemStream);
@@ -181,7 +187,8 @@ export class LiveTranscriptionClient {
     const audioCtx = new AudioContext();
     this.audioCtx = audioCtx;
 
-    if (systemStream && systemStream.getAudioTracks().length > 0) {
+    // AUG-113: with a server capture the Them side is fed server-side — no browser tap.
+    if (!this.captureId && systemStream && systemStream.getAudioTracks().length > 0) {
       try {
         const source = audioCtx.createMediaStreamSource(systemStream);
         const processor = audioCtx.createScriptProcessor(PROCESSOR_BUFFER_SIZE, 1, 1);

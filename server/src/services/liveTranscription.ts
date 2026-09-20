@@ -6,6 +6,15 @@
 // socket; each window is decoded independently with whisper-cli and the
 // resulting text is pushed straight back to the client for a live transcript
 // panel. Nothing here is persisted to disk beyond the lifetime of a chunk.
+//
+// AUG-113: when the system track is captured server-side (systemCapture.ts,
+// started with { live: true }), the client sends a text control frame
+// { type: 'attach-capture', captureId, language } right after connect. The
+// server binds that capture's PCM tee to this connection: raw s16le bytes go
+// through LivePcmFeeder → ChunkAccumulator (same 4 s / 1 s / RMS 0.006 rules as
+// the browser tap) and are queued as speaker Them. Detach never stops the
+// capture; stopCapture() ends the tee, whose onEnd flushes the last partial
+// window here before the WAV is finalized.
 
 import { randomUUID } from 'node:crypto';
 import type { Server as HttpServer } from 'node:http';
@@ -17,6 +26,8 @@ import { config } from '../config.js';
 import { runWhisper } from './whisper.js';
 import { FILLER_ONLY_TEXTS, isHallucination, normalize, stripCreditHallucination } from './transcriptMerger.js';
 import { transcribeWithGroq, GroqRateLimitError, GroqApiError } from './groqTranscription.js';
+import { attachLiveSink, CaptureError, type LiveSinkHandle } from './systemCapture.js';
+import { LivePcmFeeder, parseLiveControlFrame, SAMPLE_RATE } from './liveChunking.js';
 
 type Speaker = 'Me' | 'Them';
 
@@ -29,7 +40,6 @@ interface DecodedChunk {
 const MAX_QUEUE_LENGTH = 6;
 const MAX_CONSECUTIVE_FAILURES = 3;
 const CHUNK_TIMEOUT_MS = 20_000;
-const SAMPLE_RATE = 16000;
 
 // Live chunks are written next to the sessions dir (server/data/live-tmp),
 // never os.tmpdir() — on this machine the Windows account name is Cyrillic,
@@ -132,6 +142,12 @@ export function setupLiveTranscription(server: HttpServer): void {
     let consecutiveFailures = 0;
     let engine: 'local' | 'groq' = 'local';
     let groqFallbackWarned = false;
+    let captureSink: LiveSinkHandle | null = null;
+
+    const detachCapture = () => {
+      captureSink?.detach();
+      captureSink = null;
+    };
 
     const send = (payload: unknown) => {
       if (ws.readyState === WebSocket.OPEN) {
@@ -202,6 +218,34 @@ export function setupLiveTranscription(server: HttpServer): void {
       processing = false;
     };
 
+    /// AUG-113: bind a server-side capture's PCM tee to this connection as Them.
+    const attachCapture = (captureId: string, language: string) => {
+      if (captureSink) {
+        send({ type: 'warning', message: 'System audio is already attached to this live session' });
+        return;
+      }
+      const feeder = new LivePcmFeeder((samples) => {
+        if (stopped) return;
+        queue.push({ speaker: 'Them', language, samples });
+        void processQueue();
+      });
+      try {
+        captureSink = attachLiveSink(captureId, {
+          onPcm: (pcm) => { if (!paused && !stopped) feeder.feed(pcm); },
+          onEnd: () => {
+            // Capture stopped (or ffmpeg exited): push the last partial window
+            // through transcription; the queue drains on its own.
+            captureSink = null;
+            if (!stopped) feeder.flush();
+          },
+        });
+        send({ type: 'capture-attached', captureId });
+      } catch (err) {
+        const reason = err instanceof CaptureError ? err.message : 'unknown error';
+        send({ type: 'warning', message: `System audio not attached (${reason}) — live transcript continues with the microphone only` });
+      }
+    };
+
     ws.on('message', (data: RawData, isBinary: boolean) => {
       if (stopped) return;
 
@@ -218,34 +262,34 @@ export function setupLiveTranscription(server: HttpServer): void {
         return;
       }
 
-      try {
-        const msg = JSON.parse(data.toString());
-        switch (msg.type) {
-          case 'stop':
-            stopped = true;
-            queue.length = 0;
-            break;
-          case 'pause':
-            paused = true;
-            break;
-          case 'resume':
-            paused = false;
-            if (queue.length > 0) void processQueue();
-            break;
-          case 'config':
-            if (msg.engine === 'groq' || msg.engine === 'local') {
-              engine = msg.engine;
-            }
-            break;
-        }
-      } catch {
-        // malformed control message; ignore
+      const frame = parseLiveControlFrame(data.toString());
+      if (!frame) return; // malformed control message; ignore
+      switch (frame.type) {
+        case 'stop':
+          stopped = true;
+          queue.length = 0;
+          detachCapture();
+          break;
+        case 'pause':
+          paused = true;
+          break;
+        case 'resume':
+          paused = false;
+          if (queue.length > 0) void processQueue();
+          break;
+        case 'config':
+          engine = frame.engine;
+          break;
+        case 'attach-capture':
+          attachCapture(frame.captureId, frame.language);
+          break;
       }
     });
 
     ws.on('close', () => {
       stopped = true;
       queue.length = 0;
+      detachCapture();
     });
   });
 }
