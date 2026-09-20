@@ -6197,10 +6197,6 @@ button:hover:not(:disabled):not(.sidebar-menu-item):not(.export-menu-item):not(.
   border-radius: 0;
 }
 
-.settings-hint--ok {
-  color: var(--accent);
-}
-
 .settings-hint--warn {
   color: #d4a028;
 }

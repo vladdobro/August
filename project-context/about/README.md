@@ -4,7 +4,8 @@
 - August is a web app that helps managers cut time lost to meeting transcription, video review, and photo screening.
 - Target audience is managers and team leads who run frequent meetings and review recorded video or image content.
 - Core stack is React 18 + Vite client, Node.js/Express + TypeScript server, and local whisper.cpp v1.8.4 for transcription.
-- The web app is now scaffolded with working client/ and server/ directories; PostgreSQL and auth are still planned, not implemented.
+- The web app has working client/ and server/ directories; PostgreSQL and auth are still planned, not implemented.
+- An Electron desktop shell in electron/ packages the same client and server into .dmg and .msi/.exe installers (see project-context/desktop-shell/README.md).
 - Key files: project-context/PRD/README.md, project-context/roadmap/README.md, project-context/architecture/README.md
 
 This route gives any agent a one-page orientation to what August is, who it serves, and what it is built with.

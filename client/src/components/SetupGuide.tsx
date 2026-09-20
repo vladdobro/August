@@ -16,8 +16,6 @@ function formatBytes(bytes: number): string {
 
 const isMac = /Mac|iPhone|iPad/.test(navigator.userAgent);
 
-const MODEL_PATH = 'whisper/models/ggml-large-v3-turbo-q8_0.bin';
-
 interface HintPopupProps {
   text: string;
 }

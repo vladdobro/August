@@ -4,9 +4,11 @@
 - User preferences persist as a flat JSON file at server/data/user-preferences.json with GET/PATCH/DELETE REST endpoints.
 - All 13 preference fields are optional; the client applies defaults when absent from the server response.
 - systemAudioSource ('auto' | 'browser' | 'system', default 'auto') chooses HOW system audio is captured; the systemAudio boolean stays the on/off switch.
+- systemAudio defaults to true in DEFAULT_PREFERENCES; FileUpload's initial toggle reads that same constant so Settings and the record screen never disagree when the key is unsaved.
 - The System (direct) option is disabled when systemCapture is false or selfTest is 'failed'; it stays enabled on 'silent'.
 - On Windows the WASAPI loopback helper makes System (direct) available on Bluetooth/USB headsets without Stereo Mix or VB-Cable (AUG-112).
-- The capability status line under System Audio Source shows the self-test result: ok (green), silent (yellow hint), failed, or needs setup.
+- Settings never shows probe internals (method, dB levels, stderr); self-test detail stays in the server log and npm run capture:check.
+- Under System Audio Source the modal prints at most one plain-language line: direct capture unavailable, or a Windows test-before-a-call warning.
 - FileUpload auto-saves language, mic, and system audio preferences on change via PATCH /api/preferences.
 - The Settings modal displays and edits all preferences, accessible from the sidebar hamburger menu.
 - Theme toggle remains in localStorage and is explicitly excluded from the preferences system.
@@ -29,7 +31,10 @@ Eliminate repeated manual re-configuration every app session. Before this system
 - Load on startup: App.tsx calls GET /api/preferences on mount and distributes values as props.
 - Settings modal: full CRUD UI for all preferences, opened from the sidebar menu gear icon.
 - System audio source: Settings > Recording shows a "System Audio Source" dropdown (Auto / Browser (screen picker) / System (direct)) directly under the System Audio toggle.
-- Capability status line: under that dropdown the modal prints "System capture: available — self-test ok (<level>)", "available, but capture was silent — <Multi-Output/permission hint>" (yellow), "self-test failed — <stderr excerpt>", or "needs setup — <hint>" from GET /api/capture/capabilities. The System option is disabled when systemCapture is false or selfTest is 'failed'; it stays enabled on 'silent' (the user may have had nothing playing).
+- Capture hint line: when isSystemCaptureUsable() is false the modal prints "System (direct) is not available on this computer — recordings use the browser screen picker." (neutral).
+- Windows warning: when capabilities.platform is 'win32' and the source resolves to 'system' (regardless of the System Audio toggle), the modal prints a yellow warning to make a short test recording and check the other side before an important call.
+- No hint line is shown while capabilities are still loading, on macOS with a usable capture, or when the source resolves to browser.
+- The System option is disabled when systemCapture is false or selfTest is 'failed'; it stays enabled on 'silent' (the user may have had nothing playing).
 - On Windows the status hint names the WASAPI default output device ("WASAPI loopback of the default output ..."), or the matched DirectShow device, or explains Stereo Mix / VB-Cable when neither exists; the wording comes from the server probe, not the client.
 - On Windows with the WASAPI helper, a 'silent' self-test means nothing was playing through the default output during the 1 s probe; the System (direct) option stays enabled.
 - Source resolution: resolveSystemAudioSource() in client/src/services/preferences.ts maps 'browser' → browser, and 'auto'/'system' → system only when isSystemCaptureUsable() is true (systemCapture true and selfTest not 'failed'), otherwise browser.

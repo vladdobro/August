@@ -41,6 +41,7 @@ Stand up the core web app skeleton and auth so the AI-driven features have a pla
 - [x] PraxisOS project scaffolding — context-router, project-context, and task board initialized.
 - [x] React frontend skeleton — base app shell with Vite, routing, session list, upload, transcript viewer.
 - [x] Node.js/Express API skeleton — base server, session CRUD, health check, file upload endpoint.
+- [x] Electron desktop shell — embedded server, tray, global hotkey, notifications, electron-builder installers, GitHub Releases auto-update (AUG-114).
 - [ ] Auth route — manager account creation and login.
 
 ## MVP Core Features
@@ -57,5 +58,5 @@ Ship the three pillars of the product so managers get real time savings.
 Items not yet assigned to a phase.
 
 - [ ] Team/workspace support for multiple managers sharing meetings and content.
-- [ ] Notifications when transcription/video/photo processing completes.
+- [x] Notifications when transcription completes — native desktop notifications in the Electron shell (AUG-114); video/photo pending.
 - [ ] Usage analytics dashboard for managers.

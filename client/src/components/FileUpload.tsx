@@ -8,7 +8,7 @@ import MicPicker from './MicPicker';
 import LiveTranscriptPanel, { type LiveLine, type LiveStatus } from './LiveTranscriptPanel';
 import { LiveTranscriptionClient, type LiveEngine } from '../services/liveTranscriptionClient';
 import { saveRecordingProgress, getRecoveredRecording, clearRecoveredRecording, type RecoveredRecording } from '../services/recordingRecovery';
-import { resolveSystemAudioSource, type UserPreferences } from '../services/preferences';
+import { DEFAULT_PREFERENCES, resolveSystemAudioSource, type UserPreferences } from '../services/preferences';
 
 const ACCEPTED_EXTENSIONS = ['.wav', '.mp3', '.ogg', '.flac', '.m4a'];
 const AUDIO_BARS_COUNT = 12;
@@ -24,6 +24,9 @@ interface FileUploadProps {
   audioDevicesFromApp?: MediaDeviceInfo[];
   captureCapabilities?: CaptureCapabilities | null;
   onOpenSettings?: () => void;
+  // Desktop shell: a timestamp per global-hotkey/tray toggle request; consumed once via onDesktopToggleHandled.
+  desktopToggleRequest?: number | null;
+  onDesktopToggleHandled?: () => void;
 }
 
 function isAcceptedFile(file: File): boolean {
@@ -42,7 +45,7 @@ function formatBytes(bytes: number): string {
   return `${Math.round(bytes / (1024 * 1024))} MB`;
 }
 
-const FileUpload: React.FC<FileUploadProps> = ({ onUploaded, onRecordingChange, groqAvailable, onGroqKeySaved, preferences, onPreferenceChange, audioDevicesFromApp, captureCapabilities, onOpenSettings }) => {
+const FileUpload: React.FC<FileUploadProps> = ({ onUploaded, onRecordingChange, groqAvailable, onGroqKeySaved, preferences, onPreferenceChange, audioDevicesFromApp, captureCapabilities, onOpenSettings, desktopToggleRequest, onDesktopToggleHandled }) => {
   const { theme, toggle: toggleTheme } = useTheme();
   const [language, setLanguage] = useState<TranscriptionLanguage>('ru');
   const [isDragging, setIsDragging] = useState(false);
@@ -52,7 +55,7 @@ const FileUpload: React.FC<FileUploadProps> = ({ onUploaded, onRecordingChange, 
   const [uploadProgress, setUploadProgress] = useState<UploadProgress | null>(null);
   const [audioDevices, setAudioDevices] = useState<MediaDeviceInfo[]>([]);
   const [selectedMicId, setSelectedMicId] = useState<string>('');
-  const [captureSystemAudio, setCaptureSystemAudio] = useState(true);
+  const [captureSystemAudio, setCaptureSystemAudio] = useState(DEFAULT_PREFERENCES.systemAudio);
   const [micNotice, setMicNotice] = useState<string | null>(null);
   const [captureNotice, setCaptureNotice] = useState<string | null>(null);
   const micStartedAtRef = useRef<number>(0);
@@ -545,6 +548,14 @@ const FileUpload: React.FC<FileUploadProps> = ({ onUploaded, onRecordingChange, 
     }).catch(() => {});
   }, []);
 
+  // Quick start with saved defaults — shared by the long-press gesture and the desktop hotkey/tray toggle.
+  const quickStartRecording = useCallback(() => {
+    const mode = preferences?.recordingMode || 'default';
+    const engine = preferences?.liveEngine || 'local';
+    void startRecording(mode === 'live', engine);
+    setShowDefaultsInfo(true);
+  }, [preferences?.recordingMode, preferences?.liveEngine, startRecording]);
+
   const handleRecordButtonClick = useCallback(() => {
     if (isRecording) {
       longPressFiredRef.current = false;
@@ -565,12 +576,9 @@ const FileUpload: React.FC<FileUploadProps> = ({ onUploaded, onRecordingChange, 
     longPressTimerRef.current = setTimeout(() => {
       longPressFiredRef.current = true;
       setLongPressing(false);
-      const mode = preferences?.recordingMode || 'default';
-      const engine = preferences?.liveEngine || 'local';
-      void startRecording(mode === 'live', engine);
-      setShowDefaultsInfo(true);
+      quickStartRecording();
     }, 500);
-  }, [isRecording, isUploading, preferences?.recordingMode, preferences?.liveEngine, startRecording]);
+  }, [isRecording, isUploading, quickStartRecording]);
 
   const handlePointerUp = useCallback(() => {
     if (longPressTimerRef.current) {
@@ -579,6 +587,21 @@ const FileUpload: React.FC<FileUploadProps> = ({ onUploaded, onRecordingChange, 
     }
     setLongPressing(false);
   }, []);
+
+  // Desktop shell toggle (global hotkey / tray): stop when recording, otherwise start with saved defaults.
+  // The request is acknowledged first so a later remount of FileUpload never replays it.
+  useEffect(() => {
+    if (desktopToggleRequest == null) return;
+    onDesktopToggleHandled?.();
+    if (isRecording) {
+      stopRecording();
+      return;
+    }
+    if (isUploading) return;
+    setShowModePicker(false);
+    quickStartRecording();
+    // Intentionally keyed on the request only: the other values are read at trigger time.
+  }, [desktopToggleRequest]);
 
   const handleModeSelect = useCallback(
     (mode: RecordingMode, engine?: LiveEngine) => {

@@ -1,0 +1,6 @@
+{
+  "name": "august-electron",
+  "private": true,
+  "type": "module",
+  "description": "Electron main-process code for August. Dependencies and scripts live in the root package.json (the Electron app manifest)."
+}

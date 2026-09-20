@@ -1,0 +1,19 @@
+{
+  "id": "AUG-114-cj1f6a",
+  "assignee": "jarvis.json",
+  "priority": "high",
+  "status": "to_review",
+  "title": "[AUG-114] Migrate August from web app to Electron desktop application",
+  "why_we_need_this": "August currently runs as a localhost web app — users must start a Node server from terminal and open a browser tab. Non-technical users cannot install or use the product. Wrapping the app in Electron produces a single installable artifact (.dmg for macOS, .msi for Windows) with one-click launch, no Node.js prerequisite, and native desktop features (tray icon, global hotkeys, notifications). Distribution via GitHub Releases.",
+  "acceptance_criteria": "- [ ] Electron shell wraps the existing React + Vite client and Node.js/Express server\n- [ ] Express server runs inside Electron's main process (or as a managed child process) — no separate terminal needed\n- [ ] whisper-cli binary spawning works unchanged inside Electron (child_process)\n- [ ] Production build produces distributable installers: .dmg (macOS) and .msi (Windows)\n- [ ] Auto-update mechanism configured for GitHub Releases (electron-updater)\n- [ ] App launches with a single click — window opens with the React UI, server starts in background\n- [ ] System tray integration — app minimizes to tray, shows transcription status\n- [ ] Global hotkey for start/stop recording (configurable)\n- [ ] Native OS notifications for transcription completion\n- [ ] Code signing configured for both platforms (Apple Developer + Windows Authenticode)\n- [ ] Vite dev mode still works for development (electron + vite dev server)\n- [ ] All existing features (sessions, upload, live transcription, file recording) work identically inside Electron\n- [ ] App icon and branding applied to the desktop shell\n- [ ] README updated with Electron build/dev/release instructions",
+  "important_constraints": "- Do not refactor the Express server into Electron IPC — keep it running as-is inside the main process to minimize migration risk\n- Do not break the existing web-app dev workflow — `npm run dev` should still work for browser-based development\n- All inference must remain local via whisper-cli — no third-party API calls\n- Keep the client/server directory structure; add electron/ as a new directory for Electron-specific code (main process, preload, electron-builder config)\n- Memory matters: whisper inference uses 2-4GB RAM, so minimize Electron's footprint where possible (disable unused Chromium features)",
+  "labels": [
+    "architecture",
+    "electron",
+    "distribution"
+  ],
+  "on_hold_reason": "",
+  "contextRouterIncluded": false,
+  "created_at": 1789930078407,
+  "column_entered_at": 1789932868319
+}

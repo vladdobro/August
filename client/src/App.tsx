@@ -35,6 +35,8 @@ const App: React.FC = () => {
   const [showSettings, setShowSettings] = useState(false);
   const [audioDevices, setAudioDevices] = useState<MediaDeviceInfo[]>([]);
   const [captureCapabilities, setCaptureCapabilities] = useState<CaptureCapabilities | null>(null);
+  // Desktop shell (Electron) only: a pending "toggle recording" request from the global hotkey or tray.
+  const [desktopToggleRequest, setDesktopToggleRequest] = useState<number | null>(null);
 
   selectedSessionIdRef.current = selectedSessionId;
 
@@ -79,6 +81,32 @@ const App: React.FC = () => {
 
   useEffect(() => {
     getPreferences().then(setPreferences).catch(() => {});
+  }, []);
+
+  // Desktop shell bridge (window.august, see client/src/desktop.d.ts). No-ops in the browser build.
+  useEffect(() => {
+    window.august?.setRecordingState(isRecording);
+  }, [isRecording]);
+
+  useEffect(() => {
+    const desktop = window.august;
+    if (!desktop) return;
+    const offOpen = desktop.onOpenSession((id) => {
+      setSelectedSessionId(id);
+      setShowDiagnostics(false);
+      setSetupDismissed(true);
+    });
+    const offToggle = desktop.onToggleRecording(() => {
+      // FileUpload only mounts on the "new session" view, so leave any open session/setup guide first.
+      setSelectedSessionId(null);
+      setShowDiagnostics(false);
+      setSetupDismissed(true);
+      setDesktopToggleRequest(Date.now());
+    });
+    return () => {
+      offOpen();
+      offToggle();
+    };
   }, []);
 
   useEffect(() => {
@@ -293,6 +321,8 @@ const App: React.FC = () => {
                 audioDevicesFromApp={audioDevices}
                 captureCapabilities={captureCapabilities}
                 onOpenSettings={() => setShowSettings(true)}
+                desktopToggleRequest={desktopToggleRequest}
+                onDesktopToggleHandled={() => setDesktopToggleRequest(null)}
               />
             </div>
           )}

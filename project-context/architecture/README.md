@@ -7,7 +7,7 @@
 - Session CRUD includes create, list, get, delete, and rename (PATCH title update) via the REST API.
 - Transcription runs as a background child process; the client polls session status every 5 seconds.
 - Dev mode: server on port 3001 redirects non-API requests to Vite dev server on port 5173; open 5173 for the latest UI.
-- Production mode: server serves the built client from client/dist via express.static.
+- Production mode: server serves the built client from client/dist via express.static; the Electron shell runs this mode on a free port.
 - Agentation widget is mounted in App.tsx for dev mode only, gated by import.meta.env.DEV.
 - The server loads the repo-root .env from config.ts before building config.
 - Praxis integration: POST /api/praxis/send creates a task directly in a target PraxisOS project's .praxis/tasks/new/ directory from a session transcript. POST /api/praxis/browse opens the OS native folder picker dialog so users can select the project path visually.
@@ -15,7 +15,8 @@
 - Settings modal is accessible from the sidebar menu; preferences auto-save on control changes in FileUpload.
 - App.tsx uses a single unified render — no early returns that unmount the layout; FileUpload stays mounted (hidden) during active recording to preserve MediaRecorder state.
 - Recording crash recovery: audio chunks auto-save to IndexedDB every 30 seconds; on reload, recovered audio is offered for upload via a recovery banner.
-- No desktop shell (Electron/Tauri): system audio in the browser always requires the getDisplayMedia() screen picker; picker-free capture must run on the local server.
+- Desktop shell (AUG-114): an Electron app in electron/ embeds the Express server in-process; rules live in project-context/desktop-shell/README.md.
+- In the browser build system audio still requires the getDisplayMedia() picker; picker-free capture runs on the local server.
 - Server-side system capture (macOS and Windows): GET /api/capture/capabilities, POST /api/capture/start, POST /api/capture/stop drive an ffmpeg capture (audiotee, BlackHole avfoundation, Windows WASAPI loopback helper, or Windows dshow loopback) into server/data/captures/<captureId>.wav.
 - Windows preferred capture method 'wasapi-loopback' (AUG-112): a compiled C# helper taps the default output device via WASAPI loopback, so Bluetooth/USB headsets work with no virtual device.
 - Windows method preference order: wasapi-loopback (helper compiles and --probe succeeds), then dshow-loopback (Stereo Mix or VB-Cable), then none.
@@ -51,7 +52,8 @@ Give any agent working on the codebase a map of the client/server split, how a s
 - FileUpload must never be unmounted while recording is active — MediaRecorder and AudioContext state lives in React refs and is destroyed on unmount.
 - App.tsx lifts `isRecording` from FileUpload via `onRecordingChange` callback to keep FileUpload mounted (hidden via display:none) when navigating to diagnostics or other views.
 - All runtime server data (sessions, uploads, captures, perf-stats.json, user-preferences.json) lives under server/data/ resolved from config.dataDir — never under server/src/ and never tracked in git, so running the app cannot dirty the working tree.
-- The client is a plain web page with no desktop shell — it cannot capture system audio without the getDisplayMedia() picker on any OS; the local Node server is the only process with OS-level access (it already spawns whisper-cli and ffmpeg), so any picker-free system audio capture belongs server-side (see task AUG-105).
+- Server bootstrap is the exported startServer() in server/src/app.ts; server/src/index.ts is a thin CLI wrapper, and the Electron shell imports startServer directly.
+- All writable server paths derive from config.dataDir, which AUGUST_DATA_DIR relocates (Electron sets it to <userData>/data); ENV_FILE_PATH follows dataDir when the override is set.
 
 ## Key implementation details
 
@@ -141,13 +143,14 @@ Give any agent working on the codebase a map of the client/server split, how a s
 
 ## Key files
 
-- server/src/index.ts — Express app entry point and route wiring.
+- server/src/app.ts — startServer(): Express app, route wiring, HTTP+WebSocket listen, returns the bound port.
+- server/src/index.ts — CLI entry; calls startServer() and exits on failure.
 - server/src/services/whisper.ts — whisper-cli child_process invocation (runWhisper) and JSON output parsing.
 - server/src/services/transcriptMerger.ts — filtering, dedup, and join logic that turns raw segments into a transcript.
 - server/src/services/sessionManager.ts — session folder lifecycle (create, read, update status).
 - client/src/App.tsx — client app shell and top-level routing/state.
 - client/src/vite-env.d.ts — Vite client type declarations (import.meta.env).
-- server/src/config.ts — platform binary resolution, model constants, .env loading.
+- server/src/config.ts — platform binary resolution, model constants, AUGUST_DATA_DIR data-root override, .env loading.
 - server/src/services/praxisIntegration.ts — Praxis task creation: counter management, ID allocation, atomic file write to target project.
 - server/src/routes/praxis.ts — POST /api/praxis/validate and POST /api/praxis/send endpoints.
 - server/src/routes/preferences.ts — GET/PATCH/DELETE /api/preferences for user preferences persistence.

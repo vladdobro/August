@@ -9,7 +9,13 @@ const __dirname = path.dirname(__filename);
 const serverRoot = path.resolve(__dirname, '..');
 const repoRoot = path.resolve(serverRoot, '..');
 
-export const ENV_FILE_PATH = path.resolve(repoRoot, '.env');
+// Writable runtime root. AUGUST_DATA_DIR (set by the Electron shell to <userData>/data) relocates every
+// machine-specific file — sessions, uploads, captures, compiled tools, preferences, perf stats and the .env
+// written by POST /api/config/groq-key — off the read-only install directory. Unset = repo layout (server/data).
+const dataDirOverride = process.env.AUGUST_DATA_DIR?.trim();
+const dataDir = dataDirOverride ? path.resolve(dataDirOverride) : path.resolve(serverRoot, 'data');
+
+export const ENV_FILE_PATH = dataDirOverride ? path.join(dataDir, '.env') : path.resolve(repoRoot, '.env');
 dotenv.config({ path: ENV_FILE_PATH });
 
 export const WHISPER_CPP_VERSION = '1.8.4';
@@ -76,11 +82,11 @@ export const config: AppConfig = {
   whisperModelPath: process.env.WHISPER_MODEL_PATH?.trim()
     ? path.resolve(process.env.WHISPER_MODEL_PATH.trim())
     : defaultWhisperModelPath(),
-  dataDir: path.resolve(serverRoot, 'data'),
-  sessionsDir: path.resolve(serverRoot, 'data', 'sessions'),
-  uploadsDir: path.resolve(serverRoot, 'data', 'uploads'),
-  capturesDir: path.resolve(serverRoot, 'data', 'captures'),
-  toolsDir: path.resolve(serverRoot, 'data', 'tools'),
+  dataDir,
+  sessionsDir: path.join(dataDir, 'sessions'),
+  uploadsDir: path.join(dataDir, 'uploads'),
+  capturesDir: path.join(dataDir, 'captures'),
+  toolsDir: path.join(dataDir, 'tools'),
   wasapiHelperSourcePath: path.resolve(serverRoot, 'tools', 'wasapi-loopback', 'WasapiLoopback.cs'),
   audioteeSampleFormat: process.env.AUDIOTEE_SAMPLE_FORMAT?.trim() || null,
   whisperUseGpu:

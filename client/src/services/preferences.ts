@@ -21,7 +21,9 @@ export interface UserPreferences {
 export const DEFAULT_PREFERENCES: Required<UserPreferences> = {
   language: 'auto',
   micDeviceId: 'default',
-  systemAudio: false,
+  // On by default: dual-track (mic + system) is the app's primary recording
+  // shape, and FileUpload's initial toggle state derives from this value.
+  systemAudio: true,
   systemAudioSource: 'auto',
   recordingMode: 'default',
   liveEngine: 'local',

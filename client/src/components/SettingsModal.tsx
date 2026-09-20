@@ -1,8 +1,10 @@
 import React, { useEffect, useRef, useState } from 'react';
 import type { UserPreferences } from '../services/preferences';
-import { DEFAULT_PREFERENCES, isSystemCaptureUsable } from '../services/preferences';
+import { DEFAULT_PREFERENCES, isSystemCaptureUsable, resolveSystemAudioSource } from '../services/preferences';
 import { browsePraxisFolder } from '../api';
 import type { CaptureCapabilities, SystemAudioSource } from '../types';
+import type { DesktopSettings } from '../desktop';
+import { acceleratorFromKeyboardEvent, formatAccelerator } from '../services/desktop';
 
 interface SettingsModalProps {
   preferences: UserPreferences;
@@ -90,6 +92,55 @@ const SettingsModal: React.FC<SettingsModalProps> = ({
   const [confirmingReset, setConfirmingReset] = useState(false);
   const [browsing, setBrowsing] = useState(false);
 
+  // Desktop shell (Electron) settings — the section renders only when window.august exists.
+  const desktop = window.august ?? null;
+  const [desktopSettings, setDesktopSettings] = useState<DesktopSettings | null>(null);
+  const [hotkeyCapturing, setHotkeyCapturing] = useState(false);
+  const [hotkeyError, setHotkeyError] = useState<string | null>(null);
+
+  useEffect(() => {
+    if (!desktop) return;
+    desktop.getSettings().then(setDesktopSettings).catch(() => {});
+  }, [desktop]);
+
+  const applyHotkey = async (accelerator: string | null) => {
+    if (!desktop) return;
+    setHotkeyError(null);
+    try {
+      const result = await desktop.setRecordHotkey(accelerator);
+      setDesktopSettings((prev) => (prev
+        ? { ...prev, recordHotkey: result.recordHotkey, hotkeyRegistered: result.ok && result.recordHotkey !== null }
+        : prev));
+      if (!result.ok) setHotkeyError(result.error ?? 'Could not register this shortcut.');
+    } catch (err) {
+      setHotkeyError((err as Error).message || 'Could not register this shortcut.');
+    }
+  };
+
+  const handleHotkeyKeyDown = (e: React.KeyboardEvent<HTMLInputElement>) => {
+    if (!hotkeyCapturing) return;
+    e.preventDefault();
+    e.stopPropagation(); // keep Escape from closing the modal while capturing
+    if (e.key === 'Escape') {
+      setHotkeyCapturing(false);
+      e.currentTarget.blur();
+      return;
+    }
+    const accelerator = acceleratorFromKeyboardEvent(e.nativeEvent);
+    if (!accelerator) return; // modifier-only press — keep waiting
+    setHotkeyCapturing(false);
+    e.currentTarget.blur();
+    void applyHotkey(accelerator);
+  };
+
+  const hotkeyDisplay = desktopSettings?.recordHotkey
+    ? formatAccelerator(desktopSettings.recordHotkey, desktop?.platform ?? '')
+    : 'Disabled';
+  const hotkeyWarning = hotkeyError
+    ?? (desktopSettings && desktopSettings.recordHotkey && !desktopSettings.hotkeyRegistered
+      ? 'This shortcut could not be registered — another application may already use it.'
+      : null);
+
   useEffect(() => {
     const handleEsc = (e: KeyboardEvent) => {
       if (e.key === 'Escape') onClose();
@@ -103,21 +154,20 @@ const SettingsModal: React.FC<SettingsModalProps> = ({
   const systemAudio = preferences.systemAudio ?? DEFAULT_PREFERENCES.systemAudio;
   const systemAudioSource = preferences.systemAudioSource ?? DEFAULT_PREFERENCES.systemAudioSource;
   const systemCaptureAvailable = isSystemCaptureUsable(captureCapabilities);
-  const selfTest = captureCapabilities?.selfTest ?? 'skipped';
-  const captureStatusText = captureCapabilities === null
-    ? 'System capture: checking…'
-    : !captureCapabilities.systemCapture
-      ? `System capture: needs setup — ${captureCapabilities.hint}`
-      : selfTest === 'ok'
-        ? `System capture: available — self-test ok (${captureCapabilities.selfTestDetail})`
-        : selfTest === 'silent'
-          ? `System capture: available, but ${captureCapabilities.selfTestDetail}`
-          : selfTest === 'failed'
-            ? `System capture: self-test failed — ${captureCapabilities.selfTestDetail}`
-            : `System capture: available — ${captureCapabilities.hint}`;
-  const captureStatusClass = captureCapabilities === null || !captureCapabilities.systemCapture || selfTest === 'failed'
-    ? ''
-    : selfTest === 'silent' ? ' settings-hint--warn' : ' settings-hint--ok';
+  // Settings shows no probe internals (capture method, dB levels, stderr) —
+  // those stay in the server log and `npm run capture:check`. The user sees
+  // only two plain-language states: direct capture is unavailable here, or a
+  // Windows reminder to test the capture before an important call. The reminder
+  // keys off the chosen source, not the System Audio toggle, so a user who picks
+  // System (direct) sees it even before switching system audio on.
+  const resolvedSystemSource = resolveSystemAudioSource(systemAudioSource, captureCapabilities);
+  const captureHint = captureCapabilities === null
+    ? null
+    : !systemCaptureAvailable
+      ? { text: 'System (direct) is not available on this computer — recordings use the browser screen picker.', warn: false }
+      : captureCapabilities.platform === 'win32' && resolvedSystemSource === 'system'
+        ? { text: 'Direct system capture on Windows depends on your audio devices and drivers. Make a short test recording and check that the other side was captured before an important call.', warn: true }
+        : null;
   const recordingMode = preferences.recordingMode ?? DEFAULT_PREFERENCES.recordingMode;
   const liveEngine = preferences.liveEngine ?? DEFAULT_PREFERENCES.liveEngine;
   const audioBoost = preferences.audioBoost ?? DEFAULT_PREFERENCES.audioBoost;
@@ -214,7 +264,9 @@ const SettingsModal: React.FC<SettingsModalProps> = ({
                 onChange={(v) => onPreferenceChange({ systemAudioSource: v as SystemAudioSource })}
               />
             </div>
-            <div className={`settings-hint${captureStatusClass}`}>{captureStatusText}</div>
+            {captureHint && (
+              <div className={`settings-hint${captureHint.warn ? ' settings-hint--warn' : ''}`}>{captureHint.text}</div>
+            )}
             <div className="settings-row">
               <label className="settings-label">Recording Mode</label>
               <SettingsDropdown
@@ -352,6 +404,47 @@ const SettingsModal: React.FC<SettingsModalProps> = ({
               </label>
             </div>
           </div>
+
+          {desktop && (
+            <div className="settings-section">
+              <div className="settings-section-title">Desktop</div>
+              <div className="settings-row">
+                <label className="settings-label">Record Hotkey</label>
+                <div className="settings-path-group">
+                  <input
+                    type="text"
+                    readOnly
+                    className="settings-control settings-input"
+                    value={hotkeyCapturing ? '' : hotkeyDisplay}
+                    placeholder={hotkeyCapturing ? 'Press a key combination… (Esc to cancel)' : ''}
+                    title="Click, then press the shortcut you want"
+                    onFocus={() => setHotkeyCapturing(true)}
+                    onBlur={() => setHotkeyCapturing(false)}
+                    onKeyDown={handleHotkeyKeyDown}
+                  />
+                  <button
+                    type="button"
+                    className="settings-btn-inline"
+                    disabled={!desktopSettings}
+                    onClick={() => void applyHotkey(desktopSettings?.defaultRecordHotkey ?? null)}
+                  >
+                    Default
+                  </button>
+                  {desktopSettings?.recordHotkey && (
+                    <button
+                      type="button"
+                      className="settings-btn-inline settings-btn-inline--danger"
+                      onClick={() => void applyHotkey(null)}
+                    >
+                      Disable
+                    </button>
+                  )}
+                </div>
+              </div>
+              {hotkeyWarning && <div className="settings-hint settings-hint--warn">{hotkeyWarning}</div>}
+              <div className="settings-hint">Starts or stops a recording with your saved defaults from anywhere — even while August sits in the tray.</div>
+            </div>
+          )}
         </div>
         <div className="settings-actions">
           <button className="settings-btn settings-btn--danger" onClick={handleReset}>

@@ -1,0 +1,84 @@
+# Run from the repo root: electron-builder --config electron/electron-builder.yml
+# The ROOT package.json is the Electron app manifest (main: electron/dist/main.js, version, deps).
+appId: com.august.desktop
+productName: August
+copyright: Copyright © 2026 August
+artifactName: ${productName}-${version}-${os}-${arch}.${ext}
+
+directories:
+  buildResources: electron/build
+  output: electron/release
+
+# No asar: the server spawns whisper-cli / ffmpeg / csc.exe against real paths and serves client/dist with
+# express.static. Packing those into an archive is the classic source of "works in dev, breaks packaged" bugs.
+asar: false
+npmRebuild: false
+
+files:
+  - package.json
+  - electron/package.json
+  - electron/dist/**/*
+  - electron/build/tray/**/*
+  - electron/build/icon.png
+  - server/package.json
+  - server/dist/**/*
+  - "!server/dist/**/*.map"
+  - "!server/dist/**/*.test.js"
+  - server/tools/**/*
+  - server/node_modules/**/*
+  - "!server/node_modules/{typescript,tsx,vitest,@vitest,vite,vite-node,esbuild,@esbuild,rollup,@rollup,@types,get-tsconfig,resolve-pkg-maps,fsevents,tinypool,tinybench,chai}/**"
+  - "!server/node_modules/**/*.{ts,map,md,markdown}"
+  - "!server/node_modules/**/{test,tests,__tests__,example,examples,docs,.github}/**"
+  - client/dist/**/*
+
+# electron-updater feed. Publish with GH_TOKEN set: electron-builder --publish always
+publish:
+  provider: github
+  owner: vladdobro
+  repo: August
+  releaseType: release
+
+mac:
+  category: public.app-category.productivity
+  icon: electron/build/icon.png
+  # dmg for humans, zip for electron-updater (it cannot update from a dmg). Build per arch: --arm64 / --x64.
+  target: [dmg, zip]
+  hardenedRuntime: true
+  gatekeeperAssess: false
+  entitlements: electron/build/entitlements.mac.plist
+  entitlementsInherit: electron/build/entitlements.mac.plist
+  # Notarization runs automatically when APPLE_ID, APPLE_APP_SPECIFIC_PASSWORD and APPLE_TEAM_ID are set.
+  extendInfo:
+    NSMicrophoneUsageDescription: August records your microphone for meeting transcription.
+    NSAudioCaptureUsageDescription: August captures system audio so the other side of a call is transcribed too.
+  extraResources:
+    - from: whisper/bin/darwin-${arch}
+      to: whisper/bin/darwin-${arch}
+
+dmg:
+  contents:
+    - { x: 130, y: 220 }
+    - { x: 410, y: 220, type: link, path: /Applications }
+
+win:
+  icon: electron/build/icon.png
+  # nsis = one-click installer that electron-updater can update; msi = enterprise install (no auto-update).
+  target:
+    - target: nsis
+      arch: [x64]
+    - target: msi
+      arch: [x64]
+  # Authenticode signing: set CSC_LINK (path/base64 of the .pfx) and CSC_KEY_PASSWORD in the environment.
+  extraResources:
+    - from: whisper/bin/win-x64
+      to: whisper/bin/win-x64
+
+nsis:
+  oneClick: true
+  perMachine: false
+  deleteAppDataOnUninstall: false
+  shortcutName: August
+
+msi:
+  oneClick: true
+  perMachine: false

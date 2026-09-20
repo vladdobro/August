@@ -46,7 +46,7 @@ function chipLabel(status: SessionStatus): string {
     case 'transcribing': return 'TRC';
     case 'completed': return 'DONE';
     case 'failed': return 'ERR';
-    default: return status.slice(0, 3).toUpperCase();
+    default: return (status as string).slice(0, 3).toUpperCase();
   }
 }
 

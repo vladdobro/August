@@ -1,15 +1,38 @@
 {
   "name": "august",
+  "productName": "August",
+  "version": "0.0.9",
+  "description": "Local-first meeting transcription with whisper.cpp — web app and Electron desktop shell",
+  "author": "vladdobro",
   "private": true,
+  "main": "electron/dist/main.js",
   "scripts": {
     "predev": "npm run setup || echo whisper setup failed - transcription stays unavailable until npm run setup succeeds",
     "dev": "concurrently \"npm run dev:server\" \"npm run dev:client\"",
     "dev:server": "cd server && npm run dev",
     "dev:client": "cd client && npm run dev",
+    "dev:electron": "concurrently -k -n server,client,electron \"npm run dev:server\" \"npm run dev:client\" \"npm run electron:dev\"",
     "install:all": "npm install && cd server && npm install && cd ../client && npm install",
-    "setup": "cd server && npm run setup"
+    "setup": "cd server && npm run setup",
+    "build": "npm run build:client && npm run build:server && npm run electron:compile",
+    "build:client": "cd client && npm run build",
+    "build:server": "cd server && npm run build",
+    "electron:compile": "tsc -p electron/tsconfig.json",
+    "electron:dev": "npm run electron:compile && electron . --dev",
+    "electron:start": "npm run build && electron .",
+    "electron:icons": "node electron/scripts/make-icons.mjs",
+    "electron:pack": "npm run build && electron-builder --config electron/electron-builder.yml --dir",
+    "electron:dist": "npm run build && electron-builder --config electron/electron-builder.yml"
+  },
+  "dependencies": {
+    "electron-updater": "^6.8.9"
   },
   "devDependencies": {
-    "concurrently": "^8.2.0"
+    "@types/node": "^24.0.0",
+    "concurrently": "^8.2.0",
+    "electron": "^44.4.3",
+    "electron-builder": "^26.15.3",
+    "sharp": "^0.35.4",
+    "typescript": "^5.5.0"
   }
 }

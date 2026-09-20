@@ -6,7 +6,7 @@
 - TRIGGER RULE: Whenever you work on a specific feature or entity, you MUST consult its corresponding route directory in this router to understand its business logic and constraints BEFORE making decisions, and completing the task.
 - We don't need any other context, history, memory. We're starting from scratch!
 
-August is a web app that helps managers cut time lost to meeting transcription, video processing, and photo screening, built with a React frontend and a Node.js/Express backend, using self-hosted open-source AI models (whisper.cpp for transcription) for all inference. The app is now scaffolded with working client and server code; PostgreSQL is planned but the MVP currently uses file-based session storage.
+August is a web and Electron desktop app that helps managers cut time lost to meeting transcription, video processing, and photo screening, built with a React frontend and a Node.js/Express backend, using self-hosted open-source AI models (whisper.cpp for transcription) for all inference. The app is now scaffolded with working client and server code; PostgreSQL is planned but the MVP currently uses file-based session storage.
 
 # AI Agent Quick Start Protocol
 
@@ -40,6 +40,7 @@ Match your task keywords to the routes you need to read:
 | whisper setup, npm run setup, whisper binary, model download, macOS, Windows, multiplatform, Metal GPU, ffmpeg install | Transcription > Whisper Setup |
 | UI design, colors, theme, dark mode, light mode, CSS, styling, brandbook, emerald, jade | Frontend Design |
 | preferences, settings, user defaults, auto-save, mic device, language selection, recording mode | Preferences |
+| Electron, desktop app, installer, dmg, msi, tray, global hotkey, native notifications, auto-update, code signing, electron-builder | Desktop Shell |
 
 # context-router.md terminology
 
@@ -107,6 +108,10 @@ Directory Path: project-context/frontend-design/README.md
 ## Preferences Route
 Server-side persistence of user preferences (language, mic, recording mode, etc.) with a Settings UI for review and reset.
 Directory Path: project-context/preferences/README.md
+
+## Desktop Shell Route
+Electron desktop application: embedded Express server, tray, global record hotkey, native notifications, electron-builder packaging and GitHub Releases auto-update.
+Directory Path: project-context/desktop-shell/README.md
 
 ## Roadmap
 Planned and completed work items organized by phase and milestone.
