@@ -5472,6 +5472,10 @@ body {
   font-size: 11px;
   color: var(--necron-200);
 }
+.diag-cpu-notice {
+  margin: 0 0 16px;
+  color: var(--necron-200);
+}
 
 .diag-inline-path {
   color: var(--necron-300);

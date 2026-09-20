@@ -254,6 +254,7 @@ const App: React.FC = () => {
         whisperAvailable: !mockParam.includes('whisper'),
         modelAvailable: !mockParam.includes('model'),
         ffmpegAvailable: !mockParam.includes('ffmpeg'),
+        gpuBackend: mockParam.includes('cpu') ? 'cpu' : healthStatus.gpuBackend,
       }
     : healthStatus;
 

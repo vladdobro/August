@@ -7,8 +7,21 @@ import { randomUUID } from 'node:crypto';
 import { config, AUDIO_BOOST } from '../config.js';
 import { getModelStatus } from './modelDownloader.js';
 import type { TranscriptionLanguage, TranscriptSegment, WhisperJsonOutput } from '../types.js';
+import {
+  classifyWhisperFailure,
+  countVulkanDevices,
+  describeExit,
+  gpuState,
+  isProcessLoadFailure,
+  NO_VULKAN_DEVICE_REASON,
+  runWithGpuFallback,
+  type GpuBackend,
+  type WhisperExit,
+} from './gpuBackend.js';
 
 export class WhisperError extends Error {
+  /// Set only when whisper-cli itself ran and exited abnormally (not for pre-flight or output-file errors).
+  exit?: WhisperExit;
   constructor(message: string, public readonly cause?: unknown) {
     super(message);
     this.name = 'WhisperError';
@@ -18,13 +31,25 @@ export class WhisperError extends Error {
 const WAV_EXTENSIONS = new Set(['.wav']);
 
 export const FFMPEG_MISSING_MESSAGE = [
-  '❌ ffmpeg not found. Install it:',
+  '❌ ffmpeg not found. Run `npm run setup` — it downloads a bundled ffmpeg into whisper/bin/<platform>/ next to whisper-cli.',
+  '   Alternatively set FFMPEG_PATH to an ffmpeg executable, or install one manually as a fallback:',
   '   macOS:   brew install ffmpeg',
   '   Windows: winget install ffmpeg',
 ].join('\n');
 
+/// User-facing (session error) text when whisper-cli cannot even be loaded. With the Windows Vulkan build that is a
+/// missing/broken vulkan-1.dll, which --no-gpu cannot work around (static import). `npm run setup` bundles the loader
+/// (AUG-117), so on a complete install this is unreachable — reaching it means the bin folder is incomplete. Details go
+/// to the server log only.
+export const WHISPER_RUNTIME_MISSING_MESSAGE =
+  'Transcription engine could not start: a required component is missing from the whisper install. Run `npm run setup` again (desktop app: reinstall August), then try again.';
+
+/// Log-only line for the no-Vulkan-device case (plain language in the UI comes from /api/health gpuBackend = cpu).
+const NO_VULKAN_DEVICE_LOG =
+  'whisper-cli found no Vulkan device on this computer (no GPU driver with Vulkan support); transcription runs on CPU for this server run';
+
 /// Turns an execFile ffmpeg failure into a WhisperError, using the friendlier
-/// FFMPEG_MISSING_MESSAGE when the failure is ffmpeg not being on PATH.
+/// FFMPEG_MISSING_MESSAGE when the failure is the resolved ffmpeg executable not being found (ENOENT).
 function ffmpegError(error: ExecFileException, stderr: string, fallbackMessage: string): WhisperError {
   if (error.code === 'ENOENT') return new WhisperError(FFMPEG_MISSING_MESSAGE, error);
   return new WhisperError(`${fallbackMessage}${stderr || error.message}`, error);
@@ -59,7 +84,7 @@ export async function ensureWav(audioPath: string): Promise<string> {
   const wavPath = path.join(path.dirname(audioPath), `${baseName}.wav`);
   await new Promise<void>((resolve, reject) => {
     execFile(
-      'ffmpeg',
+      config.ffmpegPath,
       ['-i', audioPath, '-ar', '16000', '-ac', '1', '-c:a', 'pcm_s16le', '-y', wavPath],
       { timeout: 120_000 },
       (error, _stdout, stderr) => {
@@ -124,7 +149,7 @@ export async function toSafePath(filePath: string): Promise<string> {
 export async function getAudioDuration(audioPath: string): Promise<number> {
   return new Promise((resolve) => {
     execFile(
-      'ffprobe',
+      config.ffprobePath,
       ['-v', 'error', '-show_entries', 'format=duration', '-of', 'csv=p=0', audioPath],
       { timeout: 15_000 },
       (error, stdout) => {
@@ -136,9 +161,11 @@ export async function getAudioDuration(audioPath: string): Promise<number> {
   });
 }
 
-export async function checkFfmpegAvailable(): Promise<boolean> {
+/// Runs `ffmpeg -version` against the resolved executable (config.ffmpegPath by default; the setup
+/// script passes the freshly downloaded bundled binary explicitly because config was resolved at import time).
+export async function checkFfmpegAvailable(ffmpegPath: string = config.ffmpegPath): Promise<boolean> {
   return new Promise((resolve) => {
-    execFile('ffmpeg', ['-version'], { timeout: 5000 }, (error) => {
+    execFile(ffmpegPath, ['-version'], { timeout: 5000 }, (error) => {
       resolve(!error);
     });
   });
@@ -164,7 +191,7 @@ export async function boostAudio(audioPath: string): Promise<string> {
 
   await new Promise<void>((resolve, reject) => {
     execFile(
-      'ffmpeg',
+      config.ffmpegPath,
       ['-i', safeInput, '-af', af, '-ar', String(AUDIO_BOOST.sampleRate), '-ac', '1', '-c:a', 'pcm_s16le', '-y', safeOutput],
       { timeout: 300_000 },
       (error, _stdout, stderr) => {
@@ -175,6 +202,50 @@ export async function boostAudio(audioPath: string): Promise<string> {
   });
 
   return boostedPath;
+}
+
+/// One-time startup probe (AUG-116/117), Vulkan builds only: runs `whisper-cli --help`, which (a) catches the
+/// process-cannot-load case (missing DLL → STATUS_DLL_NOT_FOUND) and (b) initialises ggml-vulkan, so its device banner
+/// on stderr tells us whether the bundled loader found a GPU. No banner = no device = whisper-cli will run on CPU by
+/// itself, so the state flips to CPU right away and /api/health reports it. Device-level Vulkan failures only surface
+/// once a model is loaded, so the first real transcription is the second half of the probe (runWhisper's retry).
+/// Never spawns on Metal, when WHISPER_USE_GPU pins the mode, or when the binary is absent.
+export async function probeGpuBackend(): Promise<GpuBackend> {
+  const state = gpuState;
+  if (state.policy.locked || state.policy.nativeBackend !== 'vulkan' || !state.useGpu()) return state.backend();
+  if (!(await fileExists(config.whisperBinPath))) return state.backend();
+  const safeBinPath = await toSafePath(config.whisperBinPath);
+  const probe = await new Promise<{ exit: WhisperExit | null; stderr: string }>((resolve) => {
+    execFile(safeBinPath, ['--help'], { timeout: 10_000 }, (error, _stdout, stderr) => {
+      const text = stderr ?? '';
+      resolve({
+        exit: error ? { code: error.code, signal: error.signal, killed: error.killed, stderr: text } : null,
+        stderr: text,
+      });
+    });
+  });
+  if (!probe.exit) {
+    const devices = countVulkanDevices(probe.stderr);
+    if (devices === null || devices === 0) {
+      state.markGpuUnusable(`startup probe: ${NO_VULKAN_DEVICE_REASON}`);
+      console.log(`[gpu] ${NO_VULKAN_DEVICE_LOG}`);
+    } else {
+      state.markGpuConfirmed();
+    }
+    return state.backend();
+  }
+  if (classifyWhisperFailure(probe.exit) === 'gpu') {
+    state.markGpuUnusable(`startup probe: ${describeExit(probe.exit)}`);
+    if (isProcessLoadFailure(probe.exit)) {
+      console.error(
+        `[gpu] whisper-cli cannot start (${describeExit(probe.exit)}): a DLL it imports is missing. ` +
+        `npm run setup bundles vulkan-1.dll next to whisper-cli, so ${path.dirname(config.whisperBinPath)} is incomplete — re-run npm run setup (desktop app: reinstall).`,
+      );
+    }
+  } else {
+    console.warn(`[gpu] startup probe inconclusive (${describeExit(probe.exit)}); keeping the GPU enabled until the first job`);
+  }
+  return state.backend();
 }
 
 export interface RunWhisperOptions {
@@ -191,8 +262,9 @@ export interface RunWhisperOptions {
 /// audio existence checks, Windows short-path conversion, spawning
 /// whisper-cli with the shared flag set, process tracking (for cancellation)
 /// and reading + parsing + cleaning up the JSON output file. Flags mirror
-/// SplitVox's WhisperTranscriber.cs: max-context 0 (anti-loop defense), GPU
-/// off except Metal on Apple Silicon, full JSON output for timestamps. Note:
+/// SplitVox's WhisperTranscriber.cs: max-context 0 (anti-loop defense), GPU per
+/// gpuBackend.ts (Metal on Apple Silicon, Vulkan on Windows x64 with a one-shot
+/// --no-gpu retry + process-wide CPU fallback, WHISPER_USE_GPU override), full JSON output for timestamps. Note:
 /// this whisper-cli build's --output-json-full does not actually emit a
 /// per-segment no_speech_prob field (verified by inspecting the binary), so
 /// noSpeechProb in transcribe()'s output will typically be undefined —
@@ -230,20 +302,19 @@ export async function runWhisper(opts: RunWhisperOptions): Promise<WhisperJsonOu
     toSafePath(outputBase),
   ]);
 
-  const args = [
-    '--model', safeModelPath,
-    '--language', language || 'auto',
-    '--max-context', '0',
-    ...(config.whisperUseGpu ? [] : ['--no-gpu']),
-    '--output-json-full',
-    '--output-file', safeOutputBase,
-    '--no-prints',
-    '--threads', String(threadCount()),
-    safeAudioPath,
-  ];
-
-  try {
-    await new Promise<void>((resolve, reject) => {
+  const attempt = async (useGpu: boolean): Promise<string> => {
+    const args = [
+      '--model', safeModelPath,
+      '--language', language || 'auto',
+      '--max-context', '0',
+      ...(useGpu ? [] : ['--no-gpu']),
+      '--output-json-full',
+      '--output-file', safeOutputBase,
+      '--no-prints',
+      '--threads', String(threadCount()),
+      safeAudioPath,
+    ];
+    return new Promise<string>((resolve, reject) => {
       const child = execFile(
         safeBinPath,
         args,
@@ -258,10 +329,12 @@ export async function runWhisper(opts: RunWhisperOptions): Promise<WhisperJsonOu
             }
           }
           if (error) {
-            reject(new WhisperError(`${binName} failed: ${stderr || error.message}`, error));
+            const failure = new WhisperError(`${binName} failed: ${stderr || error.message}`, error);
+            failure.exit = { code: error.code, signal: error.signal, killed: error.killed, stderr: stderr ?? '' };
+            reject(failure);
             return;
           }
-          resolve();
+          resolve(stderr ?? '');
         },
       );
       if (trackingKey) {
@@ -270,8 +343,31 @@ export async function runWhisper(opts: RunWhisperOptions): Promise<WhisperJsonOu
         activeProcesses.set(trackingKey, existing);
       }
     });
+  };
+
+  try {
+    // GPU-class failures (Vulkan) are retried once with --no-gpu and flip the process to CPU — see gpuBackend.ts.
+    const stderr = await runWithGpuFallback(gpuState, attempt, {
+      exitOf: (err) => (err instanceof WhisperError ? err.exit ?? null : null),
+      log: (message) => console.warn(`[gpu] ${message}`),
+      label: path.basename(audioPath),
+    });
+    // A GPU-mode run that printed no ggml-vulkan device banner ran on CPU inside whisper-cli (bundled loader, no
+    // driver). Flip the state so /api/health says so and later jobs pass --no-gpu directly (AUG-117).
+    if (gpuState.useGpu() && !countVulkanDevices(stderr)) {
+      if (gpuState.markGpuUnusable(NO_VULKAN_DEVICE_REASON)) console.warn(`[gpu] ${NO_VULKAN_DEVICE_LOG}`);
+    }
   } catch (err) {
-    if (err instanceof WhisperError) throw err;
+    if (err instanceof WhisperError) {
+      if (err.exit && isProcessLoadFailure(err.exit)) {
+        console.error(
+          `[gpu] ${binName} could not be loaded (${describeExit(err.exit)}): a DLL it imports is missing. ` +
+          `npm run setup bundles vulkan-1.dll next to ${binName}, so ${path.dirname(config.whisperBinPath)} is incomplete — re-run npm run setup (desktop app: reinstall).`,
+        );
+        throw new WhisperError(WHISPER_RUNTIME_MISSING_MESSAGE, err);
+      }
+      throw err;
+    }
     throw new WhisperError(`Failed to run ${binName}`, err);
   }
 
@@ -293,8 +389,8 @@ export async function runWhisper(opts: RunWhisperOptions): Promise<WhisperJsonOu
 
 /// Runs whisper-cli against `audioPath` and returns the parsed, per-segment
 /// transcript with numeric start/end times in seconds and (when whisper
-/// reports it) each segment's no_speech_prob. GPU is off except Metal on
-/// Apple Silicon (see config.whisperUseGpu).
+/// reports it) each segment's no_speech_prob. GPU mode comes from
+/// services/gpuBackend.ts (see runWhisper).
 export async function transcribe(
   audioPath: string,
   language: TranscriptionLanguage,

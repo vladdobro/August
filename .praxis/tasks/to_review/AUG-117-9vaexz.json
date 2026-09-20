@@ -1,0 +1,21 @@
+{
+  "id": "AUG-117-9vaexz",
+  "assignee": "jarvis.json",
+  "priority": "high",
+  "status": "to_review",
+  "title": "[AUG-117] RCA: missing vulkan-1.dll cannot be rescued by --no-gpu — bundle the Vulkan loader or a CPU-only whisper-cli",
+  "why_we_need_this": "Root cause found while implementing AUG-116. In the v1.8.4 `whisper-bin-x64.zip` the dependency chain is static: whisper-cli.exe → libwhisper.dll → ggml.dll → ggml-vulkan.dll → vulkan-1.dll. Verified on this machine by placing an unloadable `vulkan-1.dll` next to a copy of the binaries: `whisper-cli --help`, a GPU run and a `--no-gpu` run all die at process load with 0xC000012F before `main()` runs. A machine without `vulkan-1.dll` (no/old GPU driver) therefore fails with 0xC0000135 for every invocation, and the AUG-116 retry-once-with-`--no-gpu` cannot produce a CPU transcription in that case — the AUG-116 criterion \"first transcription succeeds on CPU with one retry when vulkan-1.dll is absent\" was written on a false premise. AUG-116 covers the post-start Vulkan failures (device/pipeline init errors) and turns the DLL case into a clear, actionable error instead of a silent failure. Also verified: when the loader IS present but finds no Vulkan device (simulated with VK_LOADER_DRIVERS_DISABLE=*), whisper-cli itself falls back to CPU and exits 0 — so shipping the loader alone makes the no-GPU machine work with no retry at all.\n\nWhy the miss happened: the task assumed ggml backends are loaded dynamically (GGML_BACKEND_DL), which is not how the upstream Windows release zip is built. Prevention rule: for any \"fallback\" task around a native binary, check the import table / a broken-DLL simulation before designing the retry.",
+  "acceptance_criteria": "- [ ] Decide between (a) bundling the redistributable Vulkan loader `vulkan-1.dll` (Khronos/LunarG runtime, Apache-2.0) into @whisper/bin/win-x64/ via @server/src/scripts/setup.ts and the Electron extraResources, or (b) shipping a CPU-only whisper-cli.exe as a second binary that runWhisper() switches to when the Vulkan build cannot load\n- [ ] `npm run setup` on Windows installs the chosen artifact with checksum verification; the desktop build (@electron/electron-builder.yml) bundles it\n- [ ] Verified on a machine (or a copy of the bin dir) where `vulkan-1.dll` is absent from System32: transcription completes on CPU, `/api/health` reports `gpuBackend: 'cpu'`, and the Diagnostics page shows the plain-language CPU line from AUG-116\n- [ ] AUG-116 classifier keeps treating 0xC0000135 as a GPU-class failure; the user-facing \"engine could not start\" message from AUG-116 is no longer reachable on a clean install\n- [ ] Licence notice for the bundled loader added to @whisper/README.md\n- [ ] project-context transcription/whisper-setup route updated with the static-import finding and the chosen remedy",
+  "important_constraints": "- Do not rebuild whisper.cpp from source on Windows; stay with pinned upstream release artifacts\n- No third-party inference APIs\n- Diagnostics UI stays plain-language (no DLL names)",
+  "labels": [
+    "transcription",
+    "whisper",
+    "electron",
+    "reliability",
+    "rca"
+  ],
+  "on_hold_reason": "",
+  "contextRouterIncluded": false,
+  "created_at": 1789946584197,
+  "column_entered_at": 1789948170383
+}

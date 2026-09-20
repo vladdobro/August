@@ -1,0 +1,20 @@
+{
+  "id": "AUG-115-hrcvqm",
+  "assignee": "jarvis.json",
+  "priority": "high",
+  "status": "completed",
+  "title": "[AUG-115] Bundle ffmpeg with the Windows and macOS desktop builds",
+  "why_we_need_this": "The Electron installer (AUG-114) ships whisper-cli but not ffmpeg, so a friend installing August still has to run `winget install ffmpeg` / `brew install ffmpeg` by hand or the diagnostics screen blocks recording. A self-contained installer is the whole point of the desktop edition. ffmpeg must be located next to whisper-cli and used by the server without relying on PATH.",
+  "acceptance_criteria": "- [ ] `npm run setup` (@server/src/scripts/setup.ts) downloads a pinned, SHA256-verified static ffmpeg build per platform into `whisper/bin/<platform>/` (ffmpeg.exe + ffprobe.exe on win-x64; ffmpeg + ffprobe on darwin-arm64 / darwin-x64), skipping when already present, same idempotent pattern as whisper-cli\n- [ ] The server resolves the ffmpeg/ffprobe executable through a single helper (new config field, e.g. `config.ffmpegPath`) with precedence: FFMPEG_PATH env → bundled binary next to whisper-cli → `ffmpeg` on PATH; every `execFile('ffmpeg'|'ffprobe', ...)` call site in @server/src/services/whisper.ts, @server/src/services/systemCapture.ts and @server/src/services/liveTranscription.ts uses the helper\n- [ ] `checkFfmpegAvailable()` and `/api/health` report ffmpeg available when only the bundled binary exists (no PATH install)\n- [ ] electron-builder (@electron/electron-builder.yml) picks the bundled ffmpeg up automatically because it lives inside the already-bundled `whisper/bin/<platform>/` extraResources; the Electron shell (@electron/src/main.ts) sets FFMPEG_PATH to the resources copy when packaged\n- [ ] A fresh Windows machine without ffmpeg on PATH installs the nsis build and records + transcribes a session successfully\n- [ ] `npm run dev` keeps working on a machine that only has PATH ffmpeg (fallback preserved)\n- [ ] FFMPEG_MISSING_MESSAGE and the diagnostics page text are updated: manual install becomes the fallback advice, not the primary instruction\n- [ ] `.env.example`, @whisper/README.md and @README.md document FFMPEG_PATH and the bundling\n- [ ] project-context whisper-setup and desktop-shell routes updated (Step 7)",
+  "important_constraints": "- Use an LGPL/GPL-compliant static build source and record its URL + version + SHA256 in setup.ts the same way the whisper release and CMake downloads are pinned\n- Do not add ffmpeg as an npm dependency (e.g. ffmpeg-static) — keep the download in the existing setup script so the binary layout stays under whisper/bin/\n- Keep the git-ignore of whisper/bin/ intact; never commit binaries\n- Keep the PATH fallback so existing dev machines are unaffected",
+  "labels": [
+    "electron",
+    "distribution",
+    "setup",
+    "ffmpeg"
+  ],
+  "on_hold_reason": "",
+  "contextRouterIncluded": false,
+  "created_at": 1789934364274,
+  "column_entered_at": 1789946106261
+}

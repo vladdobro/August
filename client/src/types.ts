@@ -25,6 +25,8 @@ export interface HealthStatus {
   ffmpegAvailable: boolean;
   ffmpegMessage?: string | null;
   groqAvailable: boolean;
+  // 'cpu' when whisper runs without the GPU (platform default, WHISPER_USE_GPU=0, or runtime fallback — AUG-116).
+  gpuBackend?: 'vulkan' | 'metal' | 'cpu' | 'unknown';
 }
 
 export type ModelState = 'present' | 'downloading' | 'missing';

@@ -56,7 +56,8 @@ Document the mechanics of the live transcription mode — how audio is captured 
 
 - Live transcription never modifies the MediaRecorder streams or the existing upload/transcription pipeline.
 - The WebSocket endpoint is /api/live-transcribe — it handles upgrade requests on the shared HTTP server.
-- When engine is 'local', live chunks are transcribed through the shared runWhisper() in whisper.ts, so flags (--max-context 0, platform GPU rule) always match the batch pipeline.
+- When engine is 'local', live chunks are transcribed through the shared runWhisper() in whisper.ts, so flags (--max-context 0, GPU mode) always match the batch pipeline.
+- Live chunks use the same process-wide GPU mode as batch jobs (GpuState in services/gpuBackend.ts); after a Vulkan failure flips the mode, every later chunk runs --no-gpu directly with no per-chunk retry.
 - When engine is 'groq', chunks are sent to the Groq Whisper API; the filler/hallucination filtering pipeline runs identically on both engines' output.
 - Path safety (Windows 8.3 short paths) is handled inside runWhisper, not in liveTranscription.ts.
 - Temporary WAV files are written to server/data/live-tmp/ (ASCII-safe), not os.tmpdir() which may resolve to a Cyrillic path.

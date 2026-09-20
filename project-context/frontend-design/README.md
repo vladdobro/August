@@ -514,7 +514,7 @@ Proceed button uses W40K CRT styling: metallic frame, arrow pseudo-elements, sca
 Refresh and Skip buttons share a horizontal row (.diag-actions) with equal flex:1 width. Skip turns red on hover.
 The ?diagnostics query param forces the diagnostics view; ?mock=whisper,model,ffmpeg simulates missing components.
 ffmpeg is mandatory — allReady requires whisperReady && modelReady && ffmpegReady, and needsSetup in App.tsx includes !healthStatus.ffmpegAvailable.
-When ffmpeg is missing but whisper+model are ready, a "Install FFmpeg" section with `winget install ffmpeg` and a copy button appears (Windows only; macOS covers ffmpeg via `brew install whisper-cpp ffmpeg`).
+When ffmpeg is missing but whisper+model are ready, an "Install FFmpeg" section appears on both platforms: `npm run setup` (downloads the bundled ffmpeg) with a copy button, then a one-line manual fallback (`winget install ffmpeg` / `brew install ffmpeg`).
 Clickable whisper/models/ path opens the native file manager via POST /api/setup/open-model-folder.
 
 ### Praxis Modal

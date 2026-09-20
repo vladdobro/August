@@ -3,6 +3,8 @@
 ## TL;DR
 - whisper-cli (whisper.cpp), built for Windows and macOS, transcribes session audio locally; output is raw timestamped segments in milliseconds.
 - runWhisper() in whisper.ts is the single whisper-cli invocation path for both batch and live transcription.
+- runWhisper() retries a Vulkan-class failure once with --no-gpu and keeps the process on CPU afterwards (AUG-116, services/gpuBackend.ts).
+- On Windows the Khronos Vulkan loader is bundled next to whisper-cli, so a machine without a GPU driver transcribes on CPU automatically (AUG-117, whisper-setup route).
 - TranscriptMerger filters hallucinations and filler, dedupes near-duplicate segments, and joins nearby segments into readable lines.
 - stripCreditHallucination replaces the "Редактор субтитров А.Семкин Корректор А.Егорова" hallucination with [OOPS] via regex, not silent drop.
 - A session moves through uploading, transcribing, then completed or failed — the client polls status until it leaves transcribing.
@@ -62,7 +64,8 @@ Document the exact mechanics of turning a recorded or uploaded audio file into a
 - DEDUP_WINDOW = 30.0 seconds — near-duplicate text within this window is collapsed to one segment.
 - NO_SPEECH_PROB_THRESHOLD = 0.6 — segments at or above this whisper.cpp no-speech probability are dropped.
 - --max-context 0 on every invocation.
-- --no-gpu on every platform except macOS Apple Silicon, which uses Metal.
+- GPU flag per services/gpuBackend.ts: Metal on Apple Silicon, Vulkan on Windows x64 with automatic CPU fallback, --no-gpu elsewhere; WHISPER_USE_GPU=0|1 pins it.
+- Non-GPU whisper failures (bad audio, missing model, cancellation, timeout) are never retried — classification lives in classifyWhisperFailure() and must stay conservative.
 - All whisper-cli spawning goes through runWhisper() — never duplicate invocation logic in callers.
 - ffmpeg-missing errors use the shared FFMPEG_MISSING_MESSAGE with per-platform install commands.
 - Transcription always runs as a background process — the API never blocks a request waiting for whisper-cli to finish.

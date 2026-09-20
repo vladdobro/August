@@ -6,11 +6,12 @@
 import { detectCapabilities, listAvfoundationAudioDevices, listDshowAudioDevices } from '../services/systemCapture.js';
 import { getWasapiHelperStatus } from '../services/wasapiHelper.js';
 import { checkFfmpegAvailable } from '../services/whisper.js';
+import { config } from '../config.js';
 
 async function main(): Promise<void> {
   console.log(`platform: ${process.platform} ${process.arch}`);
   const ffmpeg = await checkFfmpegAvailable();
-  console.log(`ffmpeg on PATH: ${ffmpeg ? 'yes' : 'no'}`);
+  console.log(`ffmpeg: ${config.ffmpegPath} [${config.ffmpegSource}] — ${ffmpeg ? 'ok' : 'missing'}`);
 
   if (process.platform === 'darwin' && ffmpeg) {
     const devices = await listAvfoundationAudioDevices();

@@ -75,7 +75,9 @@ const SetupGuide: React.FC<SetupGuideProps> = ({ health, onRefresh, onDismiss })
   const setupCommand = isMac
     ? 'brew install whisper-cpp ffmpeg'
     : 'powershell -ExecutionPolicy Bypass -File scripts\\setup-whisper.ps1';
-  const ffmpegInstallCommand = 'winget install ffmpeg';
+  // Bundled ffmpeg (AUG-115): npm run setup downloads it next to whisper-cli; a manual install is only the fallback.
+  const ffmpegSetupCommand = 'npm run setup';
+  const ffmpegManualCommand = isMac ? 'brew install ffmpeg' : 'winget install ffmpeg';
   const pollModelStatus = useCallback(() => {
     let es: EventSource | null = null;
     fetchSetupStatus()
@@ -114,7 +116,7 @@ const SetupGuide: React.FC<SetupGuideProps> = ({ health, onRefresh, onDismiss })
 
   const handleCopyFfmpeg = async () => {
     try {
-      await navigator.clipboard.writeText(ffmpegInstallCommand);
+      await navigator.clipboard.writeText(ffmpegSetupCommand);
       setFfmpegCopied(true);
       setTimeout(() => setFfmpegCopied(false), 2000);
     } catch { /* clipboard not available */ }
@@ -156,6 +158,11 @@ const SetupGuide: React.FC<SetupGuideProps> = ({ health, onRefresh, onDismiss })
             <HintPopup text="Whisper is the speech-to-text engine. The GGML model contains the neural network weights. FFmpeg handles audio format conversion." />
           </p>
         </div>
+        {health.gpuBackend === 'cpu' && (
+          <p className="diag-info-line diag-cpu-notice">
+            Transcription runs on CPU on this computer — expect it to take longer.
+          </p>
+        )}
 
         {/* Circuit node layout — all positions in % so SVG lines and CSS nodes share the same coordinate space */}
         <div className="diag-circuit">
@@ -256,15 +263,15 @@ const SetupGuide: React.FC<SetupGuideProps> = ({ health, onRefresh, onDismiss })
           )}
         </div>
 
-        {/* FFmpeg install guidance — shown when whisper+model ready but ffmpeg missing (Windows only) */}
-        {!isMac && !ffmpegReady && whisperReady && modelReady && (
+        {/* FFmpeg guidance — shown when whisper+model are ready but ffmpeg is missing. Bundled setup first, manual install as fallback. */}
+        {!ffmpegReady && whisperReady && modelReady && (
           <div className="diag-section">
             <div className="diag-section-title">Install FFmpeg</div>
             <p className="diag-section-desc">
-              FFmpeg converts browser audio (WebM) to WAV for the whisper engine. Install it via winget:
+              FFmpeg converts browser audio (WebM) to WAV for the whisper engine. Run this at the project root — it downloads a bundled FFmpeg next to whisper-cli:
             </p>
             <div className="diag-code-block">
-              <code className="diag-code-text">{ffmpegInstallCommand}</code>
+              <code className="diag-code-text">{ffmpegSetupCommand}</code>
               <button className="diag-code-copy" onClick={handleCopyFfmpeg} type="button" title="Copy command">
                 {ffmpegCopied ? (
                   <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round">
@@ -278,6 +285,9 @@ const SetupGuide: React.FC<SetupGuideProps> = ({ health, onRefresh, onDismiss })
                 )}
               </button>
             </div>
+            <p className="diag-section-desc">
+              Fallback if setup cannot download it: {ffmpegManualCommand}
+            </p>
           </div>
         )}
 

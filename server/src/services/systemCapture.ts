@@ -237,7 +237,7 @@ async function commandOnPath(cmd: string, args: string[]): Promise<boolean> {
 export async function listAvfoundationAudioDevices(): Promise<Array<{ index: number; name: string }>> {
   return new Promise((resolve) => {
     execFile(
-      'ffmpeg',
+      config.ffmpegPath,
       ['-hide_banner', '-f', 'avfoundation', '-list_devices', 'true', '-i', ''],
       { timeout: 10_000 },
       (_error, _stdout, stderr) => {
@@ -251,7 +251,7 @@ export async function listAvfoundationAudioDevices(): Promise<Array<{ index: num
 export async function listDshowAudioDevices(): Promise<string[]> {
   return new Promise((resolve) => {
     execFile(
-      'ffmpeg',
+      config.ffmpegPath,
       ['-hide_banner', '-list_devices', 'true', '-f', 'dshow', '-i', 'dummy'],
       { timeout: 10_000 },
       (_error, _stdout, stderr) => {
@@ -335,7 +335,7 @@ function spawnCapturePipeline(
   if (method === 'coreaudio-tap') {
     const tap = spawn('audiotee', ['--sample-rate', '16000'], { stdio: ['ignore', 'pipe', 'pipe'] });
     ffmpeg = spawn(
-      'ffmpeg',
+      config.ffmpegPath,
       ['-hide_banner', '-loglevel', 'error', '-f', sampleFormat ?? 's16le', '-ar', '16000', '-ac', '1', '-i', 'pipe:0', '-c:a', 'pcm_s16le', '-flush_packets', '1', '-fflags', '+bitexact', '-y', filePath, ...(live ? LIVE_TEE_ARGS : [])],
       { stdio: ['pipe', live ? 'pipe' : 'ignore', 'pipe'] },
     );
@@ -350,7 +350,7 @@ function spawnCapturePipeline(
     // booting (~100 ms on Windows) those frames would queue in the pipe and the WAV
     // would begin before the first-byte startedAt, skewing systemOffsetMs (AUG-112).
     ffmpeg = spawn(
-      'ffmpeg',
+      config.ffmpegPath,
       ['-hide_banner', '-loglevel', 'error', '-f', wasapi.probe.format, '-ar', String(wasapi.probe.sampleRate), '-ac', String(wasapi.probe.channels), '-i', 'pipe:0', '-ac', '1', '-ar', '16000', '-c:a', 'pcm_s16le', '-flush_packets', '1', '-fflags', '+bitexact', '-y', filePath, ...(live ? LIVE_TEE_ARGS : [])],
       { stdio: ['pipe', live ? 'pipe' : 'ignore', 'pipe'] },
     );
@@ -362,14 +362,14 @@ function spawnCapturePipeline(
     procs.push(helper, ffmpeg);
   } else if (method === 'dshow-loopback') {
     ffmpeg = spawn(
-      'ffmpeg',
+      config.ffmpegPath,
       ['-hide_banner', '-loglevel', 'error', '-f', 'dshow', '-i', `audio=${target.deviceName}`, '-ac', '1', '-ar', '16000', '-c:a', 'pcm_s16le', '-flush_packets', '1', '-fflags', '+bitexact', '-y', filePath, ...(live ? LIVE_TEE_ARGS : [])],
       { stdio: ['pipe', live ? 'pipe' : 'ignore', 'pipe'] },
     );
     procs.push(ffmpeg);
   } else {
     ffmpeg = spawn(
-      'ffmpeg',
+      config.ffmpegPath,
       ['-hide_banner', '-nostdin', '-loglevel', 'error', '-f', 'avfoundation', '-i', `:${target.deviceIndex}`, '-ac', '1', '-ar', '16000', '-c:a', 'pcm_s16le', '-flush_packets', '1', '-fflags', '+bitexact', '-y', filePath, ...(live ? LIVE_TEE_ARGS : [])],
       { stdio: ['ignore', live ? 'pipe' : 'ignore', 'pipe'] },
     );
@@ -422,7 +422,7 @@ export function resolveWindowsMethod(input: WindowsProbeInput): ResolvedCapabili
       systemCapture: false,
       method: 'none',
       platform,
-      hint: 'ffmpeg is required for system capture: winget install ffmpeg',
+      hint: 'ffmpeg is required for system capture: run `npm run setup` (bundled build) or winget install ffmpeg',
       selfTest: 'skipped',
       selfTestDetail: 'no capture method to test',
     };
@@ -488,7 +488,7 @@ async function probeMethod(): Promise<ResolvedCapabilities> {
       systemCapture: false,
       method: 'none',
       platform,
-      hint: 'ffmpeg is required for system capture: brew install ffmpeg',
+      hint: 'ffmpeg is required for system capture: run `npm run setup` (bundled build) or brew install ffmpeg',
       selfTest: 'skipped',
       selfTestDetail: 'no capture method to test',
     };
@@ -711,7 +711,7 @@ export function isSilentLevel(volume: VolumeDetectResult): boolean {
 async function measureVolume(filePath: string): Promise<VolumeDetectResult> {
   return new Promise((resolve) => {
     execFile(
-      'ffmpeg',
+      config.ffmpegPath,
       ['-hide_banner', '-nostats', '-i', filePath, '-af', 'volumedetect', '-f', 'null', '-'],
       { timeout: 10_000 },
       (_error, _stdout, stderr) => resolve(parseVolumeDetect(stderr ?? '')),

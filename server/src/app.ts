@@ -13,7 +13,8 @@ import praxisRouter from './routes/praxis.js';
 import preferencesRouter from './routes/preferences.js';
 import captureRouter from './routes/capture.js';
 import { setupLiveTranscription } from './services/liveTranscription.js';
-import { checkFfmpegAvailable, FFMPEG_MISSING_MESSAGE, fileExists } from './services/whisper.js';
+import { checkFfmpegAvailable, FFMPEG_MISSING_MESSAGE, fileExists, probeGpuBackend } from './services/whisper.js';
+import { gpuState } from './services/gpuBackend.js';
 import { ensureWhisperModel } from './services/modelDownloader.js';
 import { cleanupOrphanedCaptures } from './services/systemCapture.js';
 import { migrateLegacyPreferences } from './services/preferencesStore.js';
@@ -31,7 +32,9 @@ async function runPreflightChecks(): Promise<void> {
   if (!whisperPlatformDir()) {
     console.warn(`⚠ Unsupported platform ${process.platform}-${process.arch}. Supported: Windows x64, macOS arm64/x64.`);
   }
-  if (!(await checkFfmpegAvailable())) {
+  if (await checkFfmpegAvailable()) {
+    console.log(`ffmpeg: ${config.ffmpegPath} (${config.ffmpegSource})`);
+  } else {
     console.error(FFMPEG_MISSING_MESSAGE);
   }
   if (!(await fileExists(config.whisperBinPath))) {
@@ -118,8 +121,11 @@ export async function startServer(options: StartServerOptions = {}): Promise<Run
   console.log(`  Sessions dir: ${config.sessionsDir}`);
   console.log(`  Whisper binary: ${config.whisperBinPath}`);
   console.log(`  Whisper model: ${config.whisperModelPath}`);
-  const gpuBackend = process.platform === 'darwin' ? 'Metal' : 'Vulkan';
-  console.log(`  Platform: ${process.platform}-${process.arch} (GPU: ${config.whisperUseGpu ? gpuBackend : 'off'})`);
+  console.log(`  Platform: ${process.platform}-${process.arch} (whisper GPU: ${gpuState.describePolicy()})`);
+  void probeGpuBackend().then((backend) => {
+    const reason = gpuState.fallbackReason();
+    console.log(`  Whisper backend: ${backend}${reason ? ` (CPU fallback: ${reason})` : ''}`);
+  });
   console.log(`  Live transcription: ws://localhost:${port}/api/live-transcribe`);
   console.log(`  System capture: GET /api/capture/capabilities (loopback only)`);
   console.log(`  Groq API: ${config.groqApiKey ? 'configured' : 'not configured (live mode uses local whisper only)'}`);

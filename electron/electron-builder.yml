@@ -51,6 +51,7 @@ mac:
   extendInfo:
     NSMicrophoneUsageDescription: August records your microphone for meeting transcription.
     NSAudioCaptureUsageDescription: August captures system audio so the other side of a call is transcribed too.
+  # whisper-cli plus the bundled ffmpeg/ffprobe that npm run setup placed next to it (AUG-115).
   extraResources:
     - from: whisper/bin/darwin-${arch}
       to: whisper/bin/darwin-${arch}
@@ -69,6 +70,7 @@ win:
     - target: msi
       arch: [x64]
   # Authenticode signing: set CSC_LINK (path/base64 of the .pfx) and CSC_KEY_PASSWORD in the environment.
+  # whisper-cli + its DLLs, the bundled Vulkan loader (vulkan-1.dll + VulkanRT-License.txt, AUG-117) and ffmpeg/ffprobe (AUG-115) — everything npm run setup placed in the folder.
   extraResources:
     - from: whisper/bin/win-x64
       to: whisper/bin/win-x64

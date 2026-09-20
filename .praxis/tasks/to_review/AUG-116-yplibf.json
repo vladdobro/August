@@ -1,0 +1,20 @@
+{
+  "id": "AUG-116-yplibf",
+  "assignee": "jarvis.json",
+  "priority": "high",
+  "status": "to_review",
+  "title": "[AUG-116] CPU fallback when the Vulkan whisper-cli build cannot use the GPU",
+  "why_we_need_this": "On Windows x64 the server always runs whisper-cli with the GPU enabled (Vulkan backend, see `whisperUseGpu` in @server/src/config.ts). On a PC with missing or outdated GPU drivers `vulkan-1.dll` is absent or device creation fails, so whisper-cli exits before transcribing and every session fails with no useful message. Users installing the desktop app (AUG-114) on such machines get a broken product although CPU inference would work. A one-time probe plus an automatic `--no-gpu` retry makes transcription resilient without changing the fast path.",
+  "acceptance_criteria": "- [ ] On first use per server start, a GPU probe runs whisper-cli once (e.g. `--help`/tiny no-op or the first real job) and classifies GPU as usable or unusable; result cached in memory for the process lifetime\n- [ ] When a whisper-cli run fails with a GPU/Vulkan class error (missing vulkan-1.dll, exit code 0xC0000135 / STATUS_DLL_NOT_FOUND, \"failed to initialize\" Vulkan/ggml backend messages in stderr), `runWhisper()` in @server/src/services/whisper.ts retries the same job once with `--no-gpu` and flips the cached mode to CPU for subsequent jobs\n- [ ] Live transcription chunks (@server/src/services/liveTranscription.ts) use the same cached mode — no per-chunk retry storms\n- [ ] `/api/health` gains a `gpuBackend` field: 'vulkan' | 'metal' | 'cpu' | 'unknown', and the server startup log prints the resolved mode\n- [ ] Diagnostics page (@client/src/components/SetupGuide.tsx) shows a plain-language line when CPU fallback is active (\"Transcription runs on CPU on this computer — expect it to take longer\"); no driver/DLL names in the UI\n- [ ] Manual override: `WHISPER_USE_GPU=0|1` env var forces the mode and disables probing; documented in `.env.example`\n- [ ] Unit tests cover error classification (GPU error vs. unrelated whisper error) and the retry-once behaviour\n- [ ] Verified on a machine where vulkan-1.dll is renamed/absent: first transcription succeeds on CPU with one retry, later ones start directly in CPU mode\n- [ ] project-context transcription / whisper-setup routes updated (Step 7)",
+  "important_constraints": "- Never retry non-GPU failures (bad audio, missing model, cancellations) — classification must be conservative\n- All whisper-cli spawning stays inside runWhisper(); do not duplicate invocation logic in callers\n- macOS Metal path must be untouched functionally (probe may run but must not alter flags on Apple Silicon)\n- Diagnostics in the user UI stay plain-language; method names, DLLs and exit codes belong in the server log only",
+  "labels": [
+    "transcription",
+    "whisper",
+    "electron",
+    "reliability"
+  ],
+  "on_hold_reason": "",
+  "contextRouterIncluded": false,
+  "created_at": 1789934379858,
+  "column_entered_at": 1789947142249
+}

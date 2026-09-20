@@ -1,4 +1,5 @@
 import path from 'node:path';
+import fs from 'node:fs';
 import { fileURLToPath } from 'node:url';
 import dotenv from 'dotenv';
 
@@ -37,6 +38,54 @@ export function whisperBinName(): string {
   return process.platform === 'win32' ? 'whisper-cli.exe' : 'whisper-cli';
 }
 
+export function ffmpegBinName(tool: 'ffmpeg' | 'ffprobe'): string {
+  return process.platform === 'win32' ? `${tool}.exe` : tool;
+}
+
+export type FfmpegSource = 'env' | 'bundled' | 'path';
+
+export interface FfmpegPaths {
+  ffmpeg: string;
+  ffprobe: string;
+  source: FfmpegSource;
+}
+
+/// Resolves the ffmpeg + ffprobe executables (AUG-115). Precedence:
+///  1. FFMPEG_PATH env — an explicit ffmpeg executable; ffprobe is taken from the same directory when present.
+///  2. Bundled build — ffmpeg next to whisper-cli (whisper/bin/<platform>/ in the repo, resources/whisper/bin/<platform>/
+///     when packaged), installed by `npm run setup`.
+///  3. PATH fallback — bare `ffmpeg` / `ffprobe`, so dev machines with a system install keep working.
+/// Pure: every input is injected so the precedence is unit-testable without touching the file system.
+export function resolveFfmpegPaths(input: {
+  envPath: string | undefined;
+  bundledDirs: string[];
+  exists: (filePath: string) => boolean;
+  binName?: (tool: 'ffmpeg' | 'ffprobe') => string;
+}): FfmpegPaths {
+  const binName = input.binName ?? ffmpegBinName;
+  const withSiblingProbe = (ffmpeg: string, source: FfmpegSource): FfmpegPaths => {
+    const probe = path.join(path.dirname(ffmpeg), binName('ffprobe'));
+    return { ffmpeg, ffprobe: input.exists(probe) ? probe : binName('ffprobe'), source };
+  };
+  const envPath = input.envPath?.trim();
+  if (envPath) return withSiblingProbe(path.resolve(envPath), 'env');
+  for (const dir of input.bundledDirs) {
+    const candidate = path.join(dir, binName('ffmpeg'));
+    if (input.exists(candidate)) return withSiblingProbe(candidate, 'bundled');
+  }
+  return { ffmpeg: binName('ffmpeg'), ffprobe: binName('ffprobe'), source: 'path' };
+}
+
+/// WHISPER_USE_GPU=0|1 (also true/false, on/off, yes/no) pins the whisper GPU mode and disables the runtime
+/// probe + automatic CPU fallback (AUG-116). Unset, blank or unrecognised → null → platform default with fallback.
+export function parseGpuOverride(raw: string | undefined): boolean | null {
+  const value = raw?.trim().toLowerCase();
+  if (!value) return null;
+  if (value === '1' || value === 'true' || value === 'on' || value === 'yes') return true;
+  if (value === '0' || value === 'false' || value === 'off' || value === 'no') return false;
+  return null;
+}
+
 export const WHISPER_MODEL = {
   fileName: 'ggml-large-v3-turbo-q8_0.bin',
   url: 'https://huggingface.co/ggerganov/whisper.cpp/resolve/main/ggml-large-v3-turbo-q8_0.bin',
@@ -56,6 +105,10 @@ export interface AppConfig {
   port: number;
   whisperBinPath: string;
   whisperModelPath: string;
+  // ffmpeg / ffprobe executables (AUG-115): FFMPEG_PATH env → bundled build next to whisper-cli → PATH.
+  ffmpegPath: string;
+  ffprobePath: string;
+  ffmpegSource: FfmpegSource;
   // Root of all runtime server data (sessions, uploads, captures, perf stats, user preferences).
   dataDir: string;
   sessionsDir: string;
@@ -69,19 +122,31 @@ export interface AppConfig {
   // Explicit override (AUDIOTEE_SAMPLE_FORMAT=s16le|f32le) for the raw PCM format audiotee writes to
   // stdout. null = sniff it from a short probe of the binary's output (AUG-107, services/pcmSampleFormat.ts).
   audioteeSampleFormat: string | null;
-  // Metal on Apple Silicon, Vulkan on Windows x64; other platforms keep --no-gpu.
-  whisperUseGpu: boolean;
+  // WHISPER_USE_GPU override (AUG-116): true/false pins the mode, null = platform default (Metal on Apple Silicon,
+  // Vulkan on Windows x64, --no-gpu elsewhere) with automatic CPU fallback. Effective mode: services/gpuBackend.ts.
+  whisperGpuOverride: boolean | null;
   groqApiKey: string | null;
 }
 
+const whisperBinPath = process.env.WHISPER_BIN_PATH?.trim()
+  ? path.resolve(process.env.WHISPER_BIN_PATH.trim())
+  : defaultWhisperBinPath();
+
+const ffmpegPaths = resolveFfmpegPaths({
+  envPath: process.env.FFMPEG_PATH,
+  bundledDirs: [...new Set([path.dirname(whisperBinPath), path.dirname(defaultWhisperBinPath())])],
+  exists: (filePath) => fs.existsSync(filePath),
+});
+
 export const config: AppConfig = {
   port: Number(process.env.PORT) || 3001,
-  whisperBinPath: process.env.WHISPER_BIN_PATH?.trim()
-    ? path.resolve(process.env.WHISPER_BIN_PATH.trim())
-    : defaultWhisperBinPath(),
+  whisperBinPath,
   whisperModelPath: process.env.WHISPER_MODEL_PATH?.trim()
     ? path.resolve(process.env.WHISPER_MODEL_PATH.trim())
     : defaultWhisperModelPath(),
+  ffmpegPath: ffmpegPaths.ffmpeg,
+  ffprobePath: ffmpegPaths.ffprobe,
+  ffmpegSource: ffmpegPaths.source,
   dataDir,
   sessionsDir: path.join(dataDir, 'sessions'),
   uploadsDir: path.join(dataDir, 'uploads'),
@@ -89,9 +154,7 @@ export const config: AppConfig = {
   toolsDir: path.join(dataDir, 'tools'),
   wasapiHelperSourcePath: path.resolve(serverRoot, 'tools', 'wasapi-loopback', 'WasapiLoopback.cs'),
   audioteeSampleFormat: process.env.AUDIOTEE_SAMPLE_FORMAT?.trim() || null,
-  whisperUseGpu:
-    (process.platform === 'darwin' && process.arch === 'arm64') ||
-    (process.platform === 'win32' && process.arch === 'x64'),
+  whisperGpuOverride: parseGpuOverride(process.env.WHISPER_USE_GPU),
   groqApiKey: process.env.GROQ_API_KEY?.trim() || null,
 };
 

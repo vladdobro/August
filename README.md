@@ -9,7 +9,7 @@ that embeds the same server and adds a tray icon, a global hotkey, and native no
 ## Requirements
 
 - Node.js 22+ (development uses Node 24)
-- `ffmpeg` on `PATH` — `winget install ffmpeg` on Windows, `brew install ffmpeg` on macOS
+- ffmpeg is **bundled**: `npm run setup` downloads a pinned static ffmpeg + ffprobe into `whisper/bin/<platform>/`. An ffmpeg on `PATH` (`winget install ffmpeg` / `brew install ffmpeg`) still works as a fallback, and `FFMPEG_PATH` overrides both.
 - macOS only: Xcode Command Line Tools, needed to build `whisper-cli` from source
 
 See [`whisper/README.md`](whisper/README.md) for how `whisper-cli` is fetched/built per platform and how
@@ -72,7 +72,8 @@ npm run electron:dist    # real installers in electron/release/
 
 `electron:dist` produces a `.dmg` and `.zip` on macOS and a one-click NSIS `.exe` plus an `.msi` on
 Windows. `npm run setup` must have already produced `whisper/bin/<platform>/` — the platform-specific
-`whisper-cli` binary is bundled into the app's `resources/whisper/bin/` folder. Build macOS installers
+`whisper-cli`, `ffmpeg` and `ffprobe` binaries are bundled into the app's `resources/whisper/bin/` folder,
+so users need no ffmpeg install. Build macOS installers
 per architecture with `-- --arm64` or `-- --x64`. The whisper model itself (~874 MB) is **not** bundled;
 the packaged app downloads and SHA256-verifies it on first launch into the user-data folder, showing the
 same progress modal as the web app.
@@ -90,9 +91,9 @@ Inside that folder:
 - `desktop-settings.json` — desktop-only settings (currently just the record hotkey)
 - `logs/main.log` — mirrored console output from the main process (rotates at 5 MB)
 
-This is implemented by three environment variables the Electron shell sets automatically before starting
-the embedded server: `AUGUST_DATA_DIR`, `WHISPER_MODEL_PATH`, and `WHISPER_BIN_PATH`. None of them need to
-be set for the web app.
+This is implemented by four environment variables the Electron shell sets automatically before starting
+the embedded server: `AUGUST_DATA_DIR`, `WHISPER_MODEL_PATH`, `WHISPER_BIN_PATH`, and `FFMPEG_PATH` (the
+bundled ffmpeg). None of them need to be set for the web app.
 
 ### Desktop features
 

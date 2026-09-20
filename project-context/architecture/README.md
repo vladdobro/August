@@ -57,10 +57,10 @@ Give any agent working on the codebase a map of the client/server split, how a s
 
 ## Key implementation details
 
-- Binaries live in whisper/bin/{win-x64,darwin-arm64,darwin-x64}/, installed by npm run setup (whisper.cpp v1.8.4), git-ignored.
+- Binaries live in whisper/bin/{win-x64,darwin-arm64,darwin-x64}/ — whisper-cli (whisper.cpp v1.8.4) plus a static ffmpeg + ffprobe (9.0.2) — installed by npm run setup, git-ignored.
 - The whisper model ggml-large-v3-turbo-q8_0.bin (~874 MB, 8-bit quantized) lives at whisper/models/ and is auto-downloaded on first server start — see project-context/transcription/whisper-setup/.
 - Windows non-ASCII paths are converted to 8.3 short paths via a toSafePath helper before invoking the binary; toSafePath is a passthrough on macOS.
-- The repo-root .env is loaded in config.ts before config is built; WHISPER_BIN_PATH and WHISPER_MODEL_PATH env vars override the default binary and model paths.
+- The repo-root .env is loaded in config.ts before config is built; WHISPER_BIN_PATH, WHISPER_MODEL_PATH and FFMPEG_PATH env vars override the default binary, model and ffmpeg paths.
 - Timestamp offsets in this build's whisper-cli --output-json-full output are milliseconds, not centiseconds — do not assume centiseconds when reading segment timestamps.
 - MediaRecorder.start(30000) uses a 30-second timeslice so ondataavailable fires periodically, enabling IndexedDB auto-save during recording.
 - Recording crash recovery uses IndexedDB database "august-recording-recovery" — saves mic (and optionally system) Blob, mimeType, language, and dualTrack flag; client/src/services/recordingRecovery.ts is the helper.

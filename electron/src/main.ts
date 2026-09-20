@@ -70,7 +70,7 @@ function whisperPlatformDir(): string | null {
   return null;
 }
 
-/// GUI apps on macOS don't inherit the shell PATH, so Homebrew's ffmpeg is invisible without this.
+/// GUI apps on macOS don't inherit the shell PATH, so Homebrew tools (audiotee, the ffmpeg PATH fallback) are invisible without this.
 function ensureToolPaths(): void {
   if (process.platform !== 'darwin') return;
   const current = (process.env.PATH ?? '').split(':').filter(Boolean);
@@ -79,8 +79,9 @@ function ensureToolPaths(): void {
 }
 
 /// Environment for the embedded server. Packaged builds keep every writable file under userData (the
-/// install dir is read-only) and take whisper-cli from resources/; unpackaged runs reuse the repo layout
-/// (server/data, whisper/bin, whisper/models) so `npm run electron:start` shares state with `npm run dev`.
+/// install dir is read-only) and take whisper-cli, ffmpeg and ffprobe from resources/; unpackaged runs
+/// reuse the repo layout (server/data, whisper/bin, whisper/models) so `npm run electron:start` shares
+/// state with `npm run dev`.
 function configureServerEnv(): void {
   process.env.NODE_ENV = 'production';
   if (!app.isPackaged) return;
@@ -98,6 +99,14 @@ function configureServerEnv(): void {
     const binName = process.platform === 'win32' ? 'whisper-cli.exe' : 'whisper-cli';
     const bundled = path.join(process.resourcesPath, 'whisper', 'bin', platformDir, binName);
     if (fs.existsSync(bundled)) process.env.WHISPER_BIN_PATH = bundled;
+  }
+
+  // ffmpeg + ffprobe ship next to whisper-cli (AUG-115). FFMPEG_PATH is the server's highest-precedence
+  // override; the server also finds the bundled copy on its own via WHISPER_BIN_PATH, this just makes it explicit.
+  if (platformDir && !process.env.FFMPEG_PATH) {
+    const ffmpegName = process.platform === 'win32' ? 'ffmpeg.exe' : 'ffmpeg';
+    const bundledFfmpeg = path.join(process.resourcesPath, 'whisper', 'bin', platformDir, ffmpegName);
+    if (fs.existsSync(bundledFfmpeg)) process.env.FFMPEG_PATH = bundledFfmpeg;
   }
 }
 
