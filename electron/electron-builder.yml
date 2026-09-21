@@ -29,6 +29,8 @@ files:
   - "!server/node_modules/{typescript,tsx,vitest,@vitest,vite,vite-node,esbuild,@esbuild,rollup,@rollup,@types,get-tsconfig,resolve-pkg-maps,fsevents,tinypool,tinybench,chai}/**"
   - "!server/node_modules/**/*.{ts,map,md,markdown}"
   - "!server/node_modules/**/{test,tests,__tests__,example,examples,docs,.github}/**"
+  # .bin holds symlinks into dev-only packages excluded above (e.g. esbuild); a dangling symlink aborts the mac build.
+  - "!server/node_modules/.bin/**"
   - client/dist/**/*
 
 # electron-updater feed. Publish with GH_TOKEN set: electron-builder --publish always
