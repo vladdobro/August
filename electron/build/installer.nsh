@@ -3,7 +3,9 @@
 ; Uses customWelcomePage (not customHeader) because electron-builder calls
 ; customHeader AFTER MUI_LANGUAGE, which forbids MUI_PAGE_* macros.
 
-Var /GLOBAL ModelDir
+!ifndef BUILD_UNINSTALLER
+  Var /GLOBAL ModelDir
+!endif
 
 !macro customWelcomePage
   !define MUI_PAGE_HEADER_TEXT "Welcome to August Setup"
