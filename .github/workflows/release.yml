@@ -10,7 +10,27 @@ permissions:
   contents: write
 
 jobs:
+  # electron-builder creates a release when none exists for the tag, and its dmg and zip publishers race:
+  # a fresh tag ended up with two duplicate releases holding half the assets each. Creating the release
+  # first makes every later publisher an upload only.
+  create-release:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - name: Create the GitHub release for this version if it does not exist
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: |
+          if [ "$GITHUB_REF_TYPE" = "tag" ]; then TAG="$GITHUB_REF_NAME"; else TAG="v$(node -p "require('./package.json').version")"; fi
+          if gh release view "$TAG" --repo "$GITHUB_REPOSITORY" >/dev/null 2>&1; then
+            echo "Release $TAG already exists."
+          else
+            gh release create "$TAG" --repo "$GITHUB_REPOSITORY" --title "$TAG" --generate-notes
+            echo "Created release $TAG."
+          fi
+
   build:
+    needs: create-release
     strategy:
       fail-fast: false
       # Sequential: two jobs creating the release for the same tag at once produced two duplicate

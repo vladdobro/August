@@ -67,7 +67,8 @@ A desktop shell exists so non-technical users get a one-click install with no te
 - Unsigned macOS builds are ad-hoc signed by the afterPack hook electron/scripts/afterPack.cjs; Apple Silicon shows a re-packaged unsigned app as "damaged" and xattr cannot fix that.
 - Ad-hoc signed macOS apps show the "unverified developer" Gatekeeper prompt; users bypass it with right-click → Open, Privacy & Security → Open Anyway, or xattr -cr on the app.
 - The release workflow exports CSC_LINK and Apple credentials only when the secrets are non-empty; an empty CSC_LINK makes electron-builder abort with "not a file".
-- Release jobs run with max-parallel 1; concurrent mac and windows publishes created two duplicate releases for one tag.
+- The release workflow creates the GitHub release with gh before any build job; electron-builder itself creates duplicate releases when its dmg and zip publishers race on a fresh tag.
+- Release build jobs run with max-parallel 1 so platform uploads never overlap.
 - electron-builder never replaces existing GitHub release assets; a rerun of the same tag uploads nothing, so fixes need a version bump and a new tag (or manual asset deletion).
 - The default GITHUB_TOKEN is read-only; the release workflow declares permissions contents: write so electron-builder can create the release.
 - The packaged app must exclude server/node_modules/.bin: its symlinks point into excluded dev packages and a dangling symlink aborts the macOS build.
