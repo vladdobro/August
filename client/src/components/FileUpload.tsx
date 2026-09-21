@@ -353,6 +353,11 @@ const FileUpload: React.FC<FileUploadProps> = ({ onUploaded, onRecordingChange, 
           type: micRecorder.mimeType || 'audio/webm',
         });
 
+        if (blob.size === 0) {
+          setError('Recording produced no audio data — please try again');
+          return;
+        }
+
         if (captureSystemAudio && serverCapture) {
           await uploadWithServerCapture(blob, serverCapture);
         } else if (captureSystemAudio) {
@@ -639,6 +644,12 @@ const FileUpload: React.FC<FileUploadProps> = ({ onUploaded, onRecordingChange, 
   const handleRecoveryUpload = useCallback(async () => {
     if (!recoveredRecording) return;
     const { micBlob, systemBlob, mimeType, language: recLang, dualTrack } = recoveredRecording;
+    if (micBlob.size === 0) {
+      setError('Recovered recording is empty — it cannot be transcribed');
+      setRecoveredRecording(null);
+      void clearRecoveredRecording();
+      return;
+    }
     setRecoveredRecording(null);
     setIsUploading(true);
     setUploadProgress(null);

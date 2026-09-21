@@ -87,8 +87,13 @@ function configureServerEnv(): void {
   if (!app.isPackaged) return;
 
   const userData = app.getPath('userData');
-  const dataDir = path.join(userData, 'data');
-  const modelsDir = path.join(userData, 'whisper', 'models');
+  const installDir = path.resolve(process.resourcesPath, '..');
+  const dataDir = path.join(installDir, 'data');
+  let modelsDir = path.join(userData, 'whisper', 'models');
+  try {
+    const custom = fs.readFileSync(path.join(userData, 'model-dir'), 'utf-8').trim();
+    if (custom) modelsDir = custom;
+  } catch {}
   fs.mkdirSync(dataDir, { recursive: true });
   fs.mkdirSync(modelsDir, { recursive: true });
   process.env.AUGUST_DATA_DIR ??= dataDir;

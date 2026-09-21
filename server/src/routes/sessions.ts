@@ -280,12 +280,14 @@ router.post('/upload', upload.fields([
     return;
   }
 
+  let createdSessionId: string | null = null;
   try {
     const session = await sessionManager.createSession(
       isDual ? undefined : micFile.originalname,
       language,
       isDual,
     );
+    createdSessionId = session.id;
     const sessionDir = sessionManager.sessionAudioDir(session.id);
 
     if (isDual) {
@@ -341,6 +343,12 @@ router.post('/upload', upload.fields([
       res.status(201).json(inProgress ?? session);
     }
   } catch (err) {
+    if (createdSessionId) {
+      await sessionManager.updateSession(createdSessionId, {
+        status: 'failed',
+        error: (err as Error)?.message || 'Failed to start transcription',
+      }).catch(() => {});
+    }
     const status = err instanceof CaptureError ? 400 : 500;
     res.status(status).json({ error: (err as Error)?.message || 'Failed to start transcription' });
   }

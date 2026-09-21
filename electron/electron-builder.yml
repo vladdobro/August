@@ -80,10 +80,12 @@ win:
       to: whisper/bin/win-x64
 
 nsis:
-  oneClick: true
+  oneClick: false
   perMachine: false
+  allowToChangeInstallationDirectory: true
   deleteAppDataOnUninstall: false
   shortcutName: August
+  include: electron/build/installer.nsh
 
 msi:
   oneClick: true

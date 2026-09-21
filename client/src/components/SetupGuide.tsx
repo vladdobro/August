@@ -158,9 +158,16 @@ const SetupGuide: React.FC<SetupGuideProps> = ({ health, onRefresh, onDismiss })
             <HintPopup text="Whisper is the speech-to-text engine. The GGML model contains the neural network weights. FFmpeg handles audio format conversion." />
           </p>
         </div>
+        {allReady && health.gpuBackend && health.gpuBackend !== 'cpu' && (
+          <p className="diag-info-line diag-gpu-status">
+            {health.gpuBackend === 'unknown'
+              ? 'GPU: detecting…'
+              : `GPU acceleration: ${health.gpuBackend === 'vulkan' ? 'Vulkan' : 'Metal'}`}
+          </p>
+        )}
         {health.gpuBackend === 'cpu' && (
           <p className="diag-info-line diag-cpu-notice">
-            Transcription runs on CPU on this computer — expect it to take longer.
+            Transcription runs on CPU — processing will take longer.
           </p>
         )}
 

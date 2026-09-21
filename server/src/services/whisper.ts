@@ -52,7 +52,12 @@ const NO_VULKAN_DEVICE_LOG =
 /// FFMPEG_MISSING_MESSAGE when the failure is the resolved ffmpeg executable not being found (ENOENT).
 function ffmpegError(error: ExecFileException, stderr: string, fallbackMessage: string): WhisperError {
   if (error.code === 'ENOENT') return new WhisperError(FFMPEG_MISSING_MESSAGE, error);
-  return new WhisperError(`${fallbackMessage}${stderr || error.message}`, error);
+  const meaningful = stderr
+    .split(/\r?\n/)
+    .filter(l => /^\[|^Error |error:/i.test(l.trim()))
+    .join('\n')
+    .trim();
+  return new WhisperError(`${fallbackMessage}${meaningful || error.message}`, error);
 }
 
 const activeProcesses = new Map<string, ChildProcess[]>();
@@ -79,6 +84,23 @@ export function getActiveTrackingKeys(): string[] {
 export async function ensureWav(audioPath: string): Promise<string> {
   const ext = path.extname(audioPath).toLowerCase();
   if (WAV_EXTENSIONS.has(ext)) return audioPath;
+
+  const stat = await fs.stat(audioPath);
+  if (stat.size === 0) {
+    throw new WhisperError(`Audio file is empty (0 bytes): ${path.basename(audioPath)}`);
+  }
+
+  if (ext === '.webm') {
+    const fh = await fs.open(audioPath, 'r');
+    const buf = Buffer.alloc(4);
+    await fh.read(buf, 0, 4, 0);
+    await fh.close();
+    if (buf[0] !== 0x1A || buf[1] !== 0x45 || buf[2] !== 0xDF || buf[3] !== 0xA3) {
+      throw new WhisperError(
+        'Audio file is corrupted (invalid WebM header). This can happen when a recording is recovered after a crash — please re-record.',
+      );
+    }
+  }
 
   const baseName = path.basename(audioPath, ext);
   const wavPath = path.join(path.dirname(audioPath), `${baseName}.wav`);

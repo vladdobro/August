@@ -70,6 +70,14 @@ export async function getRecoveredRecording(): Promise<RecoveredRecording | null
       db.close();
       return null;
     }
+    const header = new Uint8Array(await micBlob.slice(0, 4).arrayBuffer());
+    const isWebm = header[0] === 0x1A && header[1] === 0x45 && header[2] === 0xDF && header[3] === 0xA3;
+    const isWav = header[0] === 0x52 && header[1] === 0x49 && header[2] === 0x46 && header[3] === 0x46;
+    if (!isWebm && !isWav) {
+      db.close();
+      void clearRecoveredRecording();
+      return null;
+    }
     const systemBlob = await get('system');
     const mimeType = ((await get('mimeType')) as string) || 'audio/webm';
     const language = ((await get('language')) as string) || 'ru';

@@ -5476,6 +5476,10 @@ body {
   margin: 0 0 16px;
   color: var(--necron-200);
 }
+.diag-gpu-status {
+  margin: 0 0 16px;
+  color: #00c876;
+}
 
 .diag-inline-path {
   color: var(--necron-300);
