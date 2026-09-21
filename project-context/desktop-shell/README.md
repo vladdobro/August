@@ -64,6 +64,11 @@ A desktop shell exists so non-technical users get a one-click install with no te
 - resources layout: whisper/bin/<platform>/ holds whisper-cli plus ffmpeg and ffprobe, all signed by electron-builder along with the app.
 - electron-builder targets: mac dmg+zip per arch, win nsis+msi x64.
 - Signing env vars: CSC_LINK, CSC_KEY_PASSWORD, APPLE_ID, APPLE_APP_SPECIFIC_PASSWORD, APPLE_TEAM_ID.
+- Unsigned macOS builds are ad-hoc signed by the afterPack hook electron/scripts/afterPack.cjs; Apple Silicon shows a re-packaged unsigned app as "damaged" and xattr cannot fix that.
+- Ad-hoc signed macOS apps show the "unverified developer" Gatekeeper prompt; users bypass it with right-click → Open, Privacy & Security → Open Anyway, or xattr -cr on the app.
+- The release workflow exports CSC_LINK and Apple credentials only when the secrets are non-empty; an empty CSC_LINK makes electron-builder abort with "not a file".
+- The default GITHUB_TOKEN is read-only; the release workflow declares permissions contents: write so electron-builder can create the release.
+- The packaged app must exclude server/node_modules/.bin: its symlinks point into excluded dev packages and a dangling symlink aborts the macOS build.
 - Release runs via .github/workflows/release.yml on v* tags with --publish always; the version source is the root package.json.
 
 ## Key files

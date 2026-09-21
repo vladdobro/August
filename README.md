@@ -133,6 +133,15 @@ Set these environment variables to enable signing and notarization:
 - `CSC_LINK`, `CSC_KEY_PASSWORD` — Windows Authenticode and macOS Developer ID signing certificate
 - `APPLE_ID`, `APPLE_APP_SPECIFIC_PASSWORD`, `APPLE_TEAM_ID` — macOS notarization
 
+Without a certificate the build is still usable. Windows shows the SmartScreen "unrecognized app" prompt
+("More info" → "Run anyway"). On macOS the `afterPack` hook (`electron/scripts/afterPack.cjs`) ad-hoc signs
+the bundle, because Apple Silicon reports an unsigned or re-packaged app as "damaged" and refuses to open it
+regardless of quarantine. An ad-hoc signed app shows the "unverified developer" prompt instead; the user
+opens it once via right-click → Open, or System Settings → Privacy & Security → "Open Anyway", or clears
+quarantine with `xattr -cr /Applications/August.app`. The release workflow exports the signing variables
+only when the corresponding secrets are set, since an empty `CSC_LINK` makes electron-builder look for a
+certificate file and abort.
+
 Release flow: bump `version` in the root `package.json`, tag `vX.Y.Z`, and push. The
 `.github/workflows/release.yml` workflow builds macOS (Apple Silicon) and Windows installers and publishes
 them with `--publish always`. The local equivalent is:

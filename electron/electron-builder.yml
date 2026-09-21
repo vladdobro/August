@@ -13,6 +13,8 @@ directories:
 # express.static. Packing those into an archive is the classic source of "works in dev, breaks packaged" bugs.
 asar: false
 npmRebuild: false
+# Ad-hoc signs the mac bundle when no certificate is configured (see the hook for why this is mandatory).
+afterPack: electron/scripts/afterPack.cjs
 
 files:
   - package.json
