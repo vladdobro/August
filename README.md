@@ -142,13 +142,17 @@ quarantine with `xattr -cr /Applications/August.app`. The release workflow expor
 only when the corresponding secrets are set, since an empty `CSC_LINK` makes electron-builder look for a
 certificate file and abort.
 
-Release flow: bump `version` in the root `package.json`, tag `vX.Y.Z`, and push. The
+Release flow: bump `version` in the root `package.json` (and the `version` file), tag `vX.Y.Z`, and push. The
 `.github/workflows/release.yml` workflow builds macOS (Apple Silicon) and Windows installers and publishes
 them with `--publish always`. The local equivalent is:
 
 ```bash
 GH_TOKEN=... npm run electron:dist -- --publish always
 ```
+
+electron-builder never replaces an asset that already exists on a GitHub release. Re-running a tag after a
+fix therefore uploads nothing and still reports success. Either delete the stale assets on the release page
+first, or bump the version and tag again (preferred).
 
 ### Icons
 
