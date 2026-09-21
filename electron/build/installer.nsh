@@ -1,24 +1,18 @@
 ; Custom NSIS installer pages for August (AUG-119).
-; Adds a model-storage directory chooser before the standard app-directory page.
+; Adds a model-storage directory chooser as the first installer page.
+; Uses customWelcomePage (not customHeader) because electron-builder calls
+; customHeader AFTER MUI_LANGUAGE, which forbids MUI_PAGE_* macros.
 
 Var /GLOBAL ModelDir
 
-!macro customHeader
-  ; --- Model directory page (replaces the default Welcome page) ---
+!macro customWelcomePage
   !define MUI_PAGE_HEADER_TEXT "Welcome to August Setup"
   !define MUI_PAGE_HEADER_SUBTEXT "Choose where to store the AI speech model"
   !define MUI_DIRECTORYPAGE_TEXT_TOP "August uses a speech recognition model (~900 MB) that will be$\r$\ndownloaded on first launch. Choose a folder with at least 1 GB of free space."
   !define MUI_DIRECTORYPAGE_TEXT_DESTINATION "Model storage folder"
   !define MUI_DIRECTORYPAGE_VARIABLE $ModelDir
   !insertmacro MUI_PAGE_DIRECTORY
-
-  ; Skip the default MUI Welcome page — the model-dir page above is the first thing the user sees.
-  !define MUI_PAGE_CUSTOMFUNCTION_PRE welcomeSkip
 !macroend
-
-Function welcomeSkip
-  Abort
-FunctionEnd
 
 !macro customInit
   StrCpy $ModelDir "$APPDATA\August\whisper\models"
