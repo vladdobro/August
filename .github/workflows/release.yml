@@ -13,6 +13,9 @@ jobs:
   build:
     strategy:
       fail-fast: false
+      # Sequential: two jobs creating the release for the same tag at once produced two duplicate
+      # releases (each with half the assets) and split the electron-updater feed files between them.
+      max-parallel: 1
       matrix:
         include:
           - os: macos-latest   # Apple Silicon runner -> darwin-arm64 build (x64 needs an Intel runner)
