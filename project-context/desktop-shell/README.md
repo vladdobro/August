@@ -4,7 +4,8 @@
 - August ships as an Electron desktop app (AUG-114) that embeds the unchanged Express server in the main process by importing server/dist/app.js and calling startServer({ port: 0 }).
 - The root package.json is the Electron app manifest (main: electron/dist/main.js, version, electron/electron-builder/electron-updater deps); electron/ holds only main-process source, preload, builder config and build assets.
 - The renderer is the same React client loaded from http://127.0.0.1:<free port>/ served by the embedded server; no IPC replaces REST/WebSocket.
-- Packaged builds keep all writable data under the Electron userData folder (Windows %APPDATA%\August, macOS ~/Library/Application Support/August) via AUGUST_DATA_DIR, WHISPER_MODEL_PATH, WHISPER_BIN_PATH and FFMPEG_PATH env vars set before the server module is imported.
+- Packaged macOS builds keep session data in ~/Library/Application Support/August/data, never inside August.app, because the signed bundle is replaced on every update/reinstall (AUG-121).
+- Packaged Windows builds keep session data in <install dir>/data next to the per-user NSIS install; models, settings and logs stay under userData on both platforms; paths reach the server via AUGUST_DATA_DIR, WHISPER_MODEL_PATH, WHISPER_BIN_PATH and FFMPEG_PATH set before the server module is imported.
 - whisper-cli, ffmpeg and ffprobe are bundled from whisper/bin/<platform>/ into resources/whisper/bin/ as extraResources; the ~874 MB model is never bundled and auto-downloads on first launch.
 - The Windows extraResources folder also carries the bundled Vulkan loader vulkan-1.dll and its VulkanRT-License.txt placed by npm run setup (AUG-117).
 - Packaged builds set FFMPEG_PATH to the resources copy of ffmpeg (AUG-115), so a fresh machine needs no ffmpeg install.
@@ -60,7 +61,7 @@ A desktop shell exists so non-technical users get a one-click install with no te
 ## Key implementation details
 
 - Scripts: dev:electron, electron:start, electron:pack, electron:dist, electron:icons, build.
-- userData layout: data/, whisper/models/, desktop-settings.json, logs/main.log.
+- userData layout: data/ (macOS only), whisper/models/, desktop-settings.json, logs/main.log.
 - resources layout: whisper/bin/<platform>/ holds whisper-cli plus ffmpeg and ffprobe, all signed by electron-builder along with the app.
 - electron-builder targets: mac dmg+zip per arch, win nsis+msi x64.
 - Signing env vars: CSC_LINK, CSC_KEY_PASSWORD, APPLE_ID, APPLE_APP_SPECIFIC_PASSWORD, APPLE_TEAM_ID.

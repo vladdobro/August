@@ -79,7 +79,8 @@ Document the exact mechanics of turning a recorded or uploaded audio file into a
 - The retranscribe API (POST /api/sessions/:id/retranscribe) accepts an optional boost boolean; when true, ffmpeg availability is validated before proceeding.
 - The retranscribe endpoint validates whisper-cli and model presence before setting status to "transcribing" — prevents flip-then-fail loops.
 - If the whisper model is mid-download, the retranscribe preflight returns the download percentage in the error message.
-- A failed transcription never deletes or modifies the session's audio files — the <30s auto-delete rule applies only after successful completion.
+- A failed transcription never deletes or modifies the session's audio files.
+- Completed sessions are never auto-deleted, regardless of duration; only an explicit DELETE /api/sessions/:id removes a session (AUG-121).
 - When a failed session has no audio files on disk, the UI disables the "Transcribe again" button and shows an explanatory message.
 - For dual-track sessions with boost enabled, both mic and system tracks are boosted independently in parallel.
 - The client renders a Chronometer Ring (Tomb Amber SVG progress ring) with MM:SS:mm countdown, elapsed time, and ETA during the transcribing state.

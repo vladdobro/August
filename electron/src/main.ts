@@ -78,17 +78,21 @@ function ensureToolPaths(): void {
   process.env.PATH = [...current, ...extra].join(':');
 }
 
-/// Environment for the embedded server. Packaged builds keep every writable file under userData (the
-/// install dir is read-only) and take whisper-cli, ffmpeg and ffprobe from resources/; unpackaged runs
-/// reuse the repo layout (server/data, whisper/bin, whisper/models) so `npm run electron:start` shares
-/// state with `npm run dev`.
+/// Environment for the embedded server. Packaged Windows builds keep data under the per-user
+/// NSIS install dir; packaged macOS builds keep it under userData/data, since the install
+/// dir is the signed August.app bundle, replaced on every update/reinstall. Both take whisper-cli,
+/// ffmpeg and ffprobe from resources/; unpackaged runs reuse the repo layout (server/data, whisper/bin,
+/// whisper/models) so `npm run electron:start` shares state with `npm run dev`.
 function configureServerEnv(): void {
   process.env.NODE_ENV = 'production';
   if (!app.isPackaged) return;
 
   const userData = app.getPath('userData');
-  const installDir = path.resolve(process.resourcesPath, '..');
-  const dataDir = path.join(installDir, 'data');
+  // Windows keeps data next to the per-user NSIS install (0.0.13). On macOS the install dir is the signed
+  // August.app bundle — replaced on every update/reinstall — so data lives in ~/Library/Application Support/August/data.
+  const dataDir = process.platform === 'win32'
+    ? path.join(path.resolve(process.resourcesPath, '..'), 'data')
+    : path.join(userData, 'data');
   let modelsDir = path.join(userData, 'whisper', 'models');
   try {
     const custom = fs.readFileSync(path.join(userData, 'model-dir'), 'utf-8').trim();

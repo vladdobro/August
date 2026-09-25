@@ -62,11 +62,6 @@ async function runTranscription(sessionId: string, audioPath: string, language: 
       const processingTime = (Date.now() - new Date(completedSession.transcriptionStartedAt).getTime()) / 1000;
       await recordCompletion(duration, processingTime, false);
     }
-
-    if (duration > 0 && duration < 30) {
-      await sessionManager.deleteSession(sessionId);
-      return;
-    }
   } catch (err) {
     const current = await sessionManager.getSession(sessionId);
     if (current?.status === 'failed') return;
@@ -124,11 +119,6 @@ async function runDualTranscription(
     if (completedSession?.transcriptionStartedAt) {
       const processingTime = (Date.now() - new Date(completedSession.transcriptionStartedAt).getTime()) / 1000;
       await recordCompletion(duration, processingTime, true);
-    }
-
-    if (duration > 0 && duration < 30) {
-      await sessionManager.deleteSession(sessionId);
-      return;
     }
   } catch (err) {
     const current = await sessionManager.getSession(sessionId);

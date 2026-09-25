@@ -54,7 +54,7 @@ Give any agent working on the codebase a map of the client/server split, how a s
 - App.tsx lifts `isRecording` from FileUpload via `onRecordingChange` callback to keep FileUpload mounted (hidden via display:none) when navigating to diagnostics or other views.
 - All runtime server data (sessions, uploads, captures, perf-stats.json, user-preferences.json) lives under server/data/ resolved from config.dataDir — never under server/src/ and never tracked in git, so running the app cannot dirty the working tree.
 - Server bootstrap is the exported startServer() in server/src/app.ts; server/src/index.ts is a thin CLI wrapper, and the Electron shell imports startServer directly.
-- All writable server paths derive from config.dataDir, which AUGUST_DATA_DIR relocates (Electron sets it to <userData>/data); ENV_FILE_PATH follows dataDir when the override is set.
+- All writable server paths derive from config.dataDir, which AUGUST_DATA_DIR relocates (packaged Electron sets it to <userData>/data on macOS and <install dir>/data on Windows); ENV_FILE_PATH follows dataDir when the override is set.
 
 ## Key implementation details
 
@@ -133,7 +133,7 @@ Give any agent working on the codebase a map of the client/server split, how a s
 - The live WebSocket binds a server capture with an {type: "attach-capture", captureId} text frame, so live mode shows no screen picker and the browser sends only mic chunks.
 - With System audio source = Browser, live mode keeps the screen picker and taps both streams in the browser.
 - IndexedDB crash recovery saves only the mic track when the system track is server-captured (dualTrack false) — the orphaned capture is cleaned on server restart rather than recovered.
-- Sessions shorter than 30 seconds are auto-deleted by the server after transcription completes (likely wrong audio source in dual-track recording).
+- The server never auto-deletes sessions after transcription; the former <30 s rule silently erased short recordings (measured by last-utterance end, not audio length) and was removed in AUG-121.
 - Sessions can be renamed via PATCH /api/sessions/:id with a JSON body { title }; the client triggers this by double-clicking the session title in the sidebar.
 - Dev/prod static serving: when NODE_ENV !== 'production' (dev mode), server/src/index.ts redirects browser requests to the Vite dev server at http://127.0.0.1:5173 instead of serving stale client/dist files; in production, express.static serves client/dist normally.
 - Praxis integration writes task files directly to the target project's .praxis/tasks/new/ directory — no dependency on a running Praxis MCP server.
