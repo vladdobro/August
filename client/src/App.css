@@ -1415,8 +1415,7 @@ body {
 }
 
 :root[data-theme='dark'] .new-session-button,
-:root[data-theme='dark'] .copy-button,
-:root[data-theme='dark'] .new-session-node {
+:root[data-theme='dark'] .copy-button {
   color: #0a110d;
 }
 
@@ -2679,33 +2678,31 @@ body {
   stroke: var(--necron-900);
 }
 
-.new-session-node {
-  width: 40px;
-  height: 40px;
+.app-logo-button {
+  width: 32px;
+  height: 32px;
   display: flex;
   align-items: center;
   justify-content: center;
-  background: var(--accent);
-  color: #e0e8e3;
-  border: none;
-  font-size: 22px;
-  font-weight: 300;
-  line-height: 1;
-  cursor: pointer;
-  transition: transform 0.15s ease, box-shadow 0.15s ease;
-  box-shadow: 0 0 12px var(--accent-glow);
-  flex-shrink: 0;
   padding: 0;
-  font-family: inherit;
-  clip-path: polygon(50% 0%, 93% 25%, 93% 75%, 50% 100%, 7% 75%, 7% 25%);
+  border: none;
+  border-radius: 0;
+  background: transparent;
+  cursor: pointer;
+  flex-shrink: 0;
+  transition: transform 0.15s ease, box-shadow 0.15s ease;
 }
 
-.new-session-node:hover {
+.app-logo-button svg {
+  display: block;
+}
+
+.app-logo-button:hover {
   transform: scale(1.1);
-  box-shadow: 0 0 20px var(--accent-glow);
+  box-shadow: 0 0 12px var(--accent-glow);
 }
 
-.new-session-node:focus-visible {
+.app-logo-button:focus-visible {
   outline: 3px solid var(--accent);
   outline-offset: 3px;
 }
@@ -3489,7 +3486,7 @@ body {
   .circuit-node,
   .circuit-dropzone,
   .transcript-action-node,
-  .new-session-node {
+  .app-logo-button {
     transition: none;
   }
 

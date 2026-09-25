@@ -223,6 +223,12 @@ const SessionList: React.FC<SessionListProps> = ({
       </svg>
       <div className="session-list-header">
         <div className="session-header-left">
+          <button type="button" className="app-logo-button" onClick={onNewSession} aria-label="New session" title="New session">
+            <svg width="32" height="32" viewBox="0 0 100 100" aria-hidden="true">
+              <rect width="100" height="100" fill="#0a110d" />
+              <path d="M50 12 L86 88 H70 L61 68 H39 L30 88 H14 Z M44 56 H56 L50 40 Z" fill="#00c876" fillRule="evenodd" />
+            </svg>
+          </button>
           <h1 className="app-title app-title--clickable" onClick={() => setShowAbout(true)}>August</h1>
           <div className="sidebar-menu" ref={menuRef}>
             <button
@@ -291,9 +297,6 @@ const SessionList: React.FC<SessionListProps> = ({
             )}
           </div>
         </div>
-        <button type="button" className="new-session-node" onClick={onNewSession} aria-label="New session">
-          +
-        </button>
       </div>
 
       <div className="session-list-filters">

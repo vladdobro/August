@@ -7,6 +7,7 @@
 - Dark mode accent is gauss green (#00c876); light mode accent is deep forest green (#0a7b50).
 - All theme-dependent colors use CSS variables; dark mode overrides use :root[data-theme='dark'] selectors.
 - Sidebar uses V3 Bracketed design with [ bracket — node — bracket ] rows, hex grid background, orbital-circle filter chips with connecting rays, and "planet parade" layout.
+- Sidebar header shows the clickable August logo left of the title; clicking it creates a new session.
 - FileUpload uses a circuit-node radial layout with SVG connection lines and positioned circular control nodes.
 - TranscriptView header uses a circuit diagram with info node and action nodes (Copy, Export, Retranscribe).
 - Export dropdown includes "Send to Praxis" option that opens a modal for entering a target Praxis project path.
@@ -249,10 +250,11 @@ Disabled state (universal):
 - cursor: not-allowed
 - transform: none (removes hover translateY)
 
-Hexagonal node button (.new-session-node):
-- clip-path: polygon(50% 0%, 93% 25%, 93% 75%, 50% 100%, 7% 75%, 7% 25%)
-- 40px square, accent bg
-- hover: scale(1.1), increased glow shadow
+Logo button (.app-logo-button) — New Session action in the sidebar header:
+- 32px square, transparent bg, no border, border-radius 0
+- Renders the August app icon (green "A" #00c876 on #0a110d) as inline SVG, the same mark as electron/build/icon.svg
+- Inline SVG, not an image file, so it renders identically under Vite dev and Electron file:// on macOS and Windows
+- hover: scale(1.1) plus accent-glow box-shadow
 
 ### Input & Form Patterns
 
@@ -415,7 +417,7 @@ Focus-visible patterns:
 - Circuit nodes: outline 3px solid var(--accent), outline-offset 3px
 - Select inputs: outline 3px solid var(--accent-glow), outline-offset 2px
 - Session items: outline 2px solid var(--accent), outline-offset -2px, hover bg
-- New session node: outline 3px solid var(--accent), outline-offset 3px
+- Logo (New session) button: outline 3px solid var(--accent), outline-offset 3px
 - Mode/language ring arcs: no outline but opacity 1 and increased stroke-width
 
 Interactive accessibility:
@@ -453,7 +455,8 @@ Native select/checkbox elements are overlaid on circular nodes with opacity:0 fo
 Recording state: center border turns #e05555, SVG pulse rings animate via circuit-pulse keyframe, corner nodes dim to opacity 0.3.
 Radial audio bars: 12 bars positioned with CSS transform rotate(N*30deg), driven by AnalyserNode frequencyBinCount bucketed into 12 averages.
 Transcript circuit header: info node (44px) at top-center, action nodes (40px) at 25%/50%/75% bottom, connected by SVG lines.
-SessionList New Session button is a 40px hexagonal node (clip-path polygon) with accent background and glow shadow.
+SessionList New Session action is the August logo button placed left of the "August" title in .session-header-left (AUG-122).
+The hexagonal .new-session-node was removed; the logo is the only New Session trigger in the UI, so never make it decorative.
 Recording mode picker (RecordingModePicker.tsx) renders as ring segments expanding from the center Record button: two SVG arc paths (left arc = DEFAULT, right arc = LIVE) form a split ring (R=72, stroke 18px) around the button perimeter with hover glow and scale-expand animation. When LIVE is selected, the mode ring stays visible (DEFAULT dimmed, LIVE highlighted/active, both non-interactive) and two engine sub-arcs appear on an outer ring (R=108, stroke 14px) on the right side only: top-right quarter = LOCAL (green/accent), bottom-right quarter = GROQ (red #e04040). Labels positioned outside each arc. Backdrop click or Escape key closes it.
 Long-press quick-record: holding the center Record button for ≥500ms bypasses the RecordingModePicker and starts recording immediately using saved preferences (recordingMode and liveEngine from UserPreferences).
 Long-press visual feedback: an SVG progress ring (.long-press-ring) animates stroke-dashoffset from 289→0 over 500ms around the button perimeter; the button scales down to 0.96 during the press.
@@ -567,7 +570,7 @@ Status badge colors (uploading, transcribing, completed, failed) must remain dis
 - client/index.html — Inline SVG favicon with necron dark background and gauss green text
 - client/src/components/TranscriptView.tsx — Transcript display, export dropdown with copy/download options; includes the ChronoRing local component for transcription ETA countdown.
 - client/src/components/FileUpload.tsx — Circuit-node radial layout for recording and upload controls
-- client/src/components/SessionList.tsx — Sidebar with V3 Bracketed session items, hex grid SVG, orbital-circle filter chips, hexagonal New Session node
+- client/src/components/SessionList.tsx — Sidebar with V3 Bracketed session items, hex grid SVG, orbital-circle filter chips, August logo New Session button
 - client/src/components/RecordingModePicker.tsx — Radial expanding mode picker (DEFAULT / LIVE inner ring, LOCAL / GROQ outer right-side sub-arcs) rendered inside circuit-diagram with SVG connection lines
 - client/src/components/PraxisModal.tsx — Modal for selecting a target Praxis project path (via browse or manual input) and creating a task from a session transcript.
 - client/src/components/SetupGuide.tsx — Diagnostics page with circuit-node layout, W40K CRT aesthetic, adaptive GPU/model reveal logic
