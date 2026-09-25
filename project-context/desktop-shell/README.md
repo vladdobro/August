@@ -74,6 +74,26 @@ A desktop shell exists so non-technical users get a one-click install with no te
 - The packaged app must exclude server/node_modules/.bin: its symlinks point into excluded dev packages and a dangling symlink aborts the macOS build.
 - Release runs via .github/workflows/release.yml on v* tags with --publish always; the version source is the root package.json.
 
+## Local DMG build
+
+- Local build prerequisites: npm run install:all, then npm run setup (fetches/builds whisper-cli and ffmpeg for the current platform).
+- Local DMG build command: npm run electron:dist -- --mac (builds client + server + compiles Electron TS, then runs electron-builder).
+- electron:pack (--dir) creates an unpacked app directory for quick testing; electron:dist creates distributable DMG and ZIP installers.
+- Build output lands in electron/release/ with the naming pattern August-{version}-mac-{arch}.dmg.
+- On Apple Silicon the default build is arm64; pass --x64 for an Intel build (requires Rosetta or an Intel runner).
+- To skip code-signing discovery on unsigned local builds, set CSC_IDENTITY_AUTO_DISCOVERY=false.
+- Local builds omit --publish, so nothing is uploaded; --publish always is used only in CI.
+
+## Release workflow (CI → GitHub Releases)
+
+- Trigger: push a git tag matching v* (e.g. v0.0.15) or use workflow_dispatch.
+- Step 1 (create-release job): gh release create creates the GitHub Release with --generate-notes if it does not already exist.
+- Step 2 (build job, needs create-release): runs npm run install:all, npm run setup, then npm run electron:dist -- --mac --publish always on macos-latest (arm64).
+- Step 3 (same build job, Windows matrix entry): runs the same pipeline with --win on windows-latest.
+- electron-builder's github publisher uploads DMG, ZIP and latest-mac.yml into the pre-created release using GH_TOKEN.
+- The version tag and the version field in the root package.json must match; bump the version before tagging.
+- To re-release the same version: manually delete the release assets on GitHub, then re-run the workflow (electron-builder will not overwrite existing assets).
+
 ## Key files
 
 - electron/src/main.ts — main-process entry: window creation, server bootstrap, lifecycle wiring.
