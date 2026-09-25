@@ -1,0 +1,15 @@
+{
+  "id": "AUG-122-j6oksw",
+  "assignee": "jarvis.json",
+  "priority": "medium",
+  "status": "new",
+  "title": "[AUG-122] Logo placing",
+  "why_we_need_this": "instead of #button we must place August logo to the left of #augustTitle\n\n## Page Feedback: /\nViewport: 1280×788\n\n### 1. <App> <SessionList> h1 \"August\"\nLocation: .session-list > .session-list-header > .session-header-left > .app-title\nSource: /Users/rugarov/git/August/client/src/components/SessionList.tsx:245:11\nReact: <App> <SessionList>\nFeedback: #augustTitle\n\n### 2. <App> <SessionList> button [New session]\nLocation: .app-layout > .session-list > .session-list-header > .new-session-node\nSource: /Users/rugarov/git/August/client/src/components/SessionList.tsx:313:9\nReact: <App> <SessionList>\nFeedback: #button",
+  "acceptance_criteria": "",
+  "important_constraints": "",
+  "labels": [],
+  "on_hold_reason": "",
+  "contextRouterIncluded": true,
+  "created_at": 1790340112736,
+  "column_entered_at": 1790340112736
+}

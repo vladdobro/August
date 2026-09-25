@@ -3,6 +3,7 @@
 ## TL;DR
 - August ships as an Electron desktop app (AUG-114) that embeds the unchanged Express server in the main process by importing server/dist/app.js and calling startServer({ port: 0 }).
 - The root package.json is the Electron app manifest (main: electron/dist/main.js, version, electron/electron-builder/electron-updater deps); electron/ holds only main-process source, preload, builder config and build assets.
+- App version source of truth is the root `version` file; npm run build syncs it into package.json via version:sync.
 - The renderer is the same React client loaded from http://127.0.0.1:<free port>/ served by the embedded server; no IPC replaces REST/WebSocket.
 - Packaged macOS builds keep session data in ~/Library/Application Support/August/data, never inside August.app, because the signed bundle is replaced on every update/reinstall (AUG-121).
 - Packaged Windows builds keep session data in <install dir>/data next to the per-user NSIS install; models, settings and logs stay under userData on both platforms; paths reach the server via AUGUST_DATA_DIR, WHISPER_MODEL_PATH, WHISPER_BIN_PATH and FFMPEG_PATH set before the server module is imported.
@@ -73,7 +74,11 @@ A desktop shell exists so non-technical users get a one-click install with no te
 - electron-builder never replaces existing GitHub release assets; a rerun of the same tag uploads nothing, so fixes need a version bump and a new tag (or manual asset deletion).
 - The default GITHUB_TOKEN is read-only; the release workflow declares permissions contents: write so electron-builder can create the release.
 - The packaged app must exclude server/node_modules/.bin: its symlinks point into excluded dev packages and a dangling symlink aborts the macOS build.
-- Release runs via .github/workflows/release.yml on v* tags with --publish always; the version source is the root package.json.
+- Release runs via .github/workflows/release.yml on v* tags with --publish always.
+- The root `version` file is the single source of truth for the app version.
+- npm run build first runs version:sync (electron/scripts/sync-version.mjs), copying `version` into package.json and package-lock.json.
+- Never edit the version in package.json by hand; it is overwritten from `version` on every build.
+- The create-release job reads the tag from the `version` file on workflow_dispatch runs.
 
 ## Local DMG build
 
@@ -92,7 +97,7 @@ A desktop shell exists so non-technical users get a one-click install with no te
 - Step 2 (build job, needs create-release): runs npm run install:all, npm run setup, then npm run electron:dist -- --mac --publish always on macos-latest (arm64).
 - Step 3 (same build job, Windows matrix entry): runs the same pipeline with --win on windows-latest.
 - electron-builder's github publisher uploads DMG, ZIP and latest-mac.yml into the pre-created release using GH_TOKEN.
-- The version tag and the version field in the root package.json must match; bump the version before tagging.
+- The version tag and the root `version` file must match; bump `version` (and commit the synced package.json) before tagging.
 - To re-release the same version: manually delete the release assets on GitHub, then re-run the workflow (electron-builder will not overwrite existing assets).
 
 ## Key files
