@@ -76,6 +76,33 @@ export function resolveFfmpegPaths(input: {
   return { ffmpeg: binName('ffmpeg'), ffprobe: binName('ffprobe'), source: 'path' };
 }
 
+export type AudioteeSource = 'env' | 'bundled' | 'path';
+
+export interface AudioteePaths {
+  path: string;
+  source: AudioteeSource;
+}
+
+/// Resolves the audiotee Core Audio tap helper (AUG-118). Precedence:
+///  1. AUDIOTEE_PATH env — an explicit audiotee executable.
+///  2. Bundled build — audiotee next to whisper-cli (whisper/bin/<platform>/ in the repo, resources/whisper/bin/<platform>/
+///     when packaged), built by `npm run setup`.
+///  3. PATH fallback — bare `audiotee`, so dev machines with a manual install keep working.
+/// Pure: every input is injected so the precedence is unit-testable without touching the file system.
+export function resolveAudioteePath(input: {
+  envPath: string | undefined;
+  bundledDirs: string[];
+  exists: (p: string) => boolean;
+}): AudioteePaths {
+  const envPath = input.envPath?.trim();
+  if (envPath) return { path: path.resolve(envPath), source: 'env' };
+  for (const dir of input.bundledDirs) {
+    const candidate = path.join(dir, 'audiotee');
+    if (input.exists(candidate)) return { path: candidate, source: 'bundled' };
+  }
+  return { path: 'audiotee', source: 'path' };
+}
+
 /// WHISPER_USE_GPU=0|1 (also true/false, on/off, yes/no) pins the whisper GPU mode and disables the runtime
 /// probe + automatic CPU fallback (AUG-116). Unset, blank or unrecognised → null → platform default with fallback.
 export function parseGpuOverride(raw: string | undefined): boolean | null {
@@ -122,6 +149,8 @@ export interface AppConfig {
   // Explicit override (AUDIOTEE_SAMPLE_FORMAT=s16le|f32le) for the raw PCM format audiotee writes to
   // stdout. null = sniff it from a short probe of the binary's output (AUG-107, services/pcmSampleFormat.ts).
   audioteeSampleFormat: string | null;
+  // audiotee Core Audio tap helper (AUG-118): AUDIOTEE_PATH env → bundled next to whisper-cli → PATH.
+  audioteePath: string;
   // WHISPER_USE_GPU override (AUG-116): true/false pins the mode, null = platform default (Metal on Apple Silicon,
   // Vulkan on Windows x64, --no-gpu elsewhere) with automatic CPU fallback. Effective mode: services/gpuBackend.ts.
   whisperGpuOverride: boolean | null;
@@ -134,6 +163,12 @@ const whisperBinPath = process.env.WHISPER_BIN_PATH?.trim()
 
 const ffmpegPaths = resolveFfmpegPaths({
   envPath: process.env.FFMPEG_PATH,
+  bundledDirs: [...new Set([path.dirname(whisperBinPath), path.dirname(defaultWhisperBinPath())])],
+  exists: (filePath) => fs.existsSync(filePath),
+});
+
+const audioteePaths = resolveAudioteePath({
+  envPath: process.env.AUDIOTEE_PATH,
   bundledDirs: [...new Set([path.dirname(whisperBinPath), path.dirname(defaultWhisperBinPath())])],
   exists: (filePath) => fs.existsSync(filePath),
 });
@@ -154,6 +189,7 @@ export const config: AppConfig = {
   toolsDir: path.join(dataDir, 'tools'),
   wasapiHelperSourcePath: path.resolve(serverRoot, 'tools', 'wasapi-loopback', 'WasapiLoopback.cs'),
   audioteeSampleFormat: process.env.AUDIOTEE_SAMPLE_FORMAT?.trim() || null,
+  audioteePath: audioteePaths.path,
   whisperGpuOverride: parseGpuOverride(process.env.WHISPER_USE_GPU),
   groqApiKey: process.env.GROQ_API_KEY?.trim() || null,
 };

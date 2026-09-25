@@ -49,7 +49,7 @@ A desktop shell exists so non-technical users get a one-click install with no te
 - The window hides on close; the app quits only via tray Quit, Cmd+Q or app.quit().
 - The hotkey must contain at least one modifier; a failed registration keeps the previous shortcut and reports the error to Settings.
 - Session notifications are derived by polling; the first poll only seeds state so pre-existing completed sessions never notify.
-- macOS GUI apps do not inherit the shell PATH, so the shell appends /opt/homebrew/bin and /usr/local/bin before starting the server (audiotee and the ffmpeg PATH fallback).
+- macOS GUI apps do not inherit the shell PATH, so the shell appends /opt/homebrew/bin and /usr/local/bin before starting the server (the audiotee and ffmpeg PATH fallbacks; the packaged app ships its own audiotee in resources/whisper/bin/darwin-<arch>/).
 - The bundled ffmpeg must stay inside whisper/bin/<platform>/ so the existing extraResources entry ships it without any electron-builder change.
 - Unpackaged runs (npm run electron:start, --dev) leave FFMPEG_PATH unset so the server's own resolver finds the repo's whisper/bin/<platform>/ffmpeg or falls back to PATH.
 - getDisplayMedia needs setDisplayMediaRequestHandler in Electron: Windows supplies system audio as a loopback track; macOS uses the native picker on 15+ and otherwise returns video only, so server-side capture stays the preferred macOS path.

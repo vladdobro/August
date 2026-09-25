@@ -29,6 +29,7 @@
 - Capture startedAt is the first-written-byte time of the WAV (fs.stat poll every 25 ms, 2 s fallback to spawn time); it drives systemOffsetMs.
 - Capture capabilities carry selfTest ('ok' | 'silent' | 'failed' | 'skipped') and selfTestDetail from a darwin-only ~1 s probe capture validated by ffprobe and volumedetect.
 - selfTest runs on macOS and Windows once a method is detected; it is 'skipped' on other platforms, and startCapture() never waits for or runs it.
+- macOS System (direct) uses a bundled audiotee built by npm run setup; resolution is AUDIOTEE_PATH → whisper/bin/darwin-<arch>/ → PATH.
 
 This route documents the August web app's technical architecture: how the client, server, and local whisper.cpp inference fit together.
 
@@ -67,7 +68,11 @@ Give any agent working on the codebase a map of the client/server split, how a s
 - A beforeunload handler prevents accidental tab close during active recording.
 - The browser recorder supports selecting a microphone and an optional "Capture system audio" toggle — when enabled, getDisplayMedia() captures system audio and both tracks are recorded as separate files, then uploaded together in a single request to create one session with dualTrack: true.
 - Dual-track sessions transcribe mic and system audio in parallel, then mergeDualStream interleaves segments chronologically with [Me]/[Them] role labels.
-- Capture capability probe: on darwin the server prefers the audiotee CLI on PATH (Core Audio process tap, macOS 14.2+, method 'coreaudio-tap'), then a BlackHole device found via ffmpeg -f avfoundation -list_devices (method 'blackhole'); anything else returns method 'none' with a setup hint. Non-darwin always returns 'none'.
+- Capture capability probe: on darwin the server prefers the audiotee CLI at config.audioteePath (AUDIOTEE_PATH env → bundled whisper/bin/darwin-<arch>/audiotee → PATH) (Core Audio process tap, macOS 14.2+, method 'coreaudio-tap'), then a BlackHole device found via ffmpeg -f avfoundation -list_devices (method 'blackhole'); anything else returns method 'none' with a setup hint. Non-darwin always returns 'none'.
+- Bundled audiotee (AUG-118): npm run setup builds a pinned makeusabrew/audiotee commit with SwiftPM into whisper/bin/darwin-<arch>/, so System (direct) works without Homebrew or BlackHole.
+- The audiotee build is non-fatal: a missing Swift toolchain or build failure only warns, and capture falls back to BlackHole or the browser picker.
+- config.audioteePath is resolved once at server import; restart the server after npm run setup builds audiotee.
+- The first-ever audiotee run can fail the self-test while macOS shows the "System Audio Recording" permission prompt; later probes pass.
 - Windows capability probe (AUG-111): lists DirectShow audio inputs with ffmpeg -list_devices true -f dshow -i dummy (parseDshowAudioDevices handles the ffmpeg ≥ 6 "Name" (audio) layout and the older DirectShow audio devices header) and picks the first name matching Stereo Mix / Стерео микшер / What U Hear / CABLE Output / Voicemeeter / loopback.
 - dshow captures are addressed by exact friendly name (ffmpeg -f dshow -i audio=<name>), not by index; Cyrillic names pass through Node spawn and ffmpeg unchanged (verified).
 - Windows stop rule: Node's kill() is TerminateProcess and leaves the RIFF size unfinalized, so dshow-loopback captures run ffmpeg with stdin as a pipe (no -nostdin) and stop by writing 'q' + closing stdin; SIGKILL only after the hard timeout. Verified: exit 0 and a correct RIFF size.
@@ -103,7 +108,7 @@ Give any agent working on the codebase a map of the client/server split, how a s
 - `npm run capture:check` (server/src/scripts/captureCheck.ts) prints platform, avfoundation device list, method, and self-test result for bug reports; exits 0.
 - Capture output is always 16 kHz mono pcm_s16le WAV — the same format ensureWav produces — so the transcription pipeline needs no conversion.
 - audiotee is piped into ffmpeg as raw PCM; its sample format is sniffed on each uncached capability probe, never assumed (AUG-107).
-- Sample-format probe: spawn `audiotee --sample-rate 16000`, read ~200 ms of stdout (6400 bytes, hard budget 450 ms), SIGTERM it, pass the bytes to detectPcmSampleFormat in server/src/services/pcmSampleFormat.ts.
+- Sample-format probe: spawn `<config.audioteePath> --sample-rate 16000`, read ~200 ms of stdout (6400 bytes, hard budget 450 ms), SIGTERM it, pass the bytes to detectPcmSampleFormat in server/src/services/pcmSampleFormat.ts.
 - detectPcmSampleFormat is a pure function over a Buffer (no native deps) so it is unit-testable on Windows; tests live in server/src/services/pcmSampleFormat.test.ts.
 - Detection rule: score the same bytes as int16 LE and float32 LE and pick the view with the lower zero-crossing rate (real audio ≈ 0.05–0.3, the wrong view ≈ 0.5).
 - Float32 view is rejected in favour of s16le when it contains NaN/Infinity, peaks above 1.5, or only denormals (typical of int16 data read as float).
@@ -150,7 +155,7 @@ Give any agent working on the codebase a map of the client/server split, how a s
 - server/src/services/sessionManager.ts — session folder lifecycle (create, read, update status).
 - client/src/App.tsx — client app shell and top-level routing/state.
 - client/src/vite-env.d.ts — Vite client type declarations (import.meta.env).
-- server/src/config.ts — platform binary resolution, model constants, AUGUST_DATA_DIR data-root override, .env loading.
+- server/src/config.ts — platform binary resolution, model constants, AUGUST_DATA_DIR data-root override, .env loading, resolveAudioteePath (AUG-118).
 - server/src/services/praxisIntegration.ts — Praxis task creation: counter management, ID allocation, atomic file write to target project.
 - server/src/routes/praxis.ts — POST /api/praxis/validate and POST /api/praxis/send endpoints.
 - server/src/routes/preferences.ts — GET/PATCH/DELETE /api/preferences for user preferences persistence.
