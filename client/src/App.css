@@ -3765,6 +3765,8 @@ body {
   box-shadow: var(--card-shadow);
   padding: 28px;
   color: var(--text-primary);
+  z-index: 1000;
+  position: relative;
 }
 
 .groq-setup-header {
