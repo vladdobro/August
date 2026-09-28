@@ -4,7 +4,7 @@ import os from 'node:os';
 import path from 'node:path';
 import { randomUUID } from 'node:crypto';
 
-import { config, AUDIO_BOOST } from '../config.js';
+import { config, AUDIO_BOOST, WHISPER_DECODING } from '../config.js';
 import { getModelStatus } from './modelDownloader.js';
 import type { TranscriptionLanguage, TranscriptSegment, WhisperJsonOutput } from '../types.js';
 import {
@@ -14,6 +14,7 @@ import {
   gpuState,
   isProcessLoadFailure,
   NO_VULKAN_DEVICE_REASON,
+  ranOnCpuWithoutVulkanDevice,
   runWithGpuFallback,
   type GpuBackend,
   type WhisperExit,
@@ -62,7 +63,29 @@ function ffmpegError(error: ExecFileException, stderr: string, fallbackMessage: 
 
 const activeProcesses = new Map<string, ChildProcess[]>();
 
+/// Bumped by cancelTranscription so a job that is queued or between its two tracks notices the cancel (AUG-125).
+const cancelGenerations = new Map<string, number>();
+
+/// Post-recording jobs run one whisper-cli at a time (AUG-125): two GPU-backed processes fight over one Metal/Vulkan
+/// device and 2×(N-1) CPU threads. Live chunks call runWhisper directly and never wait here.
+let batchTail: Promise<void> = Promise.resolve();
+
+function acquireBatchSlot(): Promise<() => void> {
+  let release!: () => void;
+  const done = new Promise<void>((resolve) => { release = resolve; });
+  const previous = batchTail;
+  batchTail = previous.then(() => done);
+  return previous.then(() => release);
+}
+
+/// Call once when a background transcription job starts; the returned check turns true after cancelTranscription(key).
+export function beginTranscriptionJob(key: string): () => boolean {
+  const generation = cancelGenerations.get(key) ?? 0;
+  return () => (cancelGenerations.get(key) ?? 0) !== generation;
+}
+
 export function cancelTranscription(key: string): boolean {
+  cancelGenerations.set(key, (cancelGenerations.get(key) ?? 0) + 1);
   const procs = activeProcesses.get(key);
   if (!procs || procs.length === 0) return false;
   for (const child of procs) {
@@ -104,18 +127,39 @@ export async function ensureWav(audioPath: string): Promise<string> {
 
   const baseName = path.basename(audioPath, ext);
   const wavPath = path.join(path.dirname(audioPath), `${baseName}.wav`);
-  await new Promise<void>((resolve, reject) => {
-    execFile(
-      config.ffmpegPath,
-      ['-i', audioPath, '-ar', '16000', '-ac', '1', '-c:a', 'pcm_s16le', '-y', wavPath],
-      { timeout: 120_000 },
-      (error, _stdout, stderr) => {
-        if (error) reject(ffmpegError(error, stderr, 'ffmpeg conversion failed: '));
-        else resolve();
-      },
-    );
-  });
+  if (await isFreshDerivative(wavPath, audioPath)) return wavPath;
+
+  const partialPath = path.join(path.dirname(audioPath), `${baseName}-partial.wav`);
+  try {
+    await new Promise<void>((resolve, reject) => {
+      execFile(
+        config.ffmpegPath,
+        ['-i', audioPath, '-ar', '16000', '-ac', '1', '-c:a', 'pcm_s16le', '-y', partialPath],
+        { timeout: 120_000 },
+        (error, _stdout, stderr) => {
+          if (error) reject(ffmpegError(error, stderr, 'ffmpeg conversion failed: '));
+          else resolve();
+        },
+      );
+    });
+    await fs.rename(partialPath, wavPath);
+  } catch (err) {
+    await fs.unlink(partialPath).catch(() => {});
+    throw err;
+  }
   return wavPath;
+}
+
+/// A derived WAV (conversion or boost) is reused when it is non-empty and not older than its source — retranscribing
+/// a failed session must not redo ffmpeg work (AUG-125). Writes go through a -partial.wav + rename, so a killed ffmpeg
+/// never leaves a truncated file that looks fresh.
+async function isFreshDerivative(derivedPath: string, sourcePath: string): Promise<boolean> {
+  try {
+    const [derived, source] = await Promise.all([fs.stat(derivedPath), fs.stat(sourcePath)]);
+    return derived.size > 44 && derived.mtimeMs >= source.mtimeMs;
+  } catch {
+    return false;
+  }
 }
 
 export async function fileExists(filePath: string): Promise<boolean> {
@@ -198,6 +242,8 @@ export async function boostAudio(audioPath: string): Promise<string> {
   const ext = path.extname(audioPath);
   const baseName = path.basename(audioPath, ext);
   const boostedPath = path.join(dir, `${baseName}-boosted.wav`);
+  if (await isFreshDerivative(boostedPath, audioPath)) return boostedPath;
+  const partialPath = path.join(dir, `${baseName}-boosted-partial.wav`);
 
   const af = [
     `highpass=f=${AUDIO_BOOST.highpassFreq}`,
@@ -208,20 +254,26 @@ export async function boostAudio(audioPath: string): Promise<string> {
 
   const [safeInput, safeOutput] = await Promise.all([
     toSafePath(audioPath),
-    toSafePath(boostedPath),
+    toSafePath(partialPath),
   ]);
 
-  await new Promise<void>((resolve, reject) => {
-    execFile(
-      config.ffmpegPath,
-      ['-i', safeInput, '-af', af, '-ar', String(AUDIO_BOOST.sampleRate), '-ac', '1', '-c:a', 'pcm_s16le', '-y', safeOutput],
-      { timeout: 300_000 },
-      (error, _stdout, stderr) => {
-        if (error) reject(ffmpegError(error, stderr, 'ffmpeg audio boost failed: '));
-        else resolve();
-      },
-    );
-  });
+  try {
+    await new Promise<void>((resolve, reject) => {
+      execFile(
+        config.ffmpegPath,
+        ['-i', safeInput, '-af', af, '-ar', String(AUDIO_BOOST.sampleRate), '-ac', '1', '-c:a', 'pcm_s16le', '-y', safeOutput],
+        { timeout: 300_000 },
+        (error, _stdout, stderr) => {
+          if (error) reject(ffmpegError(error, stderr, 'ffmpeg audio boost failed: '));
+          else resolve();
+        },
+      );
+    });
+    await fs.rename(partialPath, boostedPath);
+  } catch (err) {
+    await fs.unlink(partialPath).catch(() => {});
+    throw err;
+  }
 
   return boostedPath;
 }
@@ -277,6 +329,19 @@ export interface RunWhisperOptions {
   trackingKey?: string;
   timeoutMs?: number;
   maxBuffer?: number;
+  /// Skip non-speech with whisper.cpp's Silero VAD (batch jobs only; live chunks are already short). Ignored when the VAD model is missing.
+  vad?: boolean;
+}
+
+let vadMissingLogged = false;
+/// VAD needs the Silero model that `npm run setup` bundles; without it whisper-cli decodes everything (slower, same output).
+async function vadModelAvailable(): Promise<boolean> {
+  if (await fileExists(config.whisperVadModelPath)) return true;
+  if (!vadMissingLogged) {
+    vadMissingLogged = true;
+    console.warn(`Silero VAD model not found at "${config.whisperVadModelPath}" — run \`npm run setup\`; transcribing without VAD.`);
+  }
+  return false;
 }
 
 /// Single entry point for every whisper-cli invocation (batch transcription
@@ -286,7 +351,9 @@ export interface RunWhisperOptions {
 /// and reading + parsing + cleaning up the JSON output file. Flags mirror
 /// SplitVox's WhisperTranscriber.cs: max-context 0 (anti-loop defense), GPU per
 /// gpuBackend.ts (Metal on Apple Silicon, Vulkan on Windows x64 with a one-shot
-/// --no-gpu retry + process-wide CPU fallback, WHISPER_USE_GPU override), full JSON output for timestamps. Note:
+/// --no-gpu retry + process-wide CPU fallback, WHISPER_USE_GPU override), full JSON output for timestamps.
+/// Decoding is greedy (WHISPER_DECODING, AUG-125) and batch jobs may add whisper.cpp's Silero VAD (`vad`); timestamps
+/// stay on the original timeline because whisper.cpp maps VAD segments back. Note:
 /// this whisper-cli build's --output-json-full does not actually emit a
 /// per-segment no_speech_prob field (verified by inspecting the binary), so
 /// noSpeechProb in transcribe()'s output will typically be undefined —
@@ -317,11 +384,14 @@ export async function runWhisper(opts: RunWhisperOptions): Promise<WhisperJsonOu
 
   const outputJsonPath = `${outputBase}.json`;
 
-  const [safeModelPath, safeBinPath, safeAudioPath, safeOutputBase] = await Promise.all([
+  const useVad = !!opts.vad && (await vadModelAvailable());
+
+  const [safeModelPath, safeBinPath, safeAudioPath, safeOutputBase, safeVadPath] = await Promise.all([
     toSafePath(config.whisperModelPath),
     toSafePath(config.whisperBinPath),
     toSafePath(audioPath),
     toSafePath(outputBase),
+    toSafePath(config.whisperVadModelPath),
   ]);
 
   const attempt = async (useGpu: boolean): Promise<string> => {
@@ -329,6 +399,9 @@ export async function runWhisper(opts: RunWhisperOptions): Promise<WhisperJsonOu
       '--model', safeModelPath,
       '--language', language || 'auto',
       '--max-context', '0',
+      '--beam-size', String(WHISPER_DECODING.beamSize),
+      '--best-of', String(WHISPER_DECODING.bestOf),
+      ...(useVad ? ['--vad', '--vad-model', safeVadPath] : []),
       ...(useGpu ? [] : ['--no-gpu']),
       '--output-json-full',
       '--output-file', safeOutputBase,
@@ -374,9 +447,10 @@ export async function runWhisper(opts: RunWhisperOptions): Promise<WhisperJsonOu
       log: (message) => console.warn(`[gpu] ${message}`),
       label: path.basename(audioPath),
     });
-    // A GPU-mode run that printed no ggml-vulkan device banner ran on CPU inside whisper-cli (bundled loader, no
-    // driver). Flip the state so /api/health says so and later jobs pass --no-gpu directly (AUG-117).
-    if (gpuState.useGpu() && !countVulkanDevices(stderr)) {
+    // A Vulkan-build GPU-mode run that printed no ggml-vulkan device banner ran on CPU inside whisper-cli (bundled
+    // loader, no driver). Flip the state so /api/health says so and later jobs pass --no-gpu directly (AUG-117).
+    // Vulkan builds only: Metal / CPU-only runs never print the banner.
+    if (ranOnCpuWithoutVulkanDevice(gpuState, stderr)) {
       if (gpuState.markGpuUnusable(NO_VULKAN_DEVICE_REASON)) console.warn(`[gpu] ${NO_VULKAN_DEVICE_LOG}`);
     }
   } catch (err) {
@@ -417,6 +491,7 @@ export async function transcribe(
   audioPath: string,
   language: TranscriptionLanguage,
   trackingKey?: string,
+  isCancelled?: () => boolean,
 ): Promise<TranscriptSegment[]> {
   // Write whisper's output next to the audio file (always inside our own,
   // ASCII-only, repo-rooted data dir) rather than os.tmpdir() — on a machine
@@ -425,20 +500,26 @@ export async function transcribe(
   // model path issue above.
   const outputBase = path.join(path.dirname(audioPath), `.whisper-output-${randomUUID()}`);
 
-  const parsed = await runWhisper({ audioPath, language, outputBase, trackingKey });
-  const transcription = parsed.transcription ?? [];
+  const release = await acquireBatchSlot();
+  try {
+    if (isCancelled?.()) throw new WhisperError('Transcription cancelled');
+    const parsed = await runWhisper({ audioPath, language, outputBase, trackingKey, vad: true });
+    const transcription = parsed.transcription ?? [];
 
-  return transcription.map((entry) => ({
-    // Verified against this whisper-cli build's actual --output-json-full
-    // output: offsets.from/to are in MILLISECONDS (matching the SRT-style
-    // "HH:MM:SS,mmm" timestamps strings alongside them), not centiseconds —
-    // a 2.000s clip produced offsets.to === 2000. Divide by 1000 for seconds.
-    start: entry.offsets.from / 1000,
-    end: entry.offsets.to / 1000,
-    text: (entry.text ?? '').trim(),
-    // This build's JSON writer does not include a per-segment no_speech_prob
-    // field even though the underlying whisper.dll API supports it, so this
-    // is normally undefined — see the runWhisper() doc comment above.
-    noSpeechProb: entry.no_speech_prob,
-  }));
+    return transcription.map((entry) => ({
+      // Verified against this whisper-cli build's actual --output-json-full
+      // output: offsets.from/to are in MILLISECONDS (matching the SRT-style
+      // "HH:MM:SS,mmm" timestamps strings alongside them), not centiseconds —
+      // a 2.000s clip produced offsets.to === 2000. Divide by 1000 for seconds.
+      start: entry.offsets.from / 1000,
+      end: entry.offsets.to / 1000,
+      text: (entry.text ?? '').trim(),
+      // This build's JSON writer does not include a per-segment no_speech_prob
+      // field even though the underlying whisper.dll API supports it, so this
+      // is normally undefined — see the runWhisper() doc comment above.
+      noSpeechProb: entry.no_speech_prob,
+    }));
+  } finally {
+    release();
+  }
 }

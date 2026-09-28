@@ -83,6 +83,7 @@ const FileUpload: React.FC<FileUploadProps> = ({ onUploaded, onRecordingChange, 
   const streamRef = useRef<MediaStream | null>(null);
   const soundStreamRef = useRef<MediaStream | null>(null);
   const audioContextRef = useRef<AudioContext | null>(null);
+  const recordCtxRef = useRef<AudioContext | null>(null);
   const analyserRef = useRef<AnalyserNode | null>(null);
   const animationFrameRef = useRef<number | null>(null);
   const timerIntervalRef = useRef<ReturnType<typeof setInterval> | null>(null);
@@ -271,7 +272,24 @@ const FileUpload: React.FC<FileUploadProps> = ({ onUploaded, onRecordingChange, 
           : '';
 
       const ts = Date.now();
-      let levelStream: MediaStream = micStream;
+
+      // AUG-125: record the mic through a Web Audio graph, not the raw device track. The destination node keeps
+      // producing samples (silence) when the device goes quiet or ends (Bluetooth / default-device switch, another app
+      // taking the input), so the mic file keeps wall-clock length and ends with the system track. On the raw track
+      // Chromium's MediaRecorder simply stops advancing — a 54-min call ended up with a 16-min mic track.
+      let recordCtx: AudioContext | null = new AudioContext();
+      await recordCtx.resume().catch(() => {});
+      if (recordCtx.state !== 'running') {
+        void recordCtx.close().catch(() => {});
+        recordCtx = null; // e.g. autoplay policy in a plain browser tab: fall back to the raw track
+      }
+      recordCtxRef.current = recordCtx;
+      const recordDest = recordCtx ? recordCtx.createMediaStreamDestination() : null;
+      let micSource = recordCtx ? recordCtx.createMediaStreamSource(micStream) : null;
+      if (micSource && recordDest) micSource.connect(recordDest);
+      const recordStream = recordDest ? recordDest.stream : micStream;
+
+      let levelStream: MediaStream = recordStream;
 
       const dualState = { mic: null as Blob | null, system: null as Blob | null, uploading: false };
 
@@ -329,8 +347,39 @@ const FileUpload: React.FC<FileUploadProps> = ({ onUploaded, onRecordingChange, 
 
       recordedChunksRef.current = [];
       const micRecorder = mimeType
-        ? new MediaRecorder(micStream, { mimeType })
-        : new MediaRecorder(micStream);
+        ? new MediaRecorder(recordStream, { mimeType })
+        : new MediaRecorder(recordStream);
+
+      // A vanished device ends its track; re-acquire the same mic (or the default one) and plug it into the graph so the
+      // rest of the call is still recorded.
+      const recorderStopped = () => micRecorder.state === 'inactive';
+      const reattachMic = async () => {
+        if (!recordCtx || !recordDest || recorderStopped()) return;
+        try {
+          let next: MediaStream;
+          try {
+            next = await navigator.mediaDevices.getUserMedia({ audio: micConstraints });
+          } catch {
+            next = await navigator.mediaDevices.getUserMedia({ audio: true });
+          }
+          if (recorderStopped()) {
+            next.getTracks().forEach((t) => t.stop());
+            return;
+          }
+          micSource?.disconnect();
+          micSource = recordCtx.createMediaStreamSource(next);
+          micSource.connect(recordDest);
+          streamRef.current = next;
+          watchMicTrack(next);
+          setMicNotice('Microphone was disconnected — recording continues with the current microphone.');
+        } catch {
+          setMicNotice('Microphone was disconnected — your side is silent until a microphone is available again.');
+        }
+      };
+      const watchMicTrack = (stream: MediaStream) => {
+        stream.getAudioTracks()[0]?.addEventListener('ended', () => { void reattachMic(); }, { once: true });
+      };
+      if (recordCtx) watchMicTrack(micStream);
 
       micRecorder.ondataavailable = (event) => {
         if (event.data.size > 0) {
@@ -346,8 +395,13 @@ const FileUpload: React.FC<FileUploadProps> = ({ onUploaded, onRecordingChange, 
       };
 
       micRecorder.onstop = async () => {
-        micStream.getTracks().forEach((track) => track.stop());
+        const activeMicStream = streamRef.current ?? micStream;
+        activeMicStream.getTracks().forEach((track) => track.stop());
         streamRef.current = null;
+        if (recordCtxRef.current) {
+          void recordCtxRef.current.close().catch(() => {});
+          recordCtxRef.current = null;
+        }
 
         const blob = new Blob(recordedChunksRef.current, {
           type: micRecorder.mimeType || 'audio/webm',
@@ -435,10 +489,10 @@ const FileUpload: React.FC<FileUploadProps> = ({ onUploaded, onRecordingChange, 
 
         const ctx = new AudioContext();
         audioContextRef.current = ctx;
-        const micSource = ctx.createMediaStreamSource(micStream);
+        const mixMicSource = ctx.createMediaStreamSource(recordStream);
         const soundSource = ctx.createMediaStreamSource(displayStream);
         const dest = ctx.createMediaStreamDestination();
-        micSource.connect(dest);
+        mixMicSource.connect(dest);
         soundSource.connect(dest);
         levelStream = dest.stream;
       }
@@ -484,9 +538,11 @@ const FileUpload: React.FC<FileUploadProps> = ({ onUploaded, onRecordingChange, 
       onRecordingChange?.(true);
 
       if (liveMode) {
-        startLiveTranscription(micStream, liveSystemStream, engine, serverCapture?.captureId ?? null);
+        startLiveTranscription(recordStream, liveSystemStream, engine, serverCapture?.captureId ?? null);
       }
     } catch (err) {
+      recordCtxRef.current?.close().catch(() => {});
+      recordCtxRef.current = null;
       setError(
         'Could not access audio device: ' + ((err as Error).message || 'unknown error'),
       );

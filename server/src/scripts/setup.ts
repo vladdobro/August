@@ -21,6 +21,7 @@ import path from 'node:path';
 
 import {
   WHISPER_CPP_VERSION,
+  WHISPER_VAD_MODEL,
   WHISPER_BIN_ROOT,
   WHISPER_BUILD_DIR,
   whisperPlatformDir,
@@ -428,6 +429,30 @@ async function setupVulkanLoader(targetDir: string): Promise<boolean> {
   return true;
 }
 
+/// Downloads the Silero VAD model (AUG-125, ~0.9 MB) next to whisper-cli for `--vad`. Idempotent — skipped when the file
+/// is already there with the expected size. Downloads to a .part file and renames after the checksum passes.
+async function setupVadModel(targetDir: string): Promise<void> {
+  const target = path.join(targetDir, WHISPER_VAD_MODEL.fileName);
+  const existing = await fs.stat(target).catch(() => null);
+  if (existing && existing.size === WHISPER_VAD_MODEL.sizeBytes) {
+    console.log(`✔ Silero VAD model already present at ${target} — skipping.`);
+    return;
+  }
+
+  await fs.mkdir(targetDir, { recursive: true });
+  console.log('Downloading Silero VAD model (~0.9 MB)...');
+  const partPath = `${target}.part`;
+  const lastStep = { value: -1 };
+  const { sha256 } = await downloadToFile(WHISPER_VAD_MODEL.url, partPath, {
+    onProgress: logProgressPercent('VAD model download', lastStep),
+  });
+  if (sha256 !== WHISPER_VAD_MODEL.sha256) {
+    await fs.unlink(partPath).catch(() => {});
+    throw new Error(`Silero VAD model checksum mismatch (expected ${WHISPER_VAD_MODEL.sha256}, got ${sha256})`);
+  }
+  await fs.rename(partPath, target);
+}
+
 async function main(): Promise<void> {
   const platformDir = whisperPlatformDir();
   if (!platformDir) {
@@ -460,6 +485,7 @@ async function main(): Promise<void> {
   if (await setupAudiotee(targetDir)) {
     usedBuildDir = true;
   }
+  await setupVadModel(targetDir);
   if (usedBuildDir) {
     await fs.rm(WHISPER_BUILD_DIR, { recursive: true, force: true });
   }
@@ -471,6 +497,7 @@ async function main(): Promise<void> {
   } else {
     console.warn(FFMPEG_MISSING_MESSAGE);
   }
+  console.log(`✔ Silero VAD model ready at ${path.join(targetDir, WHISPER_VAD_MODEL.fileName)}`);
 
   if (platformDir === 'win-x64') {
     console.log(`✔ Vulkan loader ${VULKAN_RUNTIME.version} bundled at ${path.join(targetDir, VULKAN_RUNTIME.dllTarget)}`);
@@ -482,7 +509,7 @@ async function main(): Promise<void> {
 
 main().catch((err) => {
   if (isOfflineError(err)) {
-    console.error('❌ No internet connection. Cannot download whisper-cli / Vulkan loader / ffmpeg.');
+    console.error('❌ No internet connection. Cannot download whisper-cli / Vulkan loader / ffmpeg / VAD model.');
   } else {
     console.error(`❌ Setup failed: ${(err as Error)?.message || err}`);
     console.error(`   Build artifacts left at: ${WHISPER_BUILD_DIR}`);

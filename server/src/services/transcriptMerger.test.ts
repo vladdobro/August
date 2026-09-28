@@ -7,6 +7,8 @@ import {
   dedupHallucinations,
   mergeSingleStream,
   alignDualSegments,
+  alignedDualDuration,
+  describeTrackMismatch,
   renderTranscript,
 } from './transcriptMerger.js';
 
@@ -172,6 +174,42 @@ describe('alignDualSegments', () => {
   test('zero / NaN offset is a no-op', () => {
     expect(alignDualSegments(mic, system, 0)).toEqual({ mic, system });
     expect(alignDualSegments(mic, system, Number.NaN)).toEqual({ mic, system });
+  });
+});
+
+describe('alignedDualDuration', () => {
+  test('mic started later: mic track is shifted forward', () => {
+    expect(alignedDualDuration(971.7, 3257.2, -334)).toBeCloseTo(3257.2);
+  });
+  test('system started later: system end shifts, mic can still be longer', () => {
+    expect(alignedDualDuration(100, 50, 60000)).toBe(110);
+  });
+  test('no offset: the longer track', () => {
+    expect(alignedDualDuration(100, 100, 0)).toBe(100);
+  });
+});
+
+describe('describeTrackMismatch', () => {
+  test('the AUG-125 reference session: mic much shorter', () => {
+    const msg = describeTrackMismatch(971.7, 3257.2);
+    expect(msg).toContain('Mic track is shorter');
+    expect(msg).toContain('00:16:11');
+    expect(msg).toContain('00:54:17');
+  });
+  test('under 60 s and under 10% → null', () => {
+    expect(describeTrackMismatch(3000, 2950)).toBeNull();
+  });
+  test('over 60 s → system-shorter message', () => {
+    expect(describeTrackMismatch(600, 530)).toContain('System audio track is shorter');
+  });
+  test('short call, 4 s gap is over 10% and the jitter tolerance', () => {
+    expect(describeTrackMismatch(30, 26)).not.toBeNull();
+  });
+  test('stop jitter within tolerance → null', () => {
+    expect(describeTrackMismatch(30, 29)).toBeNull();
+  });
+  test('unknown length → null', () => {
+    expect(describeTrackMismatch(0, 100)).toBeNull();
   });
 });
 

@@ -120,6 +120,23 @@ export const WHISPER_MODEL = {
   sizeBytes: 874188075,
 } as const;
 
+/// Silero VAD model for whisper.cpp `--vad` (AUG-125): non-speech regions are skipped instead of decoded. ~0.9 MB, so
+/// `npm run setup` places it next to whisper-cli in whisper/bin/<platform>/ and both electron-builder extraResources
+/// (mac + win) ship it without config changes.
+export const WHISPER_VAD_MODEL = {
+  fileName: 'ggml-silero-v5.1.2.bin',
+  url: 'https://huggingface.co/ggml-org/whisper-vad/resolve/main/ggml-silero-v5.1.2.bin',
+  sha256: '29940d98d42b91fbd05ce489f3ecf7c72f0a42f027e4875919a28fb4c04ea2cf',
+  sizeBytes: 885098,
+} as const;
+
+/// Post-recording decoding parameters (AUG-125), ported from SplitVox: greedy decoding (beam search was 1.6-3.4x
+/// slower with no quality gain), flash attention left at whisper-cli's default (on).
+export const WHISPER_DECODING = {
+  beamSize: 1,
+  bestOf: 1,
+} as const;
+
 function defaultWhisperModelPath(): string {
   return path.resolve(repoRoot, 'whisper', 'models', WHISPER_MODEL.fileName);
 }
@@ -132,6 +149,8 @@ export interface AppConfig {
   port: number;
   whisperBinPath: string;
   whisperModelPath: string;
+  // Silero VAD model (AUG-125): WHISPER_VAD_MODEL_PATH env → next to whisper-cli.
+  whisperVadModelPath: string;
   // ffmpeg / ffprobe executables (AUG-115): FFMPEG_PATH env → bundled build next to whisper-cli → PATH.
   ffmpegPath: string;
   ffprobePath: string;
@@ -179,6 +198,7 @@ export const config: AppConfig = {
   whisperModelPath: process.env.WHISPER_MODEL_PATH?.trim()
     ? path.resolve(process.env.WHISPER_MODEL_PATH.trim())
     : defaultWhisperModelPath(),
+  whisperVadModelPath: process.env.WHISPER_VAD_MODEL_PATH?.trim() ? path.resolve(process.env.WHISPER_VAD_MODEL_PATH.trim()) : path.join(path.dirname(whisperBinPath), WHISPER_VAD_MODEL.fileName),
   ffmpegPath: ffmpegPaths.ffmpeg,
   ffprobePath: ffmpegPaths.ffprobe,
   ffmpegSource: ffmpegPaths.source,

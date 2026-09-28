@@ -2286,6 +2286,18 @@ body {
   justify-content: center;
 }
 
+/* AUG-125: non-blocking dual-track length mismatch notice */
+.transcript-track-warning {
+  margin-top: 6px;
+  padding: 4px 10px;
+  font-size: 12px;
+  font-family: var(--font-terminal);
+  color: var(--status-uploading);
+  border: 1px solid var(--status-uploading);
+  background: rgba(212, 154, 0, 0.08);
+  text-align: center;
+}
+
 .transcript-circuit-diagram {
   position: relative;
   width: 100%;

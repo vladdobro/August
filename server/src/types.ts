@@ -18,6 +18,10 @@ export interface SessionMetadata {
   // Wall-clock offset (ms) of the server-captured system track relative to the browser mic track:
   // positive = system capture started later than the mic recorder. Used to align segments before merge.
   systemOffsetMs?: number;
+  // Dual-track only (AUG-125): ffprobe length of each 16 kHz WAV in seconds.
+  trackDurations?: { mic: number; system: number };
+  // Dual-track only (AUG-125): non-blocking notice when one track is much shorter than the other.
+  trackWarning?: string;
 }
 
 export interface TranscriptSegment {

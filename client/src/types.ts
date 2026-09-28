@@ -16,6 +16,10 @@ export interface SessionMetadata {
   transcriptionProgress?: number;
   estimatedDuration?: number;
   systemOffsetMs?: number;
+  // Dual-track only (AUG-125): ffprobe length of each 16 kHz WAV in seconds.
+  trackDurations?: { mic: number; system: number };
+  // Dual-track only (AUG-125): non-blocking notice when one track is much shorter than the other.
+  trackWarning?: string;
 }
 
 export interface HealthStatus {

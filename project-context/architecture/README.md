@@ -60,14 +60,17 @@ Give any agent working on the codebase a map of the client/server split, how a s
 
 - Binaries live in whisper/bin/{win-x64,darwin-arm64,darwin-x64}/ — whisper-cli (whisper.cpp v1.8.4) plus a static ffmpeg + ffprobe (9.0.2) — installed by npm run setup, git-ignored.
 - The whisper model ggml-large-v3-turbo-q8_0.bin (~874 MB, 8-bit quantized) lives at whisper/models/ and is auto-downloaded on first server start — see project-context/transcription/whisper-setup/.
+- The Silero VAD model ggml-silero-v5.1.2.bin (~0.9 MB) lives next to whisper-cli in whisper/bin/<platform>/ and is installed by npm run setup (AUG-125).
 - Windows non-ASCII paths are converted to 8.3 short paths via a toSafePath helper before invoking the binary; toSafePath is a passthrough on macOS.
 - The repo-root .env is loaded in config.ts before config is built; WHISPER_BIN_PATH, WHISPER_MODEL_PATH and FFMPEG_PATH env vars override the default binary, model and ffmpeg paths.
 - Timestamp offsets in this build's whisper-cli --output-json-full output are milliseconds, not centiseconds — do not assume centiseconds when reading segment timestamps.
 - MediaRecorder.start(30000) uses a 30-second timeslice so ondataavailable fires periodically, enabling IndexedDB auto-save during recording.
+- The mic MediaRecorder records a Web Audio MediaStreamAudioDestinationNode fed by the mic device, so a vanished or muted device yields silence instead of a truncated file (AUG-125).
+- A mic track 'ended' event triggers re-acquiring the same or default mic into the same recording graph.
 - Recording crash recovery uses IndexedDB database "august-recording-recovery" — saves mic (and optionally system) Blob, mimeType, language, and dualTrack flag; client/src/services/recordingRecovery.ts is the helper.
 - A beforeunload handler prevents accidental tab close during active recording.
 - The browser recorder supports selecting a microphone and an optional "Capture system audio" toggle — when enabled, getDisplayMedia() captures system audio and both tracks are recorded as separate files, then uploaded together in a single request to create one session with dualTrack: true.
-- Dual-track sessions transcribe mic and system audio in parallel, then mergeDualStream interleaves segments chronologically with [Me]/[Them] role labels.
+- Dual-track sessions transcribe mic then system sequentially (one batch whisper-cli at a time), then mergeDualStream interleaves segments chronologically with [Me]/[Them] role labels.
 - Capture capability probe: on darwin the server prefers the audiotee CLI at config.audioteePath (AUDIOTEE_PATH env → bundled whisper/bin/darwin-<arch>/audiotee → PATH) (Core Audio process tap, macOS 14.2+, method 'coreaudio-tap'), then a BlackHole device found via ffmpeg -f avfoundation -list_devices (method 'blackhole'); anything else returns method 'none' with a setup hint. Non-darwin always returns 'none'.
 - Bundled audiotee (AUG-118): npm run setup builds a pinned makeusabrew/audiotee commit with SwiftPM into whisper/bin/darwin-<arch>/, so System (direct) works without Homebrew or BlackHole.
 - The audiotee build is non-fatal: a missing Swift toolchain or build failure only warns, and capture falls back to BlackHole or the browser picker.
