@@ -169,6 +169,33 @@ function openSession(sessionId: string): void {
   mainWindow?.webContents.send('august:open-session', sessionId);
 }
 
+// Session ids are server-generated UUIDs; anything else (separators, "..") is rejected before touching the disk.
+const SESSION_ID_PATTERN = /^[A-Za-z0-9_-]{1,128}$/;
+
+/// Mirrors server/src/config.ts: AUGUST_DATA_DIR (packaged builds, set in configureServerEnv) or the repo's
+/// server/data (unpackaged `electron .` and `--dev`, where the tsx server uses the same default).
+function sessionsDir(): string {
+  const override = process.env.AUGUST_DATA_DIR?.trim();
+  const dataDir = override ? path.resolve(override) : path.join(appRoot, 'server', 'data');
+  return path.join(dataDir, 'sessions');
+}
+
+function revealSession(sessionId: unknown): { ok: boolean; error?: string } {
+  if (typeof sessionId !== 'string' || !SESSION_ID_PATTERN.test(sessionId)) {
+    return { ok: false, error: 'Invalid session id' };
+  }
+  const root = sessionsDir();
+  const dir = path.resolve(root, sessionId);
+  if (path.dirname(dir) !== path.resolve(root)) return { ok: false, error: 'Invalid session id' };
+  try {
+    if (!fs.statSync(dir).isDirectory()) return { ok: false, error: `Session ${sessionId} not found` };
+  } catch {
+    return { ok: false, error: `Session ${sessionId} not found` };
+  }
+  shell.showItemInFolder(dir);
+  return { ok: true };
+}
+
 function createWindow(appUrl: string): BrowserWindow {
   const win = new BrowserWindow({
     width: 1280,
@@ -283,6 +310,8 @@ function registerIpc(): void {
     defaultRecordHotkey: DEFAULT_RECORD_HOTKEY,
     hotkeyRegistered,
   }));
+
+  ipcMain.handle('august:reveal-session', (_e, sessionId: unknown) => revealSession(sessionId));
 
   ipcMain.handle('august:set-record-hotkey', (_e, accelerator: unknown) => {
     const next = typeof accelerator === 'string' && accelerator.trim() ? accelerator.trim() : null;

@@ -503,6 +503,15 @@ Menu closes on click-outside via a mousedown document listener registered only w
 Current menu items: Diagnostics (opens diagnostics page), tooltip_missing (external link).
 Menu z-index (1000) requires the header z-index (20) to be above the filters section below.
 
+### Session Context Menu
+
+Right-clicking a .session-item opens a context menu at the cursor (desktop shell only; the browser build keeps the native menu).
+The context menu reuses .sidebar-menu-dropdown and .sidebar-menu-item with the .session-context-menu modifier (position: fixed, left/top inline, clamped to the viewport).
+The single item label is "Show in Finder" on macOS, "Show in Explorer" on Windows, "Show in File Manager" elsewhere.
+The context menu closes on mousedown outside, Escape, scroll, resize, window blur, and after the action.
+Only one context menu exists at a time; opening it closes the sidebar hamburger menu.
+Right-click is ignored on the session currently being renamed.
+
 ### Diagnostics Page (SetupGuide)
 
 The diagnostics page (.diag-page) renders when components are missing or when triggered from the sidebar menu.

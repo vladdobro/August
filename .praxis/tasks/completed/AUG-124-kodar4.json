@@ -1,0 +1,19 @@
+{
+  "id": "AUG-124-kodar4",
+  "assignee": "jarvis.json",
+  "priority": "medium",
+  "status": "to_review",
+  "title": "[AUG-124] Session list: right-click context menu with \"Show in Finder / Show in Explorer\" for a session",
+  "why_we_need_this": "Users can't get to a recording's files (audio, transcript, metadata) from the UI. Session folders are in platform-specific places: on packaged macOS builds they're in ~/Library/Application Support/August/data, on Windows in <install dir>/data, and in dev under server/data/sessions/. Finding them by hand is slow and most users don't know where they are. Right-clicking a session item in the SessionList sidebar (@client/src/components/SessionList.tsx, `.session-item`, ~L402) should open a context menu that shows that session's folder in the OS file manager: Finder on macOS, Explorer on Windows.",
+  "acceptance_criteria": "- [ ] Right-clicking any `.session-item` in SessionList opens a custom context menu at the cursor position. The browser's default context menu is suppressed.\n- [ ] The menu item label depends on the platform: \"Show in Finder\" on macOS, \"Show in Explorer\" on Windows.\n- [ ] Clicking the item opens the OS file manager with that session's folder revealed/selected. Verified on macOS (Finder) and Windows (Explorer).\n- [ ] The action works in the packaged Electron app on both platforms, where the data dir comes from AUGUST_* env paths, and in dev mode (server/data/sessions/<id>).\n- [ ] The folder path is resolved server-side or in the main process from the session ID. The renderer never builds or passes arbitrary filesystem paths, and a request for an unknown session ID fails with a clear error instead of opening anything.\n- [ ] The reveal action goes through the Electron main process (e.g. `shell.showItemInFolder` / `shell.openPath`), exposed via @electron/src/preload.cts over a narrow IPC channel.\n- [ ] When the client runs outside Electron (plain browser/Vite), the menu item is hidden or disabled. Nothing breaks.\n- [ ] The menu closes on click-outside, Escape, scroll, and after an action is chosen. Only one menu is open at a time.\n- [ ] The menu follows the frontend design rules in @project-context/frontend-design/README.md (border-radius 0, existing dropdown/menu styling, click-outside via mousedown listener registered only while open).\n- [ ] Left-click selection, rename, delete and other existing SessionList behaviors keep working unchanged.\n- [ ] Type check and build pass for client and electron.",
+  "important_constraints": "- Both platforms (macOS and Windows) must work. Don't hardcode path separators or macOS-only APIs.\n- Don't change where session data is stored (see @project-context/desktop-shell/README.md, AUG-121).\n- Keep the IPC surface minimal: a single reveal-session channel that takes a session ID, not a generic \"open any path\" API.\n- Reuse existing menu/dropdown patterns in SessionList rather than adding a new UI library.",
+  "labels": [
+    "frontend",
+    "electron",
+    "ux"
+  ],
+  "on_hold_reason": "",
+  "contextRouterIncluded": true,
+  "created_at": 1790625933658,
+  "column_entered_at": 1790626142608
+}

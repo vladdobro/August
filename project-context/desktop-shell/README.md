@@ -16,6 +16,7 @@
 - Global record hotkey default CommandOrControl+Alt+R, persisted in <userData>/desktop-settings.json, configurable in Settings → Desktop.
 - Native notifications fire on transcribing → completed/failed transitions detected by the main process polling GET /api/sessions every 5 seconds, and on recording start/stop while the window is hidden.
 - Auto-update uses electron-updater against GitHub Releases (vladdobro/August); Windows nsis and macOS zip targets update, msi and dmg do not.
+- Right-click on a sidebar session calls window.august.revealSession(id) over august:reveal-session; main reveals the folder via shell.showItemInFolder (AUG-124).
 - Key files: electron/src/main.ts, electron/src/preload.cts, electron/src/tray.ts, electron/src/hotkey.ts, electron/src/sessionWatcher.ts, electron/src/updater.ts, electron/electron-builder.yml, server/src/app.ts, client/src/desktop.d.ts.
 
 This route documents how August's Electron desktop shell embeds the existing web app instead of replacing it.
@@ -46,6 +47,10 @@ A desktop shell exists so non-technical users get a one-click install with no te
 - The preload API surface (`window.august`) is defined in client/src/desktop.d.ts and implemented in electron/src/preload.cts; the two must change together.
 - Every renderer call to window.august must be guarded, because the browser build has no bridge.
 - The renderer owns MediaRecorder; the shell only forwards toggle requests (august:toggle-recording) and receives recording state (august:recording-state) for the tray.
+- august:reveal-session takes only a session ID; the renderer never sends filesystem paths to the main process.
+- The main process resolves the session folder as <AUGUST_DATA_DIR or repo server/data>/sessions/<id>, mirroring server/src/config.ts.
+- revealSession rejects IDs outside [A-Za-z0-9_-], paths escaping the sessions dir, and missing folders, returning { ok: false, error } without opening anything.
+- In --dev mode the main process assumes the tsx server uses the repo server/data default; a custom AUGUST_DATA_DIR set only in the server's .env is not seen by main.
 - The desktop toggle is consumed by FileUpload exactly once per request (desktopToggleRequest + onDesktopToggleHandled) so remounts never replay a start.
 - backgroundThrottling is disabled on the window so a recording continues at full rate while hidden in the tray.
 - The window hides on close; the app quits only via tray Quit, Cmd+Q or app.quit().
@@ -123,6 +128,7 @@ A desktop shell exists so non-technical users get a one-click install with no te
 
 - No third-party inference in the shell either — the embedded server still runs whisper-cli locally.
 - Do not add Electron IPC endpoints that duplicate REST routes.
+- Do not add a generic "open any path" IPC; file-manager reveal stays scoped to session IDs.
 - Do not bundle the whisper model.
 - Do not enable asar.
 - Keep electron-updater's feed pointing at GitHub Releases.

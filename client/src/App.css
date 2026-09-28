@@ -2628,6 +2628,11 @@ body {
   to   { opacity: 1; transform: translateY(0); }
 }
 
+/* Session right-click menu reuses the sidebar dropdown look, pinned to the cursor. */
+.sidebar-menu-dropdown.session-context-menu {
+  position: fixed;
+}
+
 .sidebar-menu-item {
   display: flex;
   align-items: center;

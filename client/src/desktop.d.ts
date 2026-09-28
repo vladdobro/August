@@ -19,12 +19,19 @@ export interface DesktopHotkeyResult {
   error?: string;
 }
 
+export interface DesktopRevealResult {
+  ok: boolean;
+  error?: string;
+}
+
 export interface AugustDesktopApi {
   isDesktop: true;
   platform: string;
   getAppInfo(): Promise<DesktopAppInfo>;
   getSettings(): Promise<DesktopSettings>;
   setRecordHotkey(accelerator: string | null): Promise<DesktopHotkeyResult>;
+  // Reveals the session's folder in Finder/Explorer; the main process resolves the path from the id.
+  revealSession(sessionId: string): Promise<DesktopRevealResult>;
   setRecordingState(recording: boolean): void;
   onToggleRecording(cb: () => void): () => void;
   onOpenSession(cb: (sessionId: string) => void): () => void;
