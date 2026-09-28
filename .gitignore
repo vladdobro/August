@@ -57,3 +57,4 @@ Thumbs.db
 .praxis/user_assets
 .mcp.json
 .praxis/analytics
+/package-lock.json
