@@ -78,17 +78,21 @@ function ensureToolPaths(): void {
   process.env.PATH = [...current, ...extra].join(':');
 }
 
-/// Environment for the embedded server. Packaged builds keep every writable file under userData (the
-/// install dir is read-only) and take whisper-cli, ffmpeg and ffprobe from resources/; unpackaged runs
-/// reuse the repo layout (server/data, whisper/bin, whisper/models) so `npm run electron:start` shares
-/// state with `npm run dev`.
+/// Environment for the embedded server. Packaged Windows builds keep data under the per-user
+/// NSIS install dir; packaged macOS builds keep it under userData/data, since the install
+/// dir is the signed August.app bundle, replaced on every update/reinstall. Both take whisper-cli,
+/// ffmpeg and ffprobe from resources/; unpackaged runs reuse the repo layout (server/data, whisper/bin,
+/// whisper/models) so `npm run electron:start` shares state with `npm run dev`.
 function configureServerEnv(): void {
   process.env.NODE_ENV = 'production';
   if (!app.isPackaged) return;
 
   const userData = app.getPath('userData');
-  const installDir = path.resolve(process.resourcesPath, '..');
-  const dataDir = path.join(installDir, 'data');
+  // Windows keeps data next to the per-user NSIS install (0.0.13). On macOS the install dir is the signed
+  // August.app bundle — replaced on every update/reinstall — so data lives in ~/Library/Application Support/August/data.
+  const dataDir = process.platform === 'win32'
+    ? path.join(path.resolve(process.resourcesPath, '..'), 'data')
+    : path.join(userData, 'data');
   let modelsDir = path.join(userData, 'whisper', 'models');
   try {
     const custom = fs.readFileSync(path.join(userData, 'model-dir'), 'utf-8').trim();
@@ -163,6 +167,33 @@ function requestToggleRecording(): void {
 function openSession(sessionId: string): void {
   showWindow();
   mainWindow?.webContents.send('august:open-session', sessionId);
+}
+
+// Session ids are server-generated UUIDs; anything else (separators, "..") is rejected before touching the disk.
+const SESSION_ID_PATTERN = /^[A-Za-z0-9_-]{1,128}$/;
+
+/// Mirrors server/src/config.ts: AUGUST_DATA_DIR (packaged builds, set in configureServerEnv) or the repo's
+/// server/data (unpackaged `electron .` and `--dev`, where the tsx server uses the same default).
+function sessionsDir(): string {
+  const override = process.env.AUGUST_DATA_DIR?.trim();
+  const dataDir = override ? path.resolve(override) : path.join(appRoot, 'server', 'data');
+  return path.join(dataDir, 'sessions');
+}
+
+function revealSession(sessionId: unknown): { ok: boolean; error?: string } {
+  if (typeof sessionId !== 'string' || !SESSION_ID_PATTERN.test(sessionId)) {
+    return { ok: false, error: 'Invalid session id' };
+  }
+  const root = sessionsDir();
+  const dir = path.resolve(root, sessionId);
+  if (path.dirname(dir) !== path.resolve(root)) return { ok: false, error: 'Invalid session id' };
+  try {
+    if (!fs.statSync(dir).isDirectory()) return { ok: false, error: `Session ${sessionId} not found` };
+  } catch {
+    return { ok: false, error: `Session ${sessionId} not found` };
+  }
+  shell.showItemInFolder(dir);
+  return { ok: true };
 }
 
 function createWindow(appUrl: string): BrowserWindow {
@@ -279,6 +310,8 @@ function registerIpc(): void {
     defaultRecordHotkey: DEFAULT_RECORD_HOTKEY,
     hotkeyRegistered,
   }));
+
+  ipcMain.handle('august:reveal-session', (_e, sessionId: unknown) => revealSession(sessionId));
 
   ipcMain.handle('august:set-record-hotkey', (_e, accelerator: unknown) => {
     const next = typeof accelerator === 'string' && accelerator.trim() ? accelerator.trim() : null;

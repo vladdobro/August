@@ -1,7 +1,7 @@
 import path from 'node:path';
 import { describe, expect, test } from 'vitest';
 
-import { parseGpuOverride, resolveFfmpegPaths } from './config.js';
+import { parseGpuOverride, resolveAudioteePath, resolveFfmpegPaths } from './config.js';
 
 const winName = (tool: 'ffmpeg' | 'ffprobe') => `${tool}.exe`;
 const existsIn = (files: string[]) => (filePath: string) => files.includes(filePath);
@@ -54,6 +54,39 @@ describe('resolveFfmpegPaths (AUG-115)', () => {
   test('uses the unsuffixed names on non-Windows', () => {
     const r = resolveFfmpegPaths({ envPath: undefined, bundledDirs: [], exists: () => false, binName: (tool) => tool });
     expect(r).toEqual({ ffmpeg: 'ffmpeg', ffprobe: 'ffprobe', source: 'path' });
+  });
+});
+
+describe('resolveAudioteePath (AUG-118)', () => {
+  const bundledDir = path.join('repo', 'whisper', 'bin', 'darwin-arm64');
+  const bundledAudiotee = path.join(bundledDir, 'audiotee');
+
+  test('AUDIOTEE_PATH wins over the bundled binary', () => {
+    const custom = path.resolve('tools', 'audiotee');
+    const r = resolveAudioteePath({ envPath: custom, bundledDirs: [bundledDir], exists: existsIn([bundledAudiotee, custom]) });
+    expect(r).toEqual({ path: custom, source: 'env' });
+  });
+
+  test('bundled audiotee next to whisper-cli is used when AUDIOTEE_PATH is unset', () => {
+    const r = resolveAudioteePath({ envPath: undefined, bundledDirs: [bundledDir], exists: existsIn([bundledAudiotee]) });
+    expect(r).toEqual({ path: bundledAudiotee, source: 'bundled' });
+  });
+
+  test('the first bundled directory that holds audiotee wins', () => {
+    const otherDir = path.join('custom', 'bin');
+    const r = resolveAudioteePath({ envPath: '', bundledDirs: [otherDir, bundledDir], exists: existsIn([bundledAudiotee]) });
+    expect(r.path).toBe(bundledAudiotee);
+    expect(r.source).toBe('bundled');
+  });
+
+  test('blank AUDIOTEE_PATH is treated as unset', () => {
+    const r = resolveAudioteePath({ envPath: '   ', bundledDirs: [bundledDir], exists: existsIn([bundledAudiotee]) });
+    expect(r.source).toBe('bundled');
+  });
+
+  test('falls back to bare PATH name when nothing is bundled', () => {
+    const r = resolveAudioteePath({ envPath: undefined, bundledDirs: [bundledDir], exists: () => false });
+    expect(r).toEqual({ path: 'audiotee', source: 'path' });
   });
 });
 

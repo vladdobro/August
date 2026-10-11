@@ -72,6 +72,13 @@ const SessionList: React.FC<SessionListProps> = ({
   const [menuOpen, setMenuOpen] = useState(false);
   const [showAbout, setShowAbout] = useState(false);
   const menuRef = useRef<HTMLDivElement>(null);
+  const [contextMenu, setContextMenu] = useState<{ sessionId: string; x: number; y: number } | null>(null);
+  const contextMenuRef = useRef<HTMLDivElement>(null);
+  // Desktop shell only: the plain browser build keeps its native context menu.
+  const desktop = window.august?.revealSession ? window.august : null;
+  const revealLabel = desktop?.platform === 'darwin'
+    ? 'Show in Finder'
+    : desktop?.platform === 'win32' ? 'Show in Explorer' : 'Show in File Manager';
   const [editingId, setEditingId] = useState<string | null>(null);
   const [editValue, setEditValue] = useState('');
   const [searchQuery, setSearchQuery] = useState('');
@@ -91,6 +98,39 @@ const SessionList: React.FC<SessionListProps> = ({
     document.addEventListener('mousedown', handleClick);
     return () => document.removeEventListener('mousedown', handleClick);
   }, [menuOpen]);
+
+  useEffect(() => {
+    if (!contextMenu) return;
+    const close = () => setContextMenu(null);
+    const handleMouseDown = (e: MouseEvent) => {
+      if (contextMenuRef.current && !contextMenuRef.current.contains(e.target as Node)) close();
+    };
+    const handleKeyDown = (e: KeyboardEvent) => {
+      if (e.key === 'Escape') close();
+    };
+    document.addEventListener('mousedown', handleMouseDown);
+    document.addEventListener('keydown', handleKeyDown);
+    window.addEventListener('scroll', close, true);
+    window.addEventListener('resize', close);
+    window.addEventListener('blur', close);
+    return () => {
+      document.removeEventListener('mousedown', handleMouseDown);
+      document.removeEventListener('keydown', handleKeyDown);
+      window.removeEventListener('scroll', close, true);
+      window.removeEventListener('resize', close);
+      window.removeEventListener('blur', close);
+    };
+  }, [contextMenu]);
+
+  // Keep the menu inside the viewport when opened near the right/bottom edge.
+  useLayoutEffect(() => {
+    const el = contextMenuRef.current;
+    if (!contextMenu || !el) return;
+    const rect = el.getBoundingClientRect();
+    const x = Math.max(4, Math.min(contextMenu.x, window.innerWidth - rect.width - 4));
+    const y = Math.max(4, Math.min(contextMenu.y, window.innerHeight - rect.height - 4));
+    if (x !== contextMenu.x || y !== contextMenu.y) setContextMenu({ ...contextMenu, x, y });
+  }, [contextMenu]);
 
   useEffect(() => {
     if (editingId && inputRef.current) {
@@ -208,6 +248,22 @@ const SessionList: React.FC<SessionListProps> = ({
     }
   };
 
+  const handleItemContextMenu = (e: React.MouseEvent, session: SessionMetadata) => {
+    if (!desktop || editingId === session.id) return;
+    e.preventDefault();
+    setMenuOpen(false);
+    setContextMenu({ sessionId: session.id, x: e.clientX, y: e.clientY });
+  };
+
+  const revealSession = (sessionId: string) => {
+    setContextMenu(null);
+    desktop?.revealSession(sessionId)
+      .then((result) => {
+        if (!result.ok) console.error(`Show session folder failed: ${result.error ?? 'unknown error'}`);
+      })
+      .catch((err: unknown) => console.error('Show session folder failed:', err));
+  };
+
   const hasFilters = searchQuery || activeFilters.size > 0;
 
   return (
@@ -223,6 +279,12 @@ const SessionList: React.FC<SessionListProps> = ({
       </svg>
       <div className="session-list-header">
         <div className="session-header-left">
+          <button type="button" className="app-logo-button" onClick={onNewSession} aria-label="New session" title="New session">
+            <svg width="32" height="32" viewBox="0 0 100 100" aria-hidden="true">
+              <rect width="100" height="100" fill="#0a110d" />
+              <path d="M50 12 L86 88 H70 L61 68 H39 L30 88 H14 Z M44 56 H56 L50 40 Z" fill="#00c876" fillRule="evenodd" />
+            </svg>
+          </button>
           <h1 className="app-title app-title--clickable" onClick={() => setShowAbout(true)}>August</h1>
           <div className="sidebar-menu" ref={menuRef}>
             <button
@@ -291,9 +353,6 @@ const SessionList: React.FC<SessionListProps> = ({
             )}
           </div>
         </div>
-        <button type="button" className="new-session-node" onClick={onNewSession} aria-label="New session">
-          +
-        </button>
       </div>
 
       <div className="session-list-filters">
@@ -386,6 +445,7 @@ const SessionList: React.FC<SessionListProps> = ({
             aria-label={`${session.title}, ${statusLabel(session.status)}`}
             onClick={() => onSelect(session.id)}
             onKeyDown={(e) => handleItemKeyDown(e, session)}
+            onContextMenu={(e) => handleItemContextMenu(e, session)}
           >
             <div className="session-bracket-row">
               <div className="session-bracket session-bracket--l"><span className="session-bracket-bb" /></div>
@@ -474,6 +534,27 @@ const SessionList: React.FC<SessionListProps> = ({
           )
         )}
       </div>
+      {contextMenu && desktop && (
+        <div
+          ref={contextMenuRef}
+          className="sidebar-menu-dropdown session-context-menu"
+          style={{ left: contextMenu.x, top: contextMenu.y }}
+          role="menu"
+          onContextMenu={(e) => e.preventDefault()}
+        >
+          <button
+            type="button"
+            role="menuitem"
+            className="sidebar-menu-item sidebar-menu-item--1"
+            onClick={() => revealSession(contextMenu.sessionId)}
+          >
+            <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+              <path d="M3 7a1 1 0 0 1 1-1h5l2 2h9a1 1 0 0 1 1 1v9a1 1 0 0 1-1 1H4a1 1 0 0 1-1-1Z" />
+            </svg>
+            {revealLabel}
+          </button>
+        </div>
+      )}
       {showAbout && <AboutModal onClose={() => setShowAbout(false)} />}
     </div>
   );

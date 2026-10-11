@@ -17,7 +17,12 @@ const OVERLAP_DURATION_SEC = 1.0;
 const SAMPLE_RATE = 16000;
 const CHUNK_SAMPLES = CHUNK_DURATION_SEC * SAMPLE_RATE; // 64000
 const OVERLAP_SAMPLES = OVERLAP_DURATION_SEC * SAMPLE_RATE; // 16000
-const SILENCE_RMS_THRESHOLD = 0.006;
+// Speech gate (AUG-127) — must stay identical to server/src/services/liveChunking.ts.
+const SPEECH_FRAME_MS = 20;
+const SPEECH_FRAME_SAMPLES = (SAMPLE_RATE * SPEECH_FRAME_MS) / 1000; // 320
+const SPEECH_FRAME_RMS_THRESHOLD = 0.006;
+const MIN_SPEECH_RUN_MS = 160;
+const MIN_SPEECH_MS = 200;
 const PROCESSOR_BUFFER_SIZE = 4096;
 
 interface LiveTranscriptionCallbacks {
@@ -28,10 +33,28 @@ interface LiveTranscriptionCallbacks {
   onMicUnavailable: () => void;
 }
 
-function computeRMS(samples: Float32Array): number {
-  let sum = 0;
-  for (let i = 0; i < samples.length; i++) sum += samples[i] * samples[i];
-  return Math.sqrt(sum / samples.length);
+function speechDurationMs(samples: Float32Array): number {
+  const minRunFrames = MIN_SPEECH_RUN_MS / SPEECH_FRAME_MS;
+  const frameCount = Math.floor(samples.length / SPEECH_FRAME_SAMPLES);
+  let speechFrames = 0;
+  let run = 0;
+  for (let f = 0; f < frameCount; f++) {
+    const start = f * SPEECH_FRAME_SAMPLES;
+    let sum = 0;
+    for (let i = start; i < start + SPEECH_FRAME_SAMPLES; i++) sum += samples[i] * samples[i];
+    if (Math.sqrt(sum / SPEECH_FRAME_SAMPLES) > SPEECH_FRAME_RMS_THRESHOLD) {
+      run++;
+    } else {
+      if (run >= minRunFrames) speechFrames += run;
+      run = 0;
+    }
+  }
+  if (run >= minRunFrames) speechFrames += run;
+  return speechFrames * SPEECH_FRAME_MS;
+}
+
+function hasEnoughSpeech(samples: Float32Array): boolean {
+  return speechDurationMs(samples) >= MIN_SPEECH_MS;
 }
 
 /// Linear-interpolation resample from the AudioContext's native rate (48kHz
@@ -57,6 +80,7 @@ function resampleTo16k(input: Float32Array, inputRate: number): Float32Array {
 /// Accumulates resampled 16kHz samples into fixed CHUNK_SAMPLES windows with
 /// OVERLAP_SAMPLES of trailing overlap carried into the next window, so a
 /// word split across a chunk boundary still has a full attempt on one side.
+/// Windows that fail hasEnoughSpeech are dropped (speech gate).
 class ChunkAccumulator {
   private buffer = new Float32Array(CHUNK_SAMPLES);
   private writePos = 0;
@@ -72,7 +96,7 @@ class ChunkAccumulator {
 
       if (this.writePos >= CHUNK_SAMPLES) {
         const chunk = this.buffer.slice(0, CHUNK_SAMPLES);
-        if (computeRMS(chunk) > SILENCE_RMS_THRESHOLD) {
+        if (hasEnoughSpeech(chunk)) {
           onChunk(chunk);
         }
         const overlapStart = CHUNK_SAMPLES - OVERLAP_SAMPLES;

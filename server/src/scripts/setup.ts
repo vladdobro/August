@@ -4,6 +4,8 @@
 // the same folder (AUG-115) so the app never depends on a PATH install.
 // On Windows it also bundles the Khronos Vulkan loader (vulkan-1.dll, AUG-117) next to whisper-cli,
 // because the release build imports it statically and cannot start without it.
+// On macOS it also builds audiotee (Core Audio tap helper, AUG-118) from a pinned source commit with
+// SwiftPM, so "System (direct)" capture works without a BlackHole virtual device.
 // Run via `npm run setup` (server/package.json) or the repo-root alias.
 // Safe to re-run: it skips each step whose target binaries already exist.
 //
@@ -19,6 +21,7 @@ import path from 'node:path';
 
 import {
   WHISPER_CPP_VERSION,
+  WHISPER_VAD_MODEL,
   WHISPER_BIN_ROOT,
   WHISPER_BUILD_DIR,
   whisperPlatformDir,
@@ -102,6 +105,14 @@ export const VULKAN_RUNTIME = {
   licenseArchivePath: path.join('VulkanRT-X64-1.4.357.0-Components', 'VulkanRT-License.txt'),
   dllTarget: 'vulkan-1.dll',
   licenseTarget: 'VulkanRT-License.txt',
+} as const;
+
+// Pinned audiotee source (Core Audio tap, macOS 14.2+) built with SwiftPM (Xcode Command Line Tools) — AUG-118;
+// powers System (direct) capture without BlackHole.
+const AUDIOTEE = {
+  commit: '56ac954369a09318e46b88a6eec33c2d2b0d32a3',
+  url: 'https://github.com/makeusabrew/audiotee/archive/56ac954369a09318e46b88a6eec33c2d2b0d32a3.tar.gz',
+  srcDirName: 'audiotee-56ac954369a09318e46b88a6eec33c2d2b0d32a3',
 } as const;
 
 function run(cmd: string, args: string[], failMessage: string): void {
@@ -321,6 +332,60 @@ async function setupFfmpeg(platformDir: WhisperPlatformDir, targetDir: string): 
   return true;
 }
 
+/// macOS only: builds audiotee (Core Audio tap helper, AUG-118) from a pinned source commit into targetDir
+/// (next to whisper-cli), using SwiftPM. Non-fatal — a build failure (or a missing Swift toolchain) is logged
+/// as a warning and setup continues, since System (direct) capture falls back to BlackHole or the browser
+/// screen picker. Returns true when it used WHISPER_BUILD_DIR (so the caller cleans it up), like setupFfmpeg.
+async function setupAudiotee(targetDir: string): Promise<boolean> {
+  if (process.platform !== 'darwin') return false;
+
+  const target = path.join(targetDir, 'audiotee');
+  if (await fileExists(target)) {
+    console.log(`✔ audiotee already present at ${target} — skipping.`);
+    return false;
+  }
+
+  const swiftCheck = spawnSync('swift', ['--version'], { stdio: 'ignore' });
+  if (swiftCheck.status !== 0) {
+    console.warn(
+      '⚠ Swift toolchain not found — skipping audiotee. System (direct) capture needs Xcode Command Line Tools (xcode-select --install), then re-run npm run setup.',
+    );
+    return false;
+  }
+
+  try {
+    const workDir = path.join(WHISPER_BUILD_DIR, 'audiotee');
+    await fs.mkdir(workDir, { recursive: true });
+    const tarball = path.join(workDir, `audiotee-${AUDIOTEE.commit}.tar.gz`);
+    const lastStep = { value: -1 };
+    await downloadToFile(AUDIOTEE.url, tarball, { onProgress: logProgressPercent('audiotee download', lastStep) });
+
+    run('tar', ['-xzf', tarball, '-C', workDir], 'Failed to extract audiotee source tarball');
+    const srcDir = path.join(workDir, AUDIOTEE.srcDirName);
+
+    const arch = process.arch === 'arm64' ? 'arm64' : 'x86_64';
+    console.log('Building audiotee (Core Audio tap helper)...');
+    run('swift', ['build', '-c', 'release', '--arch', arch, '--package-path', srcDir], 'swift build of audiotee failed');
+
+    const binPathResult = spawnSync(
+      'swift',
+      ['build', '-c', 'release', '--arch', arch, '--package-path', srcDir, '--show-bin-path'],
+      { encoding: 'utf8' },
+    );
+    const binDir = binPathResult.stdout.trim();
+
+    await fs.mkdir(targetDir, { recursive: true });
+    await fs.copyFile(path.join(binDir, 'audiotee'), target);
+    await fs.chmod(target, 0o755);
+    console.log(`✔ audiotee ready at ${target}`);
+    return true;
+  } catch (err) {
+    const message = (err as Error)?.message || String(err);
+    console.warn(`⚠ audiotee build failed (${message}) — System (direct) capture falls back to BlackHole or the browser screen picker.`);
+    return true;
+  }
+}
+
 /// Windows only: bundles the Vulkan loader + its licence next to whisper-cli (AUG-117). Idempotent — skipped when
 /// vulkan-1.dll is already in targetDir. Returns true when it downloaded something (caller cleans whisper/.build/).
 async function setupVulkanLoader(targetDir: string): Promise<boolean> {
@@ -364,6 +429,30 @@ async function setupVulkanLoader(targetDir: string): Promise<boolean> {
   return true;
 }
 
+/// Downloads the Silero VAD model (AUG-125, ~0.9 MB) next to whisper-cli for `--vad`. Idempotent — skipped when the file
+/// is already there with the expected size. Downloads to a .part file and renames after the checksum passes.
+async function setupVadModel(targetDir: string): Promise<void> {
+  const target = path.join(targetDir, WHISPER_VAD_MODEL.fileName);
+  const existing = await fs.stat(target).catch(() => null);
+  if (existing && existing.size === WHISPER_VAD_MODEL.sizeBytes) {
+    console.log(`✔ Silero VAD model already present at ${target} — skipping.`);
+    return;
+  }
+
+  await fs.mkdir(targetDir, { recursive: true });
+  console.log('Downloading Silero VAD model (~0.9 MB)...');
+  const partPath = `${target}.part`;
+  const lastStep = { value: -1 };
+  const { sha256 } = await downloadToFile(WHISPER_VAD_MODEL.url, partPath, {
+    onProgress: logProgressPercent('VAD model download', lastStep),
+  });
+  if (sha256 !== WHISPER_VAD_MODEL.sha256) {
+    await fs.unlink(partPath).catch(() => {});
+    throw new Error(`Silero VAD model checksum mismatch (expected ${WHISPER_VAD_MODEL.sha256}, got ${sha256})`);
+  }
+  await fs.rename(partPath, target);
+}
+
 async function main(): Promise<void> {
   const platformDir = whisperPlatformDir();
   if (!platformDir) {
@@ -393,6 +482,10 @@ async function main(): Promise<void> {
   if (await setupFfmpeg(platformDir, targetDir)) {
     usedBuildDir = true;
   }
+  if (await setupAudiotee(targetDir)) {
+    usedBuildDir = true;
+  }
+  await setupVadModel(targetDir);
   if (usedBuildDir) {
     await fs.rm(WHISPER_BUILD_DIR, { recursive: true, force: true });
   }
@@ -404,6 +497,7 @@ async function main(): Promise<void> {
   } else {
     console.warn(FFMPEG_MISSING_MESSAGE);
   }
+  console.log(`✔ Silero VAD model ready at ${path.join(targetDir, WHISPER_VAD_MODEL.fileName)}`);
 
   if (platformDir === 'win-x64') {
     console.log(`✔ Vulkan loader ${VULKAN_RUNTIME.version} bundled at ${path.join(targetDir, VULKAN_RUNTIME.dllTarget)}`);
@@ -415,7 +509,7 @@ async function main(): Promise<void> {
 
 main().catch((err) => {
   if (isOfflineError(err)) {
-    console.error('❌ No internet connection. Cannot download whisper-cli / Vulkan loader / ffmpeg.');
+    console.error('❌ No internet connection. Cannot download whisper-cli / Vulkan loader / ffmpeg / VAD model.');
   } else {
     console.error(`❌ Setup failed: ${(err as Error)?.message || err}`);
     console.error(`   Build artifacts left at: ${WHISPER_BUILD_DIR}`);

@@ -3,8 +3,10 @@
 ## TL;DR
 - August ships as an Electron desktop app (AUG-114) that embeds the unchanged Express server in the main process by importing server/dist/app.js and calling startServer({ port: 0 }).
 - The root package.json is the Electron app manifest (main: electron/dist/main.js, version, electron/electron-builder/electron-updater deps); electron/ holds only main-process source, preload, builder config and build assets.
+- App version source of truth is the root `version` file; npm run build syncs it into package.json via version:sync.
 - The renderer is the same React client loaded from http://127.0.0.1:<free port>/ served by the embedded server; no IPC replaces REST/WebSocket.
-- Packaged builds keep all writable data under the Electron userData folder (Windows %APPDATA%\August, macOS ~/Library/Application Support/August) via AUGUST_DATA_DIR, WHISPER_MODEL_PATH, WHISPER_BIN_PATH and FFMPEG_PATH env vars set before the server module is imported.
+- Packaged macOS builds keep session data in ~/Library/Application Support/August/data, never inside August.app, because the signed bundle is replaced on every update/reinstall (AUG-121).
+- Packaged Windows builds keep session data in <install dir>/data next to the per-user NSIS install; models, settings and logs stay under userData on both platforms; paths reach the server via AUGUST_DATA_DIR, WHISPER_MODEL_PATH, WHISPER_BIN_PATH and FFMPEG_PATH set before the server module is imported.
 - whisper-cli, ffmpeg and ffprobe are bundled from whisper/bin/<platform>/ into resources/whisper/bin/ as extraResources; the ~874 MB model is never bundled and auto-downloads on first launch.
 - The Windows extraResources folder also carries the bundled Vulkan loader vulkan-1.dll and its VulkanRT-License.txt placed by npm run setup (AUG-117).
 - Packaged builds set FFMPEG_PATH to the resources copy of ffmpeg (AUG-115), so a fresh machine needs no ffmpeg install.
@@ -14,6 +16,7 @@
 - Global record hotkey default CommandOrControl+Alt+R, persisted in <userData>/desktop-settings.json, configurable in Settings → Desktop.
 - Native notifications fire on transcribing → completed/failed transitions detected by the main process polling GET /api/sessions every 5 seconds, and on recording start/stop while the window is hidden.
 - Auto-update uses electron-updater against GitHub Releases (vladdobro/August); Windows nsis and macOS zip targets update, msi and dmg do not.
+- Right-click on a sidebar session calls window.august.revealSession(id) over august:reveal-session; main reveals the folder via shell.showItemInFolder (AUG-124).
 - Key files: electron/src/main.ts, electron/src/preload.cts, electron/src/tray.ts, electron/src/hotkey.ts, electron/src/sessionWatcher.ts, electron/src/updater.ts, electron/electron-builder.yml, server/src/app.ts, client/src/desktop.d.ts.
 
 This route documents how August's Electron desktop shell embeds the existing web app instead of replacing it.
@@ -44,12 +47,16 @@ A desktop shell exists so non-technical users get a one-click install with no te
 - The preload API surface (`window.august`) is defined in client/src/desktop.d.ts and implemented in electron/src/preload.cts; the two must change together.
 - Every renderer call to window.august must be guarded, because the browser build has no bridge.
 - The renderer owns MediaRecorder; the shell only forwards toggle requests (august:toggle-recording) and receives recording state (august:recording-state) for the tray.
+- august:reveal-session takes only a session ID; the renderer never sends filesystem paths to the main process.
+- The main process resolves the session folder as <AUGUST_DATA_DIR or repo server/data>/sessions/<id>, mirroring server/src/config.ts.
+- revealSession rejects IDs outside [A-Za-z0-9_-], paths escaping the sessions dir, and missing folders, returning { ok: false, error } without opening anything.
+- In --dev mode the main process assumes the tsx server uses the repo server/data default; a custom AUGUST_DATA_DIR set only in the server's .env is not seen by main.
 - The desktop toggle is consumed by FileUpload exactly once per request (desktopToggleRequest + onDesktopToggleHandled) so remounts never replay a start.
 - backgroundThrottling is disabled on the window so a recording continues at full rate while hidden in the tray.
 - The window hides on close; the app quits only via tray Quit, Cmd+Q or app.quit().
 - The hotkey must contain at least one modifier; a failed registration keeps the previous shortcut and reports the error to Settings.
 - Session notifications are derived by polling; the first poll only seeds state so pre-existing completed sessions never notify.
-- macOS GUI apps do not inherit the shell PATH, so the shell appends /opt/homebrew/bin and /usr/local/bin before starting the server (audiotee and the ffmpeg PATH fallback).
+- macOS GUI apps do not inherit the shell PATH, so the shell appends /opt/homebrew/bin and /usr/local/bin before starting the server (the audiotee and ffmpeg PATH fallbacks; the packaged app ships its own audiotee in resources/whisper/bin/darwin-<arch>/).
 - The bundled ffmpeg must stay inside whisper/bin/<platform>/ so the existing extraResources entry ships it without any electron-builder change.
 - Unpackaged runs (npm run electron:start, --dev) leave FFMPEG_PATH unset so the server's own resolver finds the repo's whisper/bin/<platform>/ffmpeg or falls back to PATH.
 - getDisplayMedia needs setDisplayMediaRequestHandler in Electron: Windows supplies system audio as a loopback track; macOS uses the native picker on 15+ and otherwise returns video only, so server-side capture stays the preferred macOS path.
@@ -60,7 +67,7 @@ A desktop shell exists so non-technical users get a one-click install with no te
 ## Key implementation details
 
 - Scripts: dev:electron, electron:start, electron:pack, electron:dist, electron:icons, build.
-- userData layout: data/, whisper/models/, desktop-settings.json, logs/main.log.
+- userData layout: data/ (macOS only), whisper/models/, desktop-settings.json, logs/main.log.
 - resources layout: whisper/bin/<platform>/ holds whisper-cli plus ffmpeg and ffprobe, all signed by electron-builder along with the app.
 - electron-builder targets: mac dmg+zip per arch, win nsis+msi x64.
 - Signing env vars: CSC_LINK, CSC_KEY_PASSWORD, APPLE_ID, APPLE_APP_SPECIFIC_PASSWORD, APPLE_TEAM_ID.
@@ -72,7 +79,31 @@ A desktop shell exists so non-technical users get a one-click install with no te
 - electron-builder never replaces existing GitHub release assets; a rerun of the same tag uploads nothing, so fixes need a version bump and a new tag (or manual asset deletion).
 - The default GITHUB_TOKEN is read-only; the release workflow declares permissions contents: write so electron-builder can create the release.
 - The packaged app must exclude server/node_modules/.bin: its symlinks point into excluded dev packages and a dangling symlink aborts the macOS build.
-- Release runs via .github/workflows/release.yml on v* tags with --publish always; the version source is the root package.json.
+- Release runs via .github/workflows/release.yml on v* tags with --publish always.
+- The root `version` file is the single source of truth for the app version.
+- npm run build first runs version:sync (electron/scripts/sync-version.mjs), copying `version` into package.json and package-lock.json.
+- Never edit the version in package.json by hand; it is overwritten from `version` on every build.
+- The create-release job reads the tag from the `version` file on workflow_dispatch runs.
+
+## Local DMG build
+
+- Local build prerequisites: npm run install:all, then npm run setup (fetches/builds whisper-cli and ffmpeg for the current platform).
+- Local DMG build command: npm run electron:dist -- --mac (builds client + server + compiles Electron TS, then runs electron-builder).
+- electron:pack (--dir) creates an unpacked app directory for quick testing; electron:dist creates distributable DMG and ZIP installers.
+- Build output lands in electron/release/ with the naming pattern August-{version}-mac-{arch}.dmg.
+- On Apple Silicon the default build is arm64; pass --x64 for an Intel build (requires Rosetta or an Intel runner).
+- To skip code-signing discovery on unsigned local builds, set CSC_IDENTITY_AUTO_DISCOVERY=false.
+- Local builds omit --publish, so nothing is uploaded; --publish always is used only in CI.
+
+## Release workflow (CI → GitHub Releases)
+
+- Trigger: push a git tag matching v* (e.g. v0.0.15) or use workflow_dispatch.
+- Step 1 (create-release job): gh release create creates the GitHub Release with --generate-notes if it does not already exist.
+- Step 2 (build job, needs create-release): runs npm run install:all, npm run setup, then npm run electron:dist -- --mac --publish always on macos-latest (arm64).
+- Step 3 (same build job, Windows matrix entry): runs the same pipeline with --win on windows-latest.
+- electron-builder's github publisher uploads DMG, ZIP and latest-mac.yml into the pre-created release using GH_TOKEN.
+- The version tag and the root `version` file must match; bump `version` (and commit the synced package.json) before tagging.
+- To re-release the same version: manually delete the release assets on GitHub, then re-run the workflow (electron-builder will not overwrite existing assets).
 
 ## Key files
 
@@ -97,6 +128,7 @@ A desktop shell exists so non-technical users get a one-click install with no te
 
 - No third-party inference in the shell either — the embedded server still runs whisper-cli locally.
 - Do not add Electron IPC endpoints that duplicate REST routes.
+- Do not add a generic "open any path" IPC; file-manager reveal stays scoped to session IDs.
 - Do not bundle the whisper model.
 - Do not enable asar.
 - Keep electron-updater's feed pointing at GitHub Releases.

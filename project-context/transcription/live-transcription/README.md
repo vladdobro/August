@@ -7,7 +7,7 @@
 - With System audio source = System (AUG-113), the server tees its own capture into the live pipeline as Them; the browser sends only mic chunks.
 - Live mode with a server capture shows no screen picker; the client binds the capture with an attach-capture control frame.
 - A binary WebSocket protocol encodes speaker identity, language, and Float32 PCM in each frame.
-- ChunkAccumulator uses 4s windows with 1s overlap and RMS-based VAD silence gate (threshold 0.006) before sending.
+- ChunkAccumulator uses 4 s windows with 1 s overlap and a frame-based speech gate (hasEnoughSpeech) before sending, to local whisper or Groq (AUG-127).
 - The server queues at most 6 chunks per connection; 3 consecutive failures trigger interrupted status.
 - Groq fallback: rate limit (20 req/min) falls back to local whisper per-chunk; API errors switch engine to local permanently for that connection.
 - Key files: server/src/services/liveTranscription.ts, server/src/services/groqTranscription.ts, client/src/services/liveTranscriptionClient.ts.
@@ -15,6 +15,11 @@
 - Post-recording full-file transcription remains local whisper only — Groq is exclusively a live mode option.
 - Live panel buttons are a 2×2 grid: Pause (yellow) + Copy All (green) top row, Stop (red filled) + Clear All (red frame) bottom row.
 - Stop and Clear All require a confirmation dialog ("Are you sure?") before executing.
+- Live local chunks run whisper-cli with Silero VAD (vad: true in transcribeChunk); a chunk with no detected speech emits no line (AUG-127).
+- Live text has no overlap dedup, so words in the 1 s overlap appear twice in consecutive lines (AUG-126).
+- Groq is called with response_format=text, so no_speech_prob is discarded and cannot gate hallucinations (AUG-126).
+- Two tracks at a 3 s hop reach about 20 Groq requests per minute; overflow chunks fall back to local whisper with VAD (AUG-126, AUG-127).
+- Fix proposals live in project-context/transcription/phantom-lines-research/.
 
 One-sentence description: Real-time audio-to-transcript streaming during a live call via WebSocket, with pluggable transcription engines (local whisper-cli or Groq Whisper API).
 
@@ -33,7 +38,19 @@ Document the mechanics of the live transcription mode — how audio is captured 
 - Audio capture: ScriptProcessorNode taps raw PCM from mic and system MediaStreams without modifying the MediaRecorder pipeline.
 - Resampling: linear interpolation from the browser's native sample rate (typically 48kHz) down to 16kHz, because browsers do not reliably honor AudioContext sampleRate for graphs connected to existing MediaStreamTracks.
 - ChunkAccumulator: accumulates resampled samples into fixed 64000-sample (4s) windows with 16000-sample (1s) overlap carried into the next window.
-- RMS silence gate: chunks with RMS below 0.006 are discarded client-side and never sent to the server.
+- Speech gate (AUG-127): a window is sent only when it holds at least 200 ms of speech; otherwise it is discarded before any engine sees it.
+- Speech gate frames: 20 ms (320 samples); a frame is loud when its RMS exceeds 0.006.
+- Speech gate runs: only contiguous loud runs of at least 160 ms count as speech; shorter runs are transients (clicks, thumps, keystrokes).
+- Speech gate why: whole-window RMS let one transient in a silent 4 s mic window through, and whisper hallucinated "Okay." on it (AUG-126).
+- Speech gate thresholds come from session e1ebe18a: phantom window 1330 s has 440 ms of scattered transients (longest run 140 ms); real word window 1876 s has one 220 ms run.
+- Do not raise the RMS level instead: quiet speech near window RMS 0.006–0.01 would be lost; the frame gate keeps a quiet 1.5 s utterance at window RMS 0.005.
+- Do not blacklist "okay"/"so" to fight phantoms: real short replies are valid; the fix judges audio, not words.
+- The gate exists twice and must stay identical: client/src/services/liveTranscriptionClient.ts (browser mic/system) and server/src/services/liveChunking.ts (server-captured system, unit-tested).
+- ChunkAccumulator.flush (server only) applies the same speech gate to the partial tail window.
+- Silero VAD on live chunks: a missing VAD model logs one warning per process and live keeps transcribing without VAD.
+- The speech gate cannot reject loud non-speech events (~1 s breath/noise); on local whisper Silero VAD removes them, on Groq they still cost a request and may produce text.
+- Replay result (AUG-127, mic 1300–1900 s): zero emitted "Okay." lines; real speech windows 1864–1879 s all produce text.
+- Groq rate on e1ebe18a (both tracks, 197 min): mean 19.7 → 19.1 req/min, max 34 → 31, minutes over 20: 58 → 54; replay slice max 20 → 19.
 - Silent gain node: ScriptProcessorNode is routed through a GainNode with gain=0 to the AudioContext destination — required for onaudioprocess to fire reliably, but produces no audible output.
 - Binary WebSocket frame format: byte 0 = speaker (0=Them, 1=Me), byte 1 = language string length (L), bytes 2..2+L = UTF-8 language code, remainder = Float32 PCM samples in little-endian.
 - Server WebSocket handler: server/src/services/liveTranscription.ts upgrades HTTP connections at /api/live-transcribe using the ws library.
@@ -100,5 +117,5 @@ Document the mechanics of the live transcription mode — how audio is captured 
 - server/src/index.ts — HTTP server creation and WebSocket upgrade setup.
 - server/src/config.ts — groqApiKey config read from GROQ_API_KEY env var.
 - server/src/routes/health.ts — exposes groqAvailable flag in health endpoint response.
-- server/src/services/liveChunking.ts — ChunkAccumulator (server port), LivePcmFeeder (s16le → Float32 with odd-byte carry), parseLiveControlFrame; unit tests in liveChunking.test.ts.
+- server/src/services/liveChunking.ts — ChunkAccumulator, speech gate (speechDurationMs/hasEnoughSpeech), PCM feeder, control-frame parser; tests in liveChunking.test.ts.
 - server/src/services/systemCapture.ts — live PCM tee (LIVE_TEE_ARGS, CaptureLiveSink, attachLiveSink) for server-fed Them audio.

@@ -29,6 +29,7 @@
 - Capture startedAt is the first-written-byte time of the WAV (fs.stat poll every 25 ms, 2 s fallback to spawn time); it drives systemOffsetMs.
 - Capture capabilities carry selfTest ('ok' | 'silent' | 'failed' | 'skipped') and selfTestDetail from a darwin-only ~1 s probe capture validated by ffprobe and volumedetect.
 - selfTest runs on macOS and Windows once a method is detected; it is 'skipped' on other platforms, and startCapture() never waits for or runs it.
+- macOS System (direct) uses a bundled audiotee built by npm run setup; resolution is AUDIOTEE_PATH → whisper/bin/darwin-<arch>/ → PATH.
 
 This route documents the August web app's technical architecture: how the client, server, and local whisper.cpp inference fit together.
 
@@ -53,21 +54,28 @@ Give any agent working on the codebase a map of the client/server split, how a s
 - App.tsx lifts `isRecording` from FileUpload via `onRecordingChange` callback to keep FileUpload mounted (hidden via display:none) when navigating to diagnostics or other views.
 - All runtime server data (sessions, uploads, captures, perf-stats.json, user-preferences.json) lives under server/data/ resolved from config.dataDir — never under server/src/ and never tracked in git, so running the app cannot dirty the working tree.
 - Server bootstrap is the exported startServer() in server/src/app.ts; server/src/index.ts is a thin CLI wrapper, and the Electron shell imports startServer directly.
-- All writable server paths derive from config.dataDir, which AUGUST_DATA_DIR relocates (Electron sets it to <userData>/data); ENV_FILE_PATH follows dataDir when the override is set.
+- All writable server paths derive from config.dataDir, which AUGUST_DATA_DIR relocates (packaged Electron sets it to <userData>/data on macOS and <install dir>/data on Windows); ENV_FILE_PATH follows dataDir when the override is set.
 
 ## Key implementation details
 
 - Binaries live in whisper/bin/{win-x64,darwin-arm64,darwin-x64}/ — whisper-cli (whisper.cpp v1.8.4) plus a static ffmpeg + ffprobe (9.0.2) — installed by npm run setup, git-ignored.
 - The whisper model ggml-large-v3-turbo-q8_0.bin (~874 MB, 8-bit quantized) lives at whisper/models/ and is auto-downloaded on first server start — see project-context/transcription/whisper-setup/.
+- The Silero VAD model ggml-silero-v5.1.2.bin (~0.9 MB) lives next to whisper-cli in whisper/bin/<platform>/ and is installed by npm run setup (AUG-125).
 - Windows non-ASCII paths are converted to 8.3 short paths via a toSafePath helper before invoking the binary; toSafePath is a passthrough on macOS.
 - The repo-root .env is loaded in config.ts before config is built; WHISPER_BIN_PATH, WHISPER_MODEL_PATH and FFMPEG_PATH env vars override the default binary, model and ffmpeg paths.
 - Timestamp offsets in this build's whisper-cli --output-json-full output are milliseconds, not centiseconds — do not assume centiseconds when reading segment timestamps.
 - MediaRecorder.start(30000) uses a 30-second timeslice so ondataavailable fires periodically, enabling IndexedDB auto-save during recording.
+- The mic MediaRecorder records a Web Audio MediaStreamAudioDestinationNode fed by the mic device, so a vanished or muted device yields silence instead of a truncated file (AUG-125).
+- A mic track 'ended' event triggers re-acquiring the same or default mic into the same recording graph.
 - Recording crash recovery uses IndexedDB database "august-recording-recovery" — saves mic (and optionally system) Blob, mimeType, language, and dualTrack flag; client/src/services/recordingRecovery.ts is the helper.
 - A beforeunload handler prevents accidental tab close during active recording.
 - The browser recorder supports selecting a microphone and an optional "Capture system audio" toggle — when enabled, getDisplayMedia() captures system audio and both tracks are recorded as separate files, then uploaded together in a single request to create one session with dualTrack: true.
-- Dual-track sessions transcribe mic and system audio in parallel, then mergeDualStream interleaves segments chronologically with [Me]/[Them] role labels.
-- Capture capability probe: on darwin the server prefers the audiotee CLI on PATH (Core Audio process tap, macOS 14.2+, method 'coreaudio-tap'), then a BlackHole device found via ffmpeg -f avfoundation -list_devices (method 'blackhole'); anything else returns method 'none' with a setup hint. Non-darwin always returns 'none'.
+- Dual-track sessions transcribe mic then system sequentially (one batch whisper-cli at a time), then mergeDualStream interleaves segments chronologically with [Me]/[Them] role labels.
+- Capture capability probe: on darwin the server prefers the audiotee CLI at config.audioteePath (AUDIOTEE_PATH env → bundled whisper/bin/darwin-<arch>/audiotee → PATH) (Core Audio process tap, macOS 14.2+, method 'coreaudio-tap'), then a BlackHole device found via ffmpeg -f avfoundation -list_devices (method 'blackhole'); anything else returns method 'none' with a setup hint. Non-darwin always returns 'none'.
+- Bundled audiotee (AUG-118): npm run setup builds a pinned makeusabrew/audiotee commit with SwiftPM into whisper/bin/darwin-<arch>/, so System (direct) works without Homebrew or BlackHole.
+- The audiotee build is non-fatal: a missing Swift toolchain or build failure only warns, and capture falls back to BlackHole or the browser picker.
+- config.audioteePath is resolved once at server import; restart the server after npm run setup builds audiotee.
+- The first-ever audiotee run can fail the self-test while macOS shows the "System Audio Recording" permission prompt; later probes pass.
 - Windows capability probe (AUG-111): lists DirectShow audio inputs with ffmpeg -list_devices true -f dshow -i dummy (parseDshowAudioDevices handles the ffmpeg ≥ 6 "Name" (audio) layout and the older DirectShow audio devices header) and picks the first name matching Stereo Mix / Стерео микшер / What U Hear / CABLE Output / Voicemeeter / loopback.
 - dshow captures are addressed by exact friendly name (ffmpeg -f dshow -i audio=<name>), not by index; Cyrillic names pass through Node spawn and ffmpeg unchanged (verified).
 - Windows stop rule: Node's kill() is TerminateProcess and leaves the RIFF size unfinalized, so dshow-loopback captures run ffmpeg with stdin as a pipe (no -nostdin) and stop by writing 'q' + closing stdin; SIGKILL only after the hard timeout. Verified: exit 0 and a correct RIFF size.
@@ -103,7 +111,7 @@ Give any agent working on the codebase a map of the client/server split, how a s
 - `npm run capture:check` (server/src/scripts/captureCheck.ts) prints platform, avfoundation device list, method, and self-test result for bug reports; exits 0.
 - Capture output is always 16 kHz mono pcm_s16le WAV — the same format ensureWav produces — so the transcription pipeline needs no conversion.
 - audiotee is piped into ffmpeg as raw PCM; its sample format is sniffed on each uncached capability probe, never assumed (AUG-107).
-- Sample-format probe: spawn `audiotee --sample-rate 16000`, read ~200 ms of stdout (6400 bytes, hard budget 450 ms), SIGTERM it, pass the bytes to detectPcmSampleFormat in server/src/services/pcmSampleFormat.ts.
+- Sample-format probe: spawn `<config.audioteePath> --sample-rate 16000`, read ~200 ms of stdout (6400 bytes, hard budget 450 ms), SIGTERM it, pass the bytes to detectPcmSampleFormat in server/src/services/pcmSampleFormat.ts.
 - detectPcmSampleFormat is a pure function over a Buffer (no native deps) so it is unit-testable on Windows; tests live in server/src/services/pcmSampleFormat.test.ts.
 - Detection rule: score the same bytes as int16 LE and float32 LE and pick the view with the lower zero-crossing rate (real audio ≈ 0.05–0.3, the wrong view ≈ 0.5).
 - Float32 view is rejected in favour of s16le when it contains NaN/Infinity, peaks above 1.5, or only denormals (typical of int16 data read as float).
@@ -128,7 +136,7 @@ Give any agent working on the codebase a map of the client/server split, how a s
 - The live WebSocket binds a server capture with an {type: "attach-capture", captureId} text frame, so live mode shows no screen picker and the browser sends only mic chunks.
 - With System audio source = Browser, live mode keeps the screen picker and taps both streams in the browser.
 - IndexedDB crash recovery saves only the mic track when the system track is server-captured (dualTrack false) — the orphaned capture is cleaned on server restart rather than recovered.
-- Sessions shorter than 30 seconds are auto-deleted by the server after transcription completes (likely wrong audio source in dual-track recording).
+- The server never auto-deletes sessions after transcription; the former <30 s rule silently erased short recordings (measured by last-utterance end, not audio length) and was removed in AUG-121.
 - Sessions can be renamed via PATCH /api/sessions/:id with a JSON body { title }; the client triggers this by double-clicking the session title in the sidebar.
 - Dev/prod static serving: when NODE_ENV !== 'production' (dev mode), server/src/index.ts redirects browser requests to the Vite dev server at http://127.0.0.1:5173 instead of serving stale client/dist files; in production, express.static serves client/dist normally.
 - Praxis integration writes task files directly to the target project's .praxis/tasks/new/ directory — no dependency on a running Praxis MCP server.
@@ -150,7 +158,7 @@ Give any agent working on the codebase a map of the client/server split, how a s
 - server/src/services/sessionManager.ts — session folder lifecycle (create, read, update status).
 - client/src/App.tsx — client app shell and top-level routing/state.
 - client/src/vite-env.d.ts — Vite client type declarations (import.meta.env).
-- server/src/config.ts — platform binary resolution, model constants, AUGUST_DATA_DIR data-root override, .env loading.
+- server/src/config.ts — platform binary resolution, model constants, AUGUST_DATA_DIR data-root override, .env loading, resolveAudioteePath (AUG-118).
 - server/src/services/praxisIntegration.ts — Praxis task creation: counter management, ID allocation, atomic file write to target project.
 - server/src/routes/praxis.ts — POST /api/praxis/validate and POST /api/praxis/send endpoints.
 - server/src/routes/preferences.ts — GET/PATCH/DELETE /api/preferences for user preferences persistence.

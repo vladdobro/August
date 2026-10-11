@@ -22,6 +22,8 @@
 - npm run setup bundles the Khronos Vulkan loader vulkan-1.dll plus VulkanRT-License.txt into whisper/bin/win-x64/ from LunarG's SHA256-pinned runtime zip (AUG-117, VULKAN_RUNTIME in setup.ts).
 - With the bundled loader and no GPU driver, whisper-cli runs on CPU by itself and exits 0 without printing the ggml_vulkan device banner.
 - The startup probe flips GpuState to cpu when the ggml_vulkan device banner is absent, so /api/health reports gpuBackend 'cpu' with no retry.
+- The no-banner CPU flip applies to Vulkan builds only; Metal runs never print the banner and never flip (AUG-125).
+- npm run setup downloads the SHA256-pinned Silero VAD model ggml-silero-v5.1.2.bin into whisper/bin/<platform>/ on every platform (AUG-125).
 
 One-sentence description: How whisper-cli, the bundled ffmpeg/ffprobe and the whisper model get installed per platform, and how the client learns about download progress.
 
@@ -39,6 +41,10 @@ Explain the setup, binary-distribution, and model-download mechanics behind tran
 - Bundled ffmpeg (AUG-115): setupFfmpeg() in setup.ts downloads the archives pinned in FFMPEG_BUILDS (URL + SHA256 per platform, version in FFMPEG_VERSION) and copies ffmpeg + ffprobe into whisper/bin/<platform>/.
 - Bundled Vulkan loader (AUG-117): setupVulkanLoader() in setup.ts (Windows only) downloads LunarG's VulkanRT-X64-1.4.357.0-Components.zip pinned in VULKAN_RUNTIME (url + sha256), and copies x64/vulkan-1.dll plus VulkanRT-License.txt into whisper/bin/win-x64/; idempotent on the DLL's presence.
 - Vulkan device banner: countVulkanDevices() in gpuBackend.ts parses "ggml_vulkan: Found N Vulkan devices" from stderr (printed even with --no-prints and for --help); null/0 means the loader found no driver and whisper-cli is on CPU.
+- Bundled VAD model (AUG-125): setupVadModel() in setup.ts is idempotent, skipping when the file exists with the pinned size 885098 bytes.
+- setupVadModel() downloads to .part, verifies SHA256 29940d98d42b91fbd05ce489f3ecf7c72f0a42f027e4875919a28fb4c04ea2cf, then renames; the source is huggingface ggml-org/whisper-vad, pinned in WHISPER_VAD_MODEL in config.ts.
+- electron-builder extraResources already copy whole whisper/bin/darwin-${arch} and whisper/bin/win-x64 folders, so the VAD model ships in the DMG and the Windows installer without builder config changes.
+- The server resolves the VAD model via WHISPER_VAD_MODEL_PATH env, else next to the resolved whisper-cli (works for packaged resources/whisper/bin/<platform>/).
 - ffmpeg sources: Windows uses BtbN's LGPL static build from a permanent autobuild tag; macOS arm64/x64 use Martin Riedl's GPL static release builds, chosen because both publish per-arch static binaries with stable URLs.
 - Shared zip extraction: extractZip() tries tar (bsdtar on Windows 10+/macOS) and falls back to PowerShell Expand-Archive on Windows; whisper-cli and ffmpeg archives share it.
 - Windows extraction calls System32 tar.exe (bsdtar) by absolute path because Git Bash puts GNU tar first on PATH and GNU tar rejects drive-letter paths as remote hosts.
@@ -86,7 +92,7 @@ Explain the setup, binary-distribution, and model-download mechanics behind tran
 - Verified: with the Vulkan loader present but no usable device (VK_LOADER_DRIVERS_DISABLE=*), whisper-cli itself falls back to CPU, exits 0 and prints no ggml_vulkan banner, so no retry is needed for a no-GPU machine — only the banner check.
 - Verified: with an unloadable vulkan-1.dll next to the binaries, --help, GPU and --no-gpu runs all die at process load (0xC000012F), so --no-gpu cannot rescue a missing Vulkan runtime — that is why the loader is bundled (AUG-117); for any fallback around a native binary, check the import table / a broken-DLL simulation before designing the retry.
 - On a complete install 0xC0000135 is unreachable; seeing it means whisper/bin/win-x64 is incomplete, and both the probe and runWhisper() log "re-run npm run setup" while the session error stays plain-language (WHISPER_RUNTIME_MISSING_MESSAGE).
-- The probe and runWhisper() flip GpuState to cpu (reason NO_VULKAN_DEVICE_REASON) when a GPU-mode run printed no device banner; this depends on the pinned v1.8.4 ggml-vulkan always printing the banner when a device exists — re-verify the banner when bumping whisper.cpp.
+- On Vulkan builds only, the probe and runWhisper() flip GpuState to cpu (reason NO_VULKAN_DEVICE_REASON) when a GPU-mode run printed no device banner; this depends on the pinned v1.8.4 ggml-vulkan always printing the banner when a device exists — re-verify the banner when bumping whisper.cpp.
 - Windows resolves DLLs from the application directory before System32, so the bundled vulkan-1.dll is always the loader in use, even when a GPU driver installed its own copy; the two are interchangeable Khronos loaders.
 - When even the --no-gpu retry dies at process load, runWhisper() throws WHISPER_RUNTIME_MISSING_MESSAGE (plain language, no DLL names) and logs the exit code and DLL detail to the server log only.
 - Verified on darwin-arm64: the built whisper-cli is a static arm64 Mach-O binary linking only system frameworks, and transcription runs with Metal enabled.
@@ -115,7 +121,7 @@ Explain the setup, binary-distribution, and model-download mechanics behind tran
 
 ## Key Files
 
-- server/src/scripts/setup.ts — per-platform whisper-cli installer (download for Windows, cmake build for macOS with a portable CMake fallback), legacy migration, pinned FFMPEG_BUILDS table and setupFfmpeg(), pinned VULKAN_RUNTIME and setupVulkanLoader() (Windows), ffmpeg pre-flight.
+- server/src/scripts/setup.ts — per-platform whisper-cli installer (setupVadModel() for the Silero VAD model, download for Windows, cmake build for macOS with a portable CMake fallback), legacy migration, pinned FFMPEG_BUILDS table and setupFfmpeg(), pinned VULKAN_RUNTIME and setupVulkanLoader() (Windows), ffmpeg pre-flight.
 - server/src/services/modelDownloader.ts — ensureWhisperModel(), model status state machine, checksum verification.
 - server/src/services/download.ts — shared streaming download and SHA256 helper (downloadToFile, isOfflineError) used by setup and the model downloader.
 - server/src/routes/setup.ts — GET /api/setup/status and the SSE /api/setup/download-progress stream.

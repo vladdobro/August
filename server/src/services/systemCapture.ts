@@ -270,7 +270,7 @@ function readAudioteeSample(): Promise<Buffer> {
     const chunks: Buffer[] = [];
     let total = 0;
     let settled = false;
-    const tap = spawn('audiotee', ['--sample-rate', '16000'], { stdio: ['ignore', 'pipe', 'ignore'] });
+    const tap = spawn(config.audioteePath, ['--sample-rate', '16000'], { stdio: ['ignore', 'pipe', 'ignore'] });
     const finish = (err?: Error) => {
       if (settled) return;
       settled = true;
@@ -333,7 +333,7 @@ function spawnCapturePipeline(
   const collect = (chunk: Buffer | string) => { stderr += chunk.toString(); };
   let ffmpeg: ChildProcess;
   if (method === 'coreaudio-tap') {
-    const tap = spawn('audiotee', ['--sample-rate', '16000'], { stdio: ['ignore', 'pipe', 'pipe'] });
+    const tap = spawn(config.audioteePath, ['--sample-rate', '16000'], { stdio: ['ignore', 'pipe', 'pipe'] });
     ffmpeg = spawn(
       config.ffmpegPath,
       ['-hide_banner', '-loglevel', 'error', '-f', sampleFormat ?? 's16le', '-ar', '16000', '-ac', '1', '-i', 'pipe:0', '-c:a', 'pcm_s16le', '-flush_packets', '1', '-fflags', '+bitexact', '-y', filePath, ...(live ? LIVE_TEE_ARGS : [])],
@@ -493,7 +493,7 @@ async function probeMethod(): Promise<ResolvedCapabilities> {
       selfTestDetail: 'no capture method to test',
     };
   }
-  if (await commandOnPath('audiotee', ['--help'])) {
+  if (await commandOnPath(config.audioteePath, ['--help'])) {
     const pcm = await resolveAudioteeSampleFormat(config.audioteeSampleFormat, readAudioteeSample);
     if (pcm.sampleFormatSource === 'fallback') {
       console.warn(`audiotee sample-format probe inconclusive (${pcm.detail}); assuming s16le. Set AUDIOTEE_SAMPLE_FORMAT to override.`);
@@ -526,7 +526,7 @@ async function probeMethod(): Promise<ResolvedCapabilities> {
     systemCapture: false,
     method: 'none',
     platform,
-    hint: 'No capture helper found. Install BlackHole (brew install blackhole-2ch) and route output through it, or build audiotee (Core Audio tap, macOS 14.2+) onto PATH, then restart the server.',
+    hint: 'No capture helper found. Run `npm run setup` to build the bundled audiotee (Core Audio tap, macOS 14.2+), or install BlackHole (brew install blackhole-2ch) and route output through it, then restart the server.',
     selfTest: 'skipped',
     selfTestDetail: 'no capture method to test',
   };

@@ -1,0 +1,18 @@
+{
+  "id": "AUG-118-ik9q14",
+  "assignee": "assistant.json",
+  "priority": "medium",
+  "status": "to_review",
+  "title": "[AUG-118] System direct doesn't work",
+  "why_we_need_this": "system direct not possible to chose. You must fix it. I'm working on MAC arm64",
+  "acceptance_criteria": "",
+  "important_constraints": "",
+  "labels": [],
+  "on_hold_reason": "",
+  "contextRouterIncluded": true,
+  "created_at": 1790336881958,
+  "column_entered_at": 1790337409318,
+  "screenshots": [
+    "/Users/rugarov/git/August/.praxis/user_assets/118/screenshot_1790336883987_mtx4jx.png"
+  ]
+}

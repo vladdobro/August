@@ -7,6 +7,7 @@ const api = {
   getAppInfo: () => ipcRenderer.invoke('august:get-app-info'),
   getSettings: () => ipcRenderer.invoke('august:get-settings'),
   setRecordHotkey: (accelerator: string | null) => ipcRenderer.invoke('august:set-record-hotkey', accelerator),
+  revealSession: (sessionId: string) => ipcRenderer.invoke('august:reveal-session', sessionId),
   setRecordingState: (recording: boolean) => {
     ipcRenderer.send('august:recording-state', recording);
   },

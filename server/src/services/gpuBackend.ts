@@ -161,6 +161,13 @@ export class GpuState {
   }
 }
 
+/// True when a successful GPU-mode run without the ggml-vulkan device banner means whisper-cli silently ran on CPU
+/// (AUG-117). Only a Vulkan build prints that banner — a Metal or CPU-only run never does, so it must never flip the
+/// state (AUG-125: every Metal job after the first used to run with --no-gpu).
+export function ranOnCpuWithoutVulkanDevice(state: GpuState, stderr: string): boolean {
+  return state.useGpu() && state.policy.nativeBackend === 'vulkan' && !countVulkanDevices(stderr);
+}
+
 export interface GpuFallbackOptions {
   /// Extracts the whisper-cli exit info from a thrown error; null = not a whisper-cli exit (never retried).
   exitOf: (err: unknown) => WhisperExit | null;

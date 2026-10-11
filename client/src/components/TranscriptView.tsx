@@ -404,6 +404,9 @@ const TranscriptView: React.FC<TranscriptViewProps> = ({ session, transcript, on
             <span className="meta-separator">&bull;</span>
             <span className={`status-badge status-${session.status}`}>{session.status}</span>
           </div>
+          {session.trackWarning && (
+            <div className="transcript-track-warning" role="status">{session.trackWarning}</div>
+          )}
         </div>
 
         {(session.status === 'completed' || session.status === 'failed') && (

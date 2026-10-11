@@ -1,0 +1,19 @@
+{
+  "id": "AUG-120-os6n85",
+  "assignee": "jarvis.json",
+  "priority": "medium",
+  "status": "on_hold",
+  "title": "[AUG-120] Add install.sh that provisions macOS dev and DMG builds in one command",
+  "why_we_need_this": "Getting August running on a Mac today takes several manual steps that are easy to miss: installing Xcode Command Line Tools and Node, running npm run install:all and npm run setup (whisper-cli, ffmpeg, audiotee), downloading the model, and granting macOS privacy permissions. Missing a step causes silent failures. For example, in AUG-118 System (direct) was greyed out because audiotee was missing. Then live recordings captured only the mic because the terminal running the dev server (Warp) had no \"System Audio Recording\" permission. A single idempotent install.sh must prepare a machine for both the dev workflow and the packaged DMG, and tell the user exactly which permissions to grant.",
+  "acceptance_criteria": "1. `./install.sh dev` on a clean macOS arm64 machine (macOS 14.2+) installs or verifies every prerequisite: Xcode Command Line Tools, Node.js at the version the repo requires, npm dependencies (npm run install:all), and npm run setup artifacts (whisper-cli, ffmpeg/ffprobe, audiotee in @whisper/bin/darwin-arm64/). It exits 0 with a summary of each component: installed / already present / failed.\n2. `./install.sh dmg` runs everything from `dev` and then builds the DMG (npm run electron:dist for the host arch). It prints the path of the resulting .dmg in @electron/release/. With `--install` it copies August.app into /Applications and removes the quarantine attribute.\n3. The script is idempotent. A second run on an already-provisioned machine skips every completed step and finishes in under 30 seconds, not counting the DMG build.\n4. Missing prerequisites that cannot be auto-installed (e.g. Xcode CLT installer, Node when Homebrew is absent) stop the script with a clear message stating the exact command or link to fix it. Exit code is non-zero; there is no partial silent success.\n5. The whisper model is pre-downloaded or verified: whisper/models/ggml-large-v3-turbo-q8_0.bin, with its existing SHA256 check. A `--skip-model` flag skips it.\n6. After provisioning, the script runs the capture check (npm run capture:check in server/) and reports whether System (direct) capture is available.\n7. The script ends with a permissions checklist that names the correct app for each mode:\n   - dev: the terminal app that will run `npm run dev` / `npm run dev:electron`, detected from TERM_PROGRAM (Warp, iTerm, Terminal, VS Code), needs Microphone and \"System Audio Recording Only\".\n   - dmg: August.app asks on first use.\n   The script opens System Settings → Privacy & Security → Screen & System Audio Recording (x-apple.systempreferences URL) when the user confirms.\n8. `./install.sh --help` documents the modes and flags. @README.md gets a short \"Quick install (macOS)\" section pointing to it.\n9. The script runs under set -euo pipefail, passes shellcheck with no warnings, and never uses sudo except for the /Applications copy when required.",
+  "important_constraints": "- Reuse the existing entry points (npm run install:all, npm run setup, npm run electron:dist, npm run capture:check). Do not duplicate their download or build logic in bash.\n- Do not modify the user's shell profile or global npm config.\n- macOS privacy permissions (TCC) cannot be granted by script. Only detect, explain and open the settings pane.\n- Windows is out of scope for this task. Structure the script so an install.ps1 counterpart can follow later.",
+  "labels": [
+    "devx",
+    "macos",
+    "setup"
+  ],
+  "on_hold_reason": "Only when we will have site to download",
+  "contextRouterIncluded": true,
+  "created_at": 1790338461502,
+  "column_entered_at": 1790339293411
+}

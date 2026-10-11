@@ -36,6 +36,8 @@ whisper/bin/darwin-x64/    whisper-cli, static binary built from the v1.8.4 sour
 whisper/bin/win-x64/       + ffmpeg.exe, ffprobe.exe   (BtbN LGPL static build 9.0.2)
 whisper/bin/darwin-arm64/  + ffmpeg, ffprobe           (ffmpeg.martin-riedl.de static build 9.0.2, GPL)
 whisper/bin/darwin-x64/    + ffmpeg, ffprobe           (ffmpeg.martin-riedl.de static build 9.0.2, GPL)
+whisper/bin/darwin-arm64/  + audiotee                  (macOS only; built from source with SwiftPM, pinned commit — AUG-118)
+whisper/bin/darwin-x64/    + audiotee                  (macOS only; built from source with SwiftPM, pinned commit — AUG-118)
 ```
 
 This folder is git-ignored (see `.gitignore`) — `npm run setup` (re)creates it. If a legacy

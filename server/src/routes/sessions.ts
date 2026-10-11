@@ -5,8 +5,8 @@ import multer from 'multer';
 
 import { config } from '../config.js';
 import * as sessionManager from '../services/sessionManager.js';
-import { transcribe, ensureWav, boostAudio, checkFfmpegAvailable, getAudioDuration, WhisperError, cancelTranscription, isTranscribing, FFMPEG_MISSING_MESSAGE, fileExists } from '../services/whisper.js';
-import { mergeSingleStream, mergeDualStream, renderTranscript, alignDualSegments } from '../services/transcriptMerger.js';
+import { transcribe, ensureWav, boostAudio, checkFfmpegAvailable, getAudioDuration, WhisperError, cancelTranscription, beginTranscriptionJob, isTranscribing, FFMPEG_MISSING_MESSAGE, fileExists } from '../services/whisper.js';
+import { mergeSingleStream, mergeDualStream, renderTranscript, alignDualSegments, alignedDualDuration, describeTrackMismatch } from '../services/transcriptMerger.js';
 import { recordCompletion, getEstimatedDuration } from '../services/performanceTracker.js';
 import { getModelStatus } from '../services/modelDownloader.js';
 import { consumeCapture, hasCapture, CaptureError } from '../services/systemCapture.js';
@@ -28,10 +28,32 @@ function normalizeLanguage(value: unknown): TranscriptionLanguage {
   return 'ru';
 }
 
+interface DualTrackPrep {
+  micSec: number;
+  systemSec: number;
+  duration: number;
+  estimatedDuration: number;
+  trackWarning: string | null;
+}
+
+/// Converts both tracks once (ensureWav reuses existing WAVs), measures both, and derives the real call length, the
+/// ETA from the audio whisper will actually process (mic + system) and the length-mismatch notice (AUG-125).
+async function prepareDualTracks(sessionId: string, micPath: string, systemPath: string, systemOffsetMs: number): Promise<DualTrackPrep> {
+  const [micWav, systemWav] = await Promise.all([ensureWav(micPath), ensureWav(systemPath)]);
+  const [micSec, systemSec] = await Promise.all([getAudioDuration(micWav), getAudioDuration(systemWav)]);
+  const duration = alignedDualDuration(micSec, systemSec, systemOffsetMs);
+  const workSec = micSec + systemSec;
+  const estimatedDuration = workSec > 0 ? await getEstimatedDuration(workSec, true) : 0;
+  const trackWarning = describeTrackMismatch(micSec, systemSec);
+  if (trackWarning) console.warn(`[session ${sessionId}] ${trackWarning}`);
+  return { micSec, systemSec, duration, estimatedDuration, trackWarning };
+}
+
 /// Runs the whisper transcription + merge/render pipeline for a session in
 /// the background. Never awaited by the caller so the upload endpoint can
 /// respond immediately with status "transcribing".
 async function runTranscription(sessionId: string, audioPath: string, language: TranscriptionLanguage, boost = false) {
+  const isCancelled = beginTranscriptionJob(sessionId);
   let boostedPath: string | null = null;
   try {
     let inputPath: string;
@@ -42,7 +64,7 @@ async function runTranscription(sessionId: string, audioPath: string, language: 
       inputPath = await ensureWav(audioPath);
     }
 
-    const segments = await transcribe(inputPath, language, sessionId);
+    const segments = await transcribe(inputPath, language, sessionId, isCancelled);
     const utterances = mergeSingleStream(segments);
 
     const session = await sessionManager.getSession(sessionId);
@@ -60,22 +82,18 @@ async function runTranscription(sessionId: string, audioPath: string, language: 
     const completedSession = await sessionManager.getSession(sessionId);
     if (completedSession?.transcriptionStartedAt) {
       const processingTime = (Date.now() - new Date(completedSession.transcriptionStartedAt).getTime()) / 1000;
-      await recordCompletion(duration, processingTime, false);
+      const audioSec = session?.duration && session.duration > 0 ? session.duration : duration;
+      await recordCompletion(audioSec, processingTime, false);
     }
 
-    if (duration > 0 && duration < 30) {
-      await sessionManager.deleteSession(sessionId);
-      return;
-    }
+    // Boosted WAVs are kept after a failure or cancel so a retry reuses them (AUG-125); removed once the transcript is written.
+    if (boostedPath) await fs.unlink(boostedPath).catch(() => {});
   } catch (err) {
+    if (isCancelled()) return;
     const current = await sessionManager.getSession(sessionId);
     if (current?.status === 'failed') return;
     const message = err instanceof WhisperError ? err.message : (err as Error)?.message || 'Transcription failed';
     await sessionManager.updateSession(sessionId, { status: 'failed', error: message });
-  } finally {
-    if (boostedPath) {
-      fs.unlink(boostedPath).catch(() => {});
-    }
   }
 }
 
@@ -87,6 +105,7 @@ async function runDualTranscription(
   boost = false,
   systemOffsetMs = 0,
 ) {
+  const isCancelled = beginTranscriptionJob(sessionId);
   let boostedMicPath: string | null = null;
   let boostedSystemPath: string | null = null;
   try {
@@ -100,17 +119,20 @@ async function runDualTranscription(
       [micInput, systemInput] = await Promise.all([ensureWav(micPath), ensureWav(systemPath)]);
     }
 
-    const [micSegments, systemSegments] = await Promise.all([
-      transcribe(micInput, language, sessionId),
-      transcribe(systemInput, language, sessionId),
-    ]);
+    // One track after the other through the shared batch slot (AUG-125, SplitVox): never two GPU-backed whisper-cli
+    // processes at once.
+    const micSegments = await transcribe(micInput, language, sessionId, isCancelled);
+    const systemSegments = await transcribe(systemInput, language, sessionId, isCancelled);
 
     const aligned = alignDualSegments(micSegments, systemSegments, systemOffsetMs);
     const utterances = mergeDualStream(aligned.mic, aligned.system);
 
     const session = await sessionManager.getSession(sessionId);
     const startedAt = session?.createdAt ?? new Date().toISOString();
-    const duration = utterances.length > 0 ? Math.max(...utterances.map((u) => u.end)) : 0;
+    const tracks = session?.trackDurations;
+    const audioDuration = tracks ? alignedDualDuration(tracks.mic, tracks.system, systemOffsetMs) : 0;
+    const lastEnd = utterances.length > 0 ? Math.max(...utterances.map((u) => u.end)) : 0;
+    const duration = Math.max(audioDuration, lastEnd);
 
     const transcript = renderTranscript(utterances, startedAt, duration);
     await sessionManager.writeTranscript(sessionId, transcript);
@@ -123,21 +145,19 @@ async function runDualTranscription(
     const completedSession = await sessionManager.getSession(sessionId);
     if (completedSession?.transcriptionStartedAt) {
       const processingTime = (Date.now() - new Date(completedSession.transcriptionStartedAt).getTime()) / 1000;
-      await recordCompletion(duration, processingTime, true);
+      const workSec = tracks ? tracks.mic + tracks.system : duration;
+      await recordCompletion(workSec, processingTime, true);
     }
 
-    if (duration > 0 && duration < 30) {
-      await sessionManager.deleteSession(sessionId);
-      return;
-    }
+    // Boosted WAVs are kept after a failure or cancel so a retry reuses them (AUG-125); removed once the transcript is written.
+    if (boostedMicPath) await fs.unlink(boostedMicPath).catch(() => {});
+    if (boostedSystemPath) await fs.unlink(boostedSystemPath).catch(() => {});
   } catch (err) {
+    if (isCancelled()) return;
     const current = await sessionManager.getSession(sessionId);
     if (current?.status === 'failed') return;
     const message = err instanceof WhisperError ? err.message : (err as Error)?.message || 'Transcription failed';
     await sessionManager.updateSession(sessionId, { status: 'failed', error: message });
-  } finally {
-    if (boostedMicPath) fs.unlink(boostedMicPath).catch(() => {});
-    if (boostedSystemPath) fs.unlink(boostedSystemPath).catch(() => {});
   }
 }
 
@@ -312,14 +332,14 @@ router.post('/upload', upload.fields([
         await fs.unlink(systemFile!.path).catch(() => {});
       }
 
-      const micWav = await ensureWav(micDest);
-      const audioDur = await getAudioDuration(micWav);
-      const estDur = audioDur > 0 ? await getEstimatedDuration(audioDur, true) : 0;
+      const prep = await prepareDualTracks(session.id, micDest, sysDest, systemOffsetMs);
       const inProgress = await sessionManager.updateSession(session.id, {
         status: 'transcribing',
         transcriptionStartedAt: new Date().toISOString(),
-        duration: audioDur > 0 ? audioDur : undefined,
-        ...(estDur > 0 ? { estimatedDuration: estDur } : {}),
+        duration: prep.duration > 0 ? prep.duration : undefined,
+        ...(prep.estimatedDuration > 0 ? { estimatedDuration: prep.estimatedDuration } : {}),
+        trackDurations: { mic: prep.micSec, system: prep.systemSec },
+        trackWarning: prep.trackWarning ?? undefined,
         ...(systemOffsetMs !== 0 ? { systemOffsetMs } : {}),
       });
       void runDualTranscription(session.id, micDest, sysDest, language, false, systemOffsetMs);
@@ -423,17 +443,18 @@ router.post('/:id/retranscribe', async (req, res) => {
   const audioFiles = await findAudioFiles(audioDir);
 
   if (session.dualTrack && audioFiles.mic && audioFiles.system) {
-    const micWav = await ensureWav(audioFiles.mic);
-    const audioDur = await getAudioDuration(micWav);
-    const estDur = audioDur > 0 ? await getEstimatedDuration(audioDur, true) : 0;
+    const systemOffsetMs = session.systemOffsetMs ?? 0;
+    const prep = await prepareDualTracks(req.params.id, audioFiles.mic, audioFiles.system, systemOffsetMs);
     const updated = await sessionManager.updateSession(req.params.id, {
       status: 'transcribing',
       error: undefined,
       transcriptionStartedAt: new Date().toISOString(),
-      duration: audioDur > 0 ? audioDur : undefined,
-      ...(estDur > 0 ? { estimatedDuration: estDur } : {}),
+      duration: prep.duration > 0 ? prep.duration : undefined,
+      ...(prep.estimatedDuration > 0 ? { estimatedDuration: prep.estimatedDuration } : {}),
+      trackDurations: { mic: prep.micSec, system: prep.systemSec },
+      trackWarning: prep.trackWarning ?? undefined,
     });
-    void runDualTranscription(req.params.id, audioFiles.mic, audioFiles.system, language, !!boost, session.systemOffsetMs ?? 0);
+    void runDualTranscription(req.params.id, audioFiles.mic, audioFiles.system, language, !!boost, systemOffsetMs);
     res.json(updated ?? session);
   } else if (audioFiles.single) {
     const wavPath = await ensureWav(audioFiles.single);

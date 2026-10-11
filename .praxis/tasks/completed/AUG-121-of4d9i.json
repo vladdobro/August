@@ -1,0 +1,15 @@
+{
+  "id": "AUG-121-of4d9i",
+  "assignee": "assistant.json",
+  "priority": "medium",
+  "status": "to_review",
+  "title": "[AUG-121] Recordings: not working",
+  "why_we_need_this": "After the meeting, the recording is not saved and does not appear in #sessions\n\nRunning the dev version on macOS\n\n## Page Feedback: /\nViewport: 1280×788\n\n### 1. <App> <SessionList> div [Sessions]\nLocation: #root > .app-layout > .session-list > .session-list-items\nSource: /Users/rugarov/git/August/client/src/components/SessionList.tsx:355:7\nReact: <App> <SessionList>\nFeedback: #sessions",
+  "acceptance_criteria": "",
+  "important_constraints": "",
+  "labels": [],
+  "on_hold_reason": "",
+  "contextRouterIncluded": true,
+  "created_at": 1790339186969,
+  "column_entered_at": 1790339959973
+}

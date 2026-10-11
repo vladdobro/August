@@ -1,7 +1,7 @@
 {
   "name": "august",
   "productName": "August",
-  "version": "0.0.14",
+  "version": "0.0.21",
   "description": "Local-first meeting transcription with whisper.cpp — web app and Electron desktop shell",
   "author": "vladdobro",
   "private": true,
@@ -14,7 +14,8 @@
     "dev:electron": "concurrently -k -n server,client,electron \"npm run dev:server\" \"npm run dev:client\" \"npm run electron:dev\"",
     "install:all": "npm install && cd server && npm install && cd ../client && npm install",
     "setup": "cd server && npm run setup",
-    "build": "npm run build:client && npm run build:server && npm run electron:compile",
+    "version:sync": "node electron/scripts/sync-version.mjs",
+    "build": "npm run version:sync && npm run build:client && npm run build:server && npm run electron:compile",
     "build:client": "cd client && npm run build",
     "build:server": "cd server && npm run build",
     "electron:compile": "tsc -p electron/tsconfig.json",

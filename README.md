@@ -1,5 +1,12 @@
 # August
 
+## TL;DR
+
+Pack DMG
+```commandline
+npm run electron:dist -- --mac
+```
+
 August is a local-first meeting transcription app. A React + Vite client talks to an Express + TypeScript
 server, which transcribes audio with `whisper.cpp` (v1.8.4) via a bundled `whisper-cli` binary — no audio
 ever needs to leave the machine unless you opt into Groq for live transcription. August ships two ways:

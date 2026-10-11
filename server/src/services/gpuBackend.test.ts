@@ -6,6 +6,7 @@ import {
   describeExit,
   formatExitCode,
   GpuState,
+  ranOnCpuWithoutVulkanDevice,
   resolveGpuPolicy,
   runWithGpuFallback,
   STATUS_DLL_NOT_FOUND,
@@ -227,6 +228,29 @@ describe('GpuState', () => {
       .toBe('forced on via WHISPER_USE_GPU=1 (vulkan)');
     expect(new GpuState(resolveGpuPolicy({ platform: 'win32', arch: 'x64', override: false })).describePolicy())
       .toBe('forced off via WHISPER_USE_GPU=0');
+  });
+});
+
+describe('ranOnCpuWithoutVulkanDevice', () => {
+  test('metal policy with empty stderr is not a CPU run', () => {
+    const state = new GpuState(resolveGpuPolicy({ platform: 'darwin', arch: 'arm64', override: null }));
+    expect(ranOnCpuWithoutVulkanDevice(state, '')).toBe(false);
+  });
+
+  test('vulkan policy without banner is a CPU run', () => {
+    const state = new GpuState(resolveGpuPolicy({ platform: 'win32', arch: 'x64', override: null }));
+    expect(ranOnCpuWithoutVulkanDevice(state, '')).toBe(true);
+  });
+
+  test('vulkan policy with banner is not a CPU run', () => {
+    const state = new GpuState(resolveGpuPolicy({ platform: 'win32', arch: 'x64', override: null }));
+    expect(ranOnCpuWithoutVulkanDevice(state, 'ggml_vulkan: Found 1 Vulkan devices:')).toBe(false);
+  });
+
+  test('vulkan state already on CPU is not flipped again', () => {
+    const state = new GpuState(resolveGpuPolicy({ platform: 'win32', arch: 'x64', override: null }));
+    state.markGpuUnusable('x');
+    expect(ranOnCpuWithoutVulkanDevice(state, '')).toBe(false);
   });
 });
 

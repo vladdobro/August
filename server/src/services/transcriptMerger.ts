@@ -210,6 +210,31 @@ export function alignDualSegments(
   return { mic: micSegments, system: systemSegments };
 }
 
+/// Real call length of a dual-track session on the aligned timeline (AUG-125). alignDualSegments shifts the
+/// later-starting track by |systemOffsetMs|, so each track ends at its own length plus its shift.
+export function alignedDualDuration(micSec: number, systemSec: number, systemOffsetMs: number): number {
+  const offsetSec = (Number.isFinite(systemOffsetMs) ? systemOffsetMs : 0) / 1000;
+  return Math.max(micSec + Math.max(0, -offsetSec), systemSec + Math.max(0, offsetSec));
+}
+
+export const TRACK_MISMATCH_MIN_SEC = 60;
+export const TRACK_MISMATCH_RATIO = 0.1;
+export const TRACK_MISMATCH_TOLERANCE_SEC = 2;
+
+/// Non-blocking notice when one dual-track file is much shorter than the other (>60 s or >10% of the longer one,
+/// ignoring the ±2 s stop jitter). null when both lengths are unknown/zero or close enough.
+export function describeTrackMismatch(micSec: number, systemSec: number): string | null {
+  if (!(micSec > 0) || !(systemSec > 0)) return null;
+  const diff = Math.abs(micSec - systemSec);
+  const longer = Math.max(micSec, systemSec);
+  if (diff <= TRACK_MISMATCH_TOLERANCE_SEC) return null;
+  if (diff <= TRACK_MISMATCH_MIN_SEC && diff <= TRACK_MISMATCH_RATIO * longer) return null;
+  if (micSec < systemSec) {
+    return `Mic track is shorter than system audio (${formatTimestamp(micSec)} vs ${formatTimestamp(systemSec)}) — [Me] lines stop after ${formatTimestamp(micSec)}.`;
+  }
+  return `System audio track is shorter than mic (${formatTimestamp(systemSec)} vs ${formatTimestamp(micSec)}) — [Them] lines stop after ${formatTimestamp(systemSec)}.`;
+}
+
 /// Merges two independently-transcribed streams (mic + system audio) into a
 /// single chronological, role-tagged utterance list. Each stream is gated
 /// the same way mergeSingleStream gates its one stream, then the two

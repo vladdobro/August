@@ -111,9 +111,11 @@ function isLikelyFiller(text: string): boolean {
 
 async function transcribeChunk(wavPath: string, language: string): Promise<string> {
   const outputBase = wavPath.slice(0, -path.extname(wavPath).length);
+  // Silero VAD (AUG-127): a chunk with no detected speech decodes to no segments, so it emits no line. Missing model → runWhisper warns once and decodes without VAD.
   const parsed = await runWhisper({
     audioPath: wavPath,
     language,
+    vad: true,
     outputBase,
     timeoutMs: CHUNK_TIMEOUT_MS,
     maxBuffer: 1024 * 1024 * 16,

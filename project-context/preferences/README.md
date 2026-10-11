@@ -51,7 +51,7 @@ Eliminate repeated manual re-configuration every app session. Before this system
 - No database — file-based only, consistent with the local-first architecture.
 - PATCH merges into existing data (spread operator) — it never replaces the entire file.
 - systemAudioSource never disables system audio — when systemAudio is false, the source field is ignored.
-- Without a detected capture method (no WASAPI helper, Stereo Mix or VB-Cable on Windows; no BlackHole or audiotee on macOS), every systemAudioSource value resolves to the browser picker; there is no regression path.
+- Without a detected capture method (no WASAPI helper, Stereo Mix or VB-Cable on Windows; no bundled or PATH audiotee and no BlackHole on macOS — run npm run setup to build the bundled audiotee), every systemAudioSource value resolves to the browser picker; there is no regression path.
 - DELETE removes the file entirely — there is no "partial reset".
 
 ## Key Files

@@ -76,6 +76,33 @@ export function resolveFfmpegPaths(input: {
   return { ffmpeg: binName('ffmpeg'), ffprobe: binName('ffprobe'), source: 'path' };
 }
 
+export type AudioteeSource = 'env' | 'bundled' | 'path';
+
+export interface AudioteePaths {
+  path: string;
+  source: AudioteeSource;
+}
+
+/// Resolves the audiotee Core Audio tap helper (AUG-118). Precedence:
+///  1. AUDIOTEE_PATH env — an explicit audiotee executable.
+///  2. Bundled build — audiotee next to whisper-cli (whisper/bin/<platform>/ in the repo, resources/whisper/bin/<platform>/
+///     when packaged), built by `npm run setup`.
+///  3. PATH fallback — bare `audiotee`, so dev machines with a manual install keep working.
+/// Pure: every input is injected so the precedence is unit-testable without touching the file system.
+export function resolveAudioteePath(input: {
+  envPath: string | undefined;
+  bundledDirs: string[];
+  exists: (p: string) => boolean;
+}): AudioteePaths {
+  const envPath = input.envPath?.trim();
+  if (envPath) return { path: path.resolve(envPath), source: 'env' };
+  for (const dir of input.bundledDirs) {
+    const candidate = path.join(dir, 'audiotee');
+    if (input.exists(candidate)) return { path: candidate, source: 'bundled' };
+  }
+  return { path: 'audiotee', source: 'path' };
+}
+
 /// WHISPER_USE_GPU=0|1 (also true/false, on/off, yes/no) pins the whisper GPU mode and disables the runtime
 /// probe + automatic CPU fallback (AUG-116). Unset, blank or unrecognised → null → platform default with fallback.
 export function parseGpuOverride(raw: string | undefined): boolean | null {
@@ -93,6 +120,23 @@ export const WHISPER_MODEL = {
   sizeBytes: 874188075,
 } as const;
 
+/// Silero VAD model for whisper.cpp `--vad` (AUG-125): non-speech regions are skipped instead of decoded. ~0.9 MB, so
+/// `npm run setup` places it next to whisper-cli in whisper/bin/<platform>/ and both electron-builder extraResources
+/// (mac + win) ship it without config changes.
+export const WHISPER_VAD_MODEL = {
+  fileName: 'ggml-silero-v5.1.2.bin',
+  url: 'https://huggingface.co/ggml-org/whisper-vad/resolve/main/ggml-silero-v5.1.2.bin',
+  sha256: '29940d98d42b91fbd05ce489f3ecf7c72f0a42f027e4875919a28fb4c04ea2cf',
+  sizeBytes: 885098,
+} as const;
+
+/// Post-recording decoding parameters (AUG-125), ported from SplitVox: greedy decoding (beam search was 1.6-3.4x
+/// slower with no quality gain), flash attention left at whisper-cli's default (on).
+export const WHISPER_DECODING = {
+  beamSize: 1,
+  bestOf: 1,
+} as const;
+
 function defaultWhisperModelPath(): string {
   return path.resolve(repoRoot, 'whisper', 'models', WHISPER_MODEL.fileName);
 }
@@ -105,6 +149,8 @@ export interface AppConfig {
   port: number;
   whisperBinPath: string;
   whisperModelPath: string;
+  // Silero VAD model (AUG-125): WHISPER_VAD_MODEL_PATH env → next to whisper-cli.
+  whisperVadModelPath: string;
   // ffmpeg / ffprobe executables (AUG-115): FFMPEG_PATH env → bundled build next to whisper-cli → PATH.
   ffmpegPath: string;
   ffprobePath: string;
@@ -122,6 +168,8 @@ export interface AppConfig {
   // Explicit override (AUDIOTEE_SAMPLE_FORMAT=s16le|f32le) for the raw PCM format audiotee writes to
   // stdout. null = sniff it from a short probe of the binary's output (AUG-107, services/pcmSampleFormat.ts).
   audioteeSampleFormat: string | null;
+  // audiotee Core Audio tap helper (AUG-118): AUDIOTEE_PATH env → bundled next to whisper-cli → PATH.
+  audioteePath: string;
   // WHISPER_USE_GPU override (AUG-116): true/false pins the mode, null = platform default (Metal on Apple Silicon,
   // Vulkan on Windows x64, --no-gpu elsewhere) with automatic CPU fallback. Effective mode: services/gpuBackend.ts.
   whisperGpuOverride: boolean | null;
@@ -138,12 +186,19 @@ const ffmpegPaths = resolveFfmpegPaths({
   exists: (filePath) => fs.existsSync(filePath),
 });
 
+const audioteePaths = resolveAudioteePath({
+  envPath: process.env.AUDIOTEE_PATH,
+  bundledDirs: [...new Set([path.dirname(whisperBinPath), path.dirname(defaultWhisperBinPath())])],
+  exists: (filePath) => fs.existsSync(filePath),
+});
+
 export const config: AppConfig = {
   port: Number(process.env.PORT) || 3001,
   whisperBinPath,
   whisperModelPath: process.env.WHISPER_MODEL_PATH?.trim()
     ? path.resolve(process.env.WHISPER_MODEL_PATH.trim())
     : defaultWhisperModelPath(),
+  whisperVadModelPath: process.env.WHISPER_VAD_MODEL_PATH?.trim() ? path.resolve(process.env.WHISPER_VAD_MODEL_PATH.trim()) : path.join(path.dirname(whisperBinPath), WHISPER_VAD_MODEL.fileName),
   ffmpegPath: ffmpegPaths.ffmpeg,
   ffprobePath: ffmpegPaths.ffprobe,
   ffmpegSource: ffmpegPaths.source,
@@ -154,6 +209,7 @@ export const config: AppConfig = {
   toolsDir: path.join(dataDir, 'tools'),
   wasapiHelperSourcePath: path.resolve(serverRoot, 'tools', 'wasapi-loopback', 'WasapiLoopback.cs'),
   audioteeSampleFormat: process.env.AUDIOTEE_SAMPLE_FORMAT?.trim() || null,
+  audioteePath: audioteePaths.path,
   whisperGpuOverride: parseGpuOverride(process.env.WHISPER_USE_GPU),
   groqApiKey: process.env.GROQ_API_KEY?.trim() || null,
 };
