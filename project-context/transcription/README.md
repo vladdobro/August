@@ -30,6 +30,10 @@
 - Live transcription mode streams real-time audio chunks over WebSocket to whisper-cli or Groq Whisper API (opt-in) — see child route live-transcription/.
 - Live transcription supports two engines: local whisper-cli (default) and Groq Whisper API (opt-in via GROQ_API_KEY); post-recording transcription is always local.
 - Per-platform binaries, the setup script, and model auto-download live in the whisper-setup child route.
+- Live phantom [Me] lines ("Okay.") are prevented by a frame-based speech gate plus Silero VAD on live local chunks (AUG-127; root cause AUG-126).
+- Live repeated fragments come from the 1 s chunk overlap being decoded twice with no overlap dedup (AUG-126).
+- With --vad, whisper.cpp stretches segment end times across skipped silence, so batch segment ends are unreliable (AUG-126).
+- whisper-cli 1.8.4 JSON lacks no_speech_prob, so the merger no-speech gate is a no-op; token-level p is available (AUG-126).
 
 This route governs how audio becomes a transcript: the whisper.cpp CLI wrapper, the TranscriptMerger cleanup pass, and the session states in between.
 
@@ -65,7 +69,7 @@ Document the exact mechanics of turning a recorded or uploaded audio file into a
 - ETA estimation: estimatedDuration = (mic + system seconds) × median perf ratio for the current GPU/CPU mode; defaults are 0.03 for Metal/GPU and 0.16 for CPU.
 - The upload/retranscribe endpoint computes estimatedDuration synchronously before responding, so the client can render the Chronometer Ring immediately.
 - Greedy decoding rationale: SplitVox measured beam search 1.6-3.4x slower with no quality gain; on Metal the encoder dominates so the gain is small, on CPU it is large.
-- VAD: runWhisper adds --vad --vad-model only when opts.vad is set (transcribe() sets it; live chunks do not) and the model file exists; a missing model logs one warning and transcribes without VAD.
+- VAD: runWhisper adds --vad --vad-model only when opts.vad is set (transcribe() and live transcribeChunk() both set it, AUG-127) and the model file exists; a missing model logs one warning and transcribes without VAD.
 - VAD model path: config.whisperVadModelPath = WHISPER_VAD_MODEL_PATH env, else ggml-silero-v5.1.2.bin next to whisper-cli.
 - session.json optional fields trackDurations {mic, system} (seconds, ffprobe of the 16 kHz WAVs) and trackWarning (string) exist for dual-track sessions only; both are backward compatible.
 - prepareDualTracks() in routes/sessions.ts converts and measures both tracks, then sets duration, estimatedDuration, trackDurations and trackWarning before the response.
@@ -86,6 +90,8 @@ Document the exact mechanics of turning a recorded or uploaded audio file into a
 - joinAdjacentSameRole respects the role field — segments are only joined when they share the same role AND are within the gap threshold.
 - DEDUP_WINDOW = 30.0 seconds — near-duplicate text within this window is collapsed to one segment.
 - NO_SPEECH_PROB_THRESHOLD = 0.6 — segments at or above this whisper.cpp no-speech probability are dropped.
+- The no-speech gate drops a segment only when no_speech_prob is high AND the text is blacklisted; in practice it is a no-op because the field is absent.
+- dedupHallucinations in mergeDualStream compares against the previous kept segment of any role, so an identical [Me] reply after [Them] within 30 s is dropped.
 - --max-context 0 on every invocation.
 - GPU flag per services/gpuBackend.ts: Metal on Apple Silicon, Vulkan on Windows x64 with automatic CPU fallback, --no-gpu elsewhere; WHISPER_USE_GPU=0|1 pins it.
 - Non-GPU whisper failures (bad audio, missing model, cancellation, timeout) are never retried — classification lives in classifyWhisperFailure() and must stay conservative.
@@ -177,3 +183,7 @@ Directory Path: project-context/transcription/live-transcription/
 ### Whisper Setup
 Per-platform whisper-cli binaries, the npm run setup script, model auto-download with SHA256 verification and SSE progress, and ffmpeg pre-flight.
 Directory Path: project-context/transcription/whisper-setup/
+
+### Phantom Lines Research
+AUG-126 research: root causes of phantom mic lines and repeated phrases, filter coverage per path, and ranked fixes.
+Directory Path: project-context/transcription/phantom-lines-research/

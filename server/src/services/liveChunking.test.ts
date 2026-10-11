@@ -1,10 +1,27 @@
 import { describe, test, expect } from 'vitest';
-import { ChunkAccumulator, LivePcmFeeder, parseLiveControlFrame, CHUNK_SAMPLES, OVERLAP_SAMPLES, SAMPLE_RATE } from './liveChunking.js';
+import { ChunkAccumulator, LivePcmFeeder, parseLiveControlFrame, CHUNK_SAMPLES, OVERLAP_SAMPLES, SAMPLE_RATE, hasEnoughSpeech, speechDurationMs } from './liveChunking.js';
 
 function sine(samples: number, amplitude = 0.5, freq = 440): Float32Array {
   const out = new Float32Array(samples);
   for (let i = 0; i < samples; i++) out[i] = amplitude * Math.sin((2 * Math.PI * freq * i) / SAMPLE_RATE);
   return out;
+}
+/// Near-silent floor (like Chromium-noise-suppressed mic) with `bursts` of 220 Hz tone at [startSec, durSec].
+function withBursts(totalSamples: number, bursts: Array<[number, number]>, amplitude = 0.1): Float32Array {
+  const out = new Float32Array(totalSamples);
+  for (let i = 0; i < totalSamples; i++) out[i] = 0.00005 * Math.sin(i * 0.37);
+  for (const [startSec, durSec] of bursts) {
+    const start = Math.round(startSec * SAMPLE_RATE);
+    const end = Math.min(totalSamples, start + Math.round(durSec * SAMPLE_RATE));
+    for (let i = start; i < end; i++) out[i] += amplitude * Math.sin((2 * Math.PI * 220 * i) / SAMPLE_RATE);
+  }
+  return out;
+}
+function emitted(samples: Float32Array): number {
+  const acc = new ChunkAccumulator();
+  let n = 0;
+  acc.feed(samples, () => n++);
+  return n;
 }
 function toS16le(samples: Float32Array): Buffer {
   const buf = Buffer.alloc(samples.length * 2);
@@ -78,6 +95,58 @@ describe('ChunkAccumulator', () => {
     expect(acc.flush((c) => chunks.push(c))).toBe(true);
     expect(chunks.length).toBe(2);
     expect(chunks[1].length).toBe(SAMPLE_RATE);
+  });
+});
+
+describe('speech gate', () => {
+  test('silent window is dropped', () => {
+    const w = new Float32Array(CHUNK_SAMPLES);
+    expect(speechDurationMs(w)).toBe(0);
+    expect(hasEnoughSpeech(w)).toBe(false);
+    expect(emitted(w)).toBe(0);
+  });
+
+  test('transient-only window (clicks, thumps) is dropped', () => {
+    const w = withBursts(CHUNK_SAMPLES, [[0.5, 0.06], [1.7, 0.06], [3.0, 0.06], [2.2, 0.12]], 0.2);
+    expect(hasEnoughSpeech(w)).toBe(false);
+    expect(emitted(w)).toBe(0);
+  });
+
+  test('short real utterance with a closure gap passes', () => {
+    const w = withBursts(CHUNK_SAMPLES, [[1.5, 0.12], [1.68, 0.26]], 0.05);
+    expect(hasEnoughSpeech(w)).toBe(true);
+    expect(emitted(w)).toBe(1);
+  });
+
+  test('quiet speech below the old whole-window RMS gate passes', () => {
+    const w = withBursts(CHUNK_SAMPLES, [[1.5, 1.5]], 0.012);
+    expect(hasEnoughSpeech(w)).toBe(true);
+    expect(emitted(w)).toBe(1);
+  });
+
+  test('normal speech passes with plenty of counted speech', () => {
+    const durs = [0.3, 0.5, 0.4, 0.5, 0.3, 0.5, 0.4, 0.5];
+    const bursts: Array<[number, number]> = [];
+    let t = 0;
+    for (const d of durs) {
+      if (t + d > 4) break;
+      bursts.push([t, d]);
+      t += d + 0.15;
+    }
+    const w = withBursts(CHUNK_SAMPLES, bursts, 0.1);
+    expect(hasEnoughSpeech(w)).toBe(true);
+    expect(speechDurationMs(w)).toBeGreaterThanOrEqual(2000);
+  });
+
+  test('flush uses the same gate', () => {
+    const acc = new ChunkAccumulator();
+    let n = 0;
+    // Speech only in the first 2 s, so the carried 1 s overlap is silent.
+    acc.feed(withBursts(CHUNK_SAMPLES, [[0.5, 1.5]]), () => n++);
+    expect(n).toBe(1);
+    acc.feed(new Float32Array(SAMPLE_RATE), () => n++);
+    expect(acc.flush(() => n++)).toBe(false);
+    expect(n).toBe(1);
   });
 });
 

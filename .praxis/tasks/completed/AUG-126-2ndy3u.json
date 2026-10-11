@@ -1,0 +1,19 @@
+{
+  "id": "AUG-126-2ndy3u",
+  "assignee": "jarvis.json",
+  "priority": "high",
+  "status": "completed",
+  "title": "[AUG-126] Research: phantom \"Okay\"/\"Blessings\"/\"*thinks*\" lines and repeated phrases in dual-track transcripts",
+  "why_we_need_this": "Dual-track transcripts contain text the speaker never said. On the mic track (\"Me\") whisper emits phantom lines between real \"Them\" utterances: \"Okay.\" (most frequent), \"okay\", \"Blessings.\", \"bless\", \"*thinks*\", \"*crash*\", \"so\", \"Thomas.\", \"My lips are almost completely broken.\", \"We've already passed.\", \"It's a bit of a blue.\". The system track (\"Them\") repeats phrase fragments: \"card in there card in there\", \"the report. the report.\", \"If I remember. If I remember. remember.\", \"I know, I know, I know...\".\n\nLikely causes to confirm or rule out:\n1. Whisper hallucinating on silent or near-silent mic segments (known large-v3/turbo behavior), so VAD/no-speech gating is missing or too weak.\n2. System audio (speaker output) bleeding into the mic track, so the mic track transcribes faint echoes of \"Them\".\n3. Chunk overlap or merge logic (TranscriptMerger, live chunking) that does not deduplicate overlapping text at boundaries.\n4. The existing filler/hallucination filter (live pipeline) not running for post-recording or retranscription, or missing these patterns.\n\nThese lines make transcripts noisy and misleading, and they hurt downstream summaries and recaps.",
+  "acceptance_criteria": "- [ ] Identify which pipeline produced the sample (live local, live Groq, post-recording, or retranscribe) and document the full mic and system track flow: chunking, whisper flags, VAD, merger, filters\n- [ ] Determine the root cause of the phantom mic-track lines, backed by evidence (whisper flags in use, no_speech/VAD settings, mic RMS during those segments, echo or bleed check)\n- [ ] Determine the root cause of the repeated phrase fragments (chunk overlap vs. merger dedup vs. whisper repetition), backed by evidence from code and/or a reproduced run\n- [ ] Check whether the existing filler/hallucination filter applies to every transcription path, and list the gaps\n- [ ] Propose concrete fixes ranked by impact and effort, e.g. whisper VAD (--vad with Silero model), --no-speech-thold, --suppress-nst, energy gating per chunk, overlap dedup in the merger, a mic-vs-system echo suppression heuristic. Each fix names the target files and its macOS/Windows impact.\n- [ ] Write the findings to a research doc under project-context/transcription/ and recommend follow-up implementation tasks (do not implement them)",
+  "important_constraints": "Research only: no production code changes. Cover both macOS and Windows. All inference must stay local through whisper-cli (Groq is opt-in live only). Do not revert changes made by other agents. Sample transcript (Me = mic, Them = system audio) is quoted in the description above.",
+  "labels": [
+    "research",
+    "transcription",
+    "whisper"
+  ],
+  "on_hold_reason": "",
+  "contextRouterIncluded": true,
+  "created_at": 1791193301621,
+  "column_entered_at": 1791203369610
+}

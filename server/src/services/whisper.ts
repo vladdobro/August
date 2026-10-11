@@ -329,7 +329,7 @@ export interface RunWhisperOptions {
   trackingKey?: string;
   timeoutMs?: number;
   maxBuffer?: number;
-  /// Skip non-speech with whisper.cpp's Silero VAD (batch jobs only; live chunks are already short). Ignored when the VAD model is missing.
+  /// Skip non-speech with whisper.cpp's Silero VAD (batch jobs and live chunks, AUG-127). Ignored when the VAD model is missing.
   vad?: boolean;
 }
 
@@ -352,7 +352,7 @@ async function vadModelAvailable(): Promise<boolean> {
 /// SplitVox's WhisperTranscriber.cs: max-context 0 (anti-loop defense), GPU per
 /// gpuBackend.ts (Metal on Apple Silicon, Vulkan on Windows x64 with a one-shot
 /// --no-gpu retry + process-wide CPU fallback, WHISPER_USE_GPU override), full JSON output for timestamps.
-/// Decoding is greedy (WHISPER_DECODING, AUG-125) and batch jobs may add whisper.cpp's Silero VAD (`vad`); timestamps
+/// Decoding is greedy (WHISPER_DECODING, AUG-125) and batch jobs and live chunks add whisper.cpp's Silero VAD (`vad`); timestamps
 /// stay on the original timeline because whisper.cpp maps VAD segments back. Note:
 /// this whisper-cli build's --output-json-full does not actually emit a
 /// per-segment no_speech_prob field (verified by inspecting the binary), so

@@ -1,0 +1,20 @@
+{
+  "id": "AUG-127-fhbuwk",
+  "assignee": "jarvis.json",
+  "priority": "high",
+  "status": "to_review",
+  "title": "[AUG-127] Live transcription: speech gate + whisper VAD so silent mic windows never produce phantom \"Okay.\" lines",
+  "why_we_need_this": "AUG-126 research (@project-context/transcription/phantom-lines-research/README.md) found that live [Me] phantom lines (\"Okay.\", \"Blessings.\", \"*thinks*\") come from 4 s mic windows that are near-silent except for one short transient (click, breath, keyboard). The current gate checks RMS over the whole window (> 0.006), so one transient lets the window through; live chunks run without Silero VAD and Groq has no speech check, so whisper hallucinates a short phrase. In the repro on session e1ebe18a, 2 of 10 gated mic windows became \"Okay.\" and whisper `--vad` removed both while keeping all real speech. Phantom lines make the live transcript misleading and pollute anything built on it. Blacklisting \"okay\" is not an option because it deletes real replies — the fix must judge the audio, not the word.",
+  "acceptance_criteria": "- [ ] A live chunk is sent to any engine (local whisper or Groq) only when it contains at least ~250–300 ms of detected speech; a window with only a short transient (click/breath, < ~100 ms) is not sent\n- [ ] The speech gate replaces the whole-window RMS check in both chunkers (`client/src/services/liveTranscriptionClient.ts` and `server/src/services/liveChunking.ts`), and the two stay behaviorally identical\n- [ ] Local live chunks run whisper-cli with Silero VAD (`vad: true` in `transcribeChunk` in `server/src/services/liveTranscription.ts`); a chunk where VAD finds no speech emits no line\n- [ ] Missing VAD model keeps live working (existing one-time warning, transcribe without VAD) — no crash, no per-chunk log spam\n- [ ] Unit tests in `server/src/services/liveChunking.test.ts` cover: silent window dropped, transient-only window dropped, short real utterance (~0.4 s \"okay\") kept, normal speech kept\n- [ ] Replay validation on reference session e1ebe18a, mic 1300–1900 s (method in the research README): zero phantom \"Okay.\" lines, and the real speech windows at 1864–1879 s still produce text\n- [ ] Measured Groq request rate for a two-track live session is reported (before/after) and stays ≤ 20 req/min in the replay\n- [ ] Verified on macOS; Windows impact stated (same JS gate; VAD model present in `whisper/bin/win-x64/`) and checked on Windows if a machine is available, otherwise stated as unverified\n- [ ] project-context/transcription/live-transcription/README.md updated: new gate rule, thresholds, VAD on live chunks",
+  "important_constraints": "- Inference stays local; the speech gate must run locally (no cloud VAD). Groq stays opt-in live only.\n- Must work identically on macOS (arm64 + x64) and Windows x64; no platform-specific native module unless bundled for all three.\n- Preferred gate: frame-based speech detector (e.g. 20–30 ms frames, require N ms above a speech threshold). A browser Silero/ONNX VAD is acceptable only if it bundles cleanly in Electron on all platforms — justify the dependency.\n- Do not just raise the RMS threshold — quiet real speech at 0.006–0.01 would be lost.\n- Do not add \"okay\"/\"so\"/etc. to HALLUCINATION_BLACKLIST.\n- Out of scope: overlap dedup of repeated phrases, Groq verbose_json no-speech gate, batch pipeline changes, sound-event (\"*thinks*\") filter — separate tasks.\n- Keep --max-context 0 and greedy decoding on live chunks. Do not revert other agents' changes.",
+  "labels": [
+    "transcription",
+    "live",
+    "whisper",
+    "vad"
+  ],
+  "on_hold_reason": "",
+  "contextRouterIncluded": true,
+  "created_at": 1791203391173,
+  "column_entered_at": 1791203868583
+}
