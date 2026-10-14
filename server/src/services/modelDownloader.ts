@@ -100,37 +100,50 @@ async function doEnsureWhisperModel(): Promise<void> {
     }
   };
 
-  try {
-    const { sha256 } = await downloadToFile(WHISPER_MODEL.url, partPath, {
-      expectedBytes: totalBytes,
-      offlineMessage: 'No internet connection. Cannot download the whisper model.',
-      onProgress,
-    });
+  const MAX_ATTEMPTS = 3;
+  for (let attempt = 1; attempt <= MAX_ATTEMPTS; attempt++) {
+    try {
+      const { sha256 } = await downloadToFile(WHISPER_MODEL.url, partPath, {
+        expectedBytes: totalBytes,
+        stallTimeoutMs: 300_000,
+        offlineMessage: 'No internet connection. Cannot download the whisper model.',
+        onProgress,
+      });
 
-    setStatus({ verifying: true });
-    const expected = WHISPER_MODEL.sha256.toLowerCase();
-    const actual = sha256.toLowerCase();
-    if (actual !== expected) {
+      setStatus({ verifying: true });
+      const expected = WHISPER_MODEL.sha256.toLowerCase();
+      const actual = sha256.toLowerCase();
+      if (actual !== expected) {
+        await fs.unlink(partPath).catch(() => {});
+        const error = `Model checksum mismatch (expected ${expected}, got ${actual}). The corrupted file was deleted — restart the server to retry.`;
+        console.error(error);
+        setStatus({ state: 'missing', verifying: false, error });
+        return;
+      }
+
+      await fs.rename(partPath, modelPath);
+      setStatus({ state: 'present', percent: 100, verifying: false, error: null });
+      console.log(`✔ Whisper model ready at ${modelPath}`);
+      return;
+    } catch (err) {
       await fs.unlink(partPath).catch(() => {});
-      const error = `Model checksum mismatch (expected ${expected}, got ${actual}). The corrupted file was deleted — restart the server to retry.`;
+      if (isOfflineError(err)) {
+        const error = 'No internet connection. Cannot download the whisper model.';
+        console.error(error);
+        setStatus({ state: 'missing', verifying: false, error });
+        return;
+      }
+      const msg = (err as Error)?.message || String(err);
+      if (attempt < MAX_ATTEMPTS) {
+        const delaySec = attempt * 5;
+        console.warn(`Model download attempt ${attempt}/${MAX_ATTEMPTS} failed: ${msg}. Retrying in ${delaySec}s...`);
+        setStatus({ error: `Download interrupted, retrying (${attempt}/${MAX_ATTEMPTS})...`, percent: 0, bytesDownloaded: 0 });
+        await new Promise(r => setTimeout(r, delaySec * 1000));
+        continue;
+      }
+      const error = `Model download failed after ${MAX_ATTEMPTS} attempts: ${msg}. The incomplete file was deleted — restart the server to retry.`;
       console.error(error);
       setStatus({ state: 'missing', verifying: false, error });
-      return;
     }
-
-    await fs.rename(partPath, modelPath);
-    setStatus({ state: 'present', percent: 100, verifying: false, error: null });
-    console.log(`✔ Whisper model ready at ${modelPath}`);
-  } catch (err) {
-    await fs.unlink(partPath).catch(() => {});
-    let error: string;
-    if (isOfflineError(err)) {
-      error = 'No internet connection. Cannot download the whisper model.';
-    } else {
-      const msg = (err as Error)?.message || String(err);
-      error = `Model download failed: ${msg}. The incomplete file was deleted — restart the server to retry.`;
-    }
-    console.error(error);
-    setStatus({ state: 'missing', verifying: false, error });
   }
 }
