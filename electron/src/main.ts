@@ -95,7 +95,16 @@ function configureServerEnv(): void {
     : path.join(userData, 'data');
   let modelsDir = path.join(userData, 'whisper', 'models');
   try {
-    const custom = fs.readFileSync(path.join(userData, 'model-dir'), 'utf-8').trim();
+    const buf = fs.readFileSync(path.join(userData, 'model-dir'));
+    let custom = '';
+    try {
+      custom = new TextDecoder('utf-8', { fatal: true }).decode(buf).trim();
+    } catch {
+      // NSIS FileWrite uses the system ANSI codepage (e.g. windows-1251),
+      // not UTF-8. Non-ASCII paths (Cyrillic usernames, CJK, etc.) produce
+      // invalid UTF-8. Fall through to the default modelsDir derived from
+      // Electron's app.getPath('userData'), which handles Unicode correctly.
+    }
     if (custom) modelsDir = custom;
   } catch {}
   fs.mkdirSync(dataDir, { recursive: true });
