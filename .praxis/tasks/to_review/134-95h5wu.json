@@ -1,0 +1,18 @@
+{
+  "id": "134-95h5wu",
+  "assignee": "jarvis.json",
+  "priority": "high",
+  "status": "to_review",
+  "title": "[134] Implement GPU/CPU indicator: sidebar footer + settings info panel",
+  "why_we_need_this": "Owner approved mockups A (Sidebar Footer) and D (Settings Info Panel) from task 131. Users currently cannot tell whether transcription runs on GPU or CPU without checking logs. This adds a persistent glanceable signal in the sidebar and a detailed explanation in Settings, using the existing gpuBackend field from /api/health. Prepares the UI for the GPU/CPU choice feature in task 130.",
+  "acceptance_criteria": "1. Sidebar footer shows a slim strip at the bottom of the session list with GPU or CPU status, using the color priority schema: green fill for GPU, outline for CPU by choice, yellow fill for CPU fallback. Include a small icon (GPU chip or CPU chip) and a sublabel (\"Idle\" / \"Transcribing…\" / \"GPU not available\").\n2. Settings modal gains a read-only info block in the Transcription section showing the current engine with a one-line plain-language explanation. Same color coding as sidebar footer. Uses left-border accent style per mockup D.\n3. All states render correctly: GPU active, CPU by choice, CPU as automatic fallback (with distinct yellow coloring and a hint like \"GPU is not available on this computer — transcription will take longer\"), and running vs idle.\n4. Both indicators read `gpuBackend` from the existing `/api/health` response — no new server fields or API changes needed. Thread `healthStatus.gpuBackend` to `SettingsModal` props.\n5. Running state is derived from whether any session currently has status `transcribing`.\n6. Plain language only — no backend method names, device IDs, Vulkan/CUDA/Metal names in the user UI. Both platforms show \"GPU\" or \"CPU\".\n7. Follows the Necron brandbook: border-radius 0 on all elements, correct in both light and dark themes.\n8. CPU fallback must NOT use red — yellow only (color priority schema).",
+  "important_constraints": "No red for CPU fallback — yellow only per color priority schema. No diagnostics in user UI (no backend names, device IDs). Must work on both macOS and Windows — show \"GPU\" not \"Metal\"/\"Vulkan\"/\"CUDA\". Reference mockup artifact: https://claude.ai/artifact/66q1f5PqUqYH6hhNnKRoJG (options A and D). Related to task 130 (GPU/CPU installer choice) — do not duplicate its work.",
+  "labels": [
+    "frontend",
+    "ui"
+  ],
+  "on_hold_reason": "",
+  "contextRouterIncluded": true,
+  "created_at": 1791989814208,
+  "column_entered_at": 1791990869205
+}

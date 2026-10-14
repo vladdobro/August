@@ -21,6 +21,7 @@ import path from 'node:path';
 
 import {
   WHISPER_CPP_VERSION,
+  WHISPER_CUDA_BUILD,
   WHISPER_VAD_MODEL,
   WHISPER_BIN_ROOT,
   WHISPER_BUILD_DIR,
@@ -91,9 +92,9 @@ const FFMPEG_BUILDS: Record<WhisperPlatformDir, FfmpegArchive[]> = {
   ],
 };
 
-// Pinned Vulkan loader (AUG-117). The v1.8.4 Windows release zip links ggml-vulkan.dll into ggml.dll statically, and
-// ggml-vulkan.dll imports vulkan-1.dll, so on a machine without a Vulkan-capable GPU driver whisper-cli dies at process
-// load (0xC0000135) for every flag set — --no-gpu cannot help. Bundling the Khronos loader (LunarG's signed runtime
+// Pinned Vulkan loader (AUG-117). The CPU build (whisper-bin-x64.zip) is CPU-only and does not use Vulkan at all;
+// the loader is bundled for historical reasons and may be used by future Vulkan builds (GPU acceleration on Windows is
+// the CUDA variant, AUG-130). Originally: bundling the Khronos loader (LunarG's signed runtime
 // build; Apache-2.0 + MIT, licence file shipped next to the DLL) makes whisper-cli start everywhere: with no driver the
 // loader reports no device and whisper-cli falls back to CPU by itself. Windows only — the macOS build has no Vulkan.
 // The archive SHA256 was computed from the downloaded zip. Bump url + sha256 + archive paths together when upgrading.
@@ -192,6 +193,39 @@ async function setupWindows(targetDir: string, targetBin: string): Promise<void>
 
   if (!(await fileExists(targetBin))) {
     throw new Error(`whisper-cli.exe missing after extraction (expected at ${targetBin})`);
+  }
+}
+
+async function setupWindowsCuda(targetDir: string): Promise<void> {
+  await fs.mkdir(WHISPER_BUILD_DIR, { recursive: true });
+  const zipPath = path.join(WHISPER_BUILD_DIR, 'whisper-cublas-12.4.0-bin-x64.zip');
+
+  console.log(`Downloading CUDA whisper-cli (v${WHISPER_CPP_VERSION}, CUDA 12.4.0) for Windows x64...`);
+  const lastStep = { value: -1 };
+  const { sha256 } = await downloadToFile(WHISPER_CUDA_BUILD.url, zipPath, {
+    onProgress: logProgressPercent('CUDA download', lastStep),
+  });
+  if (sha256.toLowerCase() !== WHISPER_CUDA_BUILD.sha256.toLowerCase()) {
+    await fs.unlink(zipPath).catch(() => {});
+    throw new Error(`CUDA whisper checksum mismatch (expected ${WHISPER_CUDA_BUILD.sha256}, got ${sha256})`);
+  }
+
+  const extractDir = path.join(WHISPER_BUILD_DIR, 'cuda-extracted');
+  await extractZip(zipPath, extractDir);
+  await fs.mkdir(targetDir, { recursive: true });
+
+  const releaseDir = path.join(extractDir, 'Release');
+  for (const entry of WHISPER_CUDA_BUILD.entries) {
+    const source = path.join(releaseDir, entry);
+    if (!(await fileExists(source))) {
+      throw new Error(`${entry} missing inside CUDA whisper zip`);
+    }
+    await fs.copyFile(source, path.join(targetDir, entry));
+  }
+
+  const targetBin = path.join(targetDir, 'whisper-cli.exe');
+  if (!(await fileExists(targetBin))) {
+    throw new Error(`CUDA whisper-cli.exe missing after extraction (expected at ${targetBin})`);
   }
 }
 
@@ -486,6 +520,27 @@ async function main(): Promise<void> {
     usedBuildDir = true;
   }
   await setupVadModel(targetDir);
+
+  // CUDA variant for GPU-NVIDIA (AUG-130): download on dev machines for testing.
+  // Packaged builds download on demand if the user chose GPU-NVIDIA at install time.
+  if (process.platform === 'win32') {
+    const cudaDir = path.join(WHISPER_BIN_ROOT, WHISPER_CUDA_BUILD.extractedDir);
+    const cudaBin = path.join(cudaDir, 'whisper-cli.exe');
+    if (await fileExists(cudaBin)) {
+      console.log(`✔ CUDA whisper-cli already present at ${cudaBin} — skipping.`);
+    } else {
+      await setupWindowsCuda(cudaDir);
+      usedBuildDir = true;
+    }
+    // Copy VAD model to CUDA dir so it's found next to whisper-cli
+    const cudaVad = path.join(cudaDir, WHISPER_VAD_MODEL.fileName);
+    const cpuVad = path.join(targetDir, WHISPER_VAD_MODEL.fileName);
+    if ((await fileExists(cpuVad)) && !(await fileExists(cudaVad))) {
+      await fs.copyFile(cpuVad, cudaVad);
+      console.log('✔ Copied VAD model to CUDA dir');
+    }
+  }
+
   if (usedBuildDir) {
     await fs.rm(WHISPER_BUILD_DIR, { recursive: true, force: true });
   }
@@ -501,6 +556,11 @@ async function main(): Promise<void> {
 
   if (platformDir === 'win-x64') {
     console.log(`✔ Vulkan loader ${VULKAN_RUNTIME.version} bundled at ${path.join(targetDir, VULKAN_RUNTIME.dllTarget)}`);
+  }
+
+  if (process.platform === 'win32') {
+    const cudaDir = path.join(WHISPER_BIN_ROOT, WHISPER_CUDA_BUILD.extractedDir);
+    console.log(`✔ CUDA whisper-cli ready at ${path.join(cudaDir, 'whisper-cli.exe')}`);
   }
 
   console.log('ℹ The whisper model (~1.6 GB) downloads automatically on first server start.');

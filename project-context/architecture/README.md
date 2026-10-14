@@ -107,7 +107,8 @@ Give any agent working on the codebase a map of the client/server split, how a s
 - The self-test result is cached with the 30 s capability cache; ?refresh=1 re-runs it.
 - Self-test stop uses stopCaptureProcesses() with shorter timeouts (800 ms soft, 1200 ms hard) so a healthy probe finishes within ~3 s.
 - selfTest is 'skipped' on non-darwin, when no method is detected, or when a capture is already running; 'failed' when the process exits early, produces no file, or the file is shorter than 0.5 s.
-- startCapture() never waits for a self-test: it reuses a fresh cached probe or detects only the method. Concurrent capability requests share one in-flight probe.
+- startCapture() never waits for a self-test: it reuses a fresh cached probe or detects only the method. Concurrent capability requests share one in-flight probe; resolveCaptureMethod joins an inflight detectCapabilities probe if one is running, and caches its own probeMethod result (AUG-133).
+- Capability pre-warming: detectCapabilities() fires at server startup (fire-and-forget, does not block listening) so the cache is warm before the first recording (AUG-133).
 - `npm run capture:check` (server/src/scripts/captureCheck.ts) prints platform, avfoundation device list, method, and self-test result for bug reports; exits 0.
 - Capture output is always 16 kHz mono pcm_s16le WAV — the same format ensureWav produces — so the transcription pipeline needs no conversion.
 - audiotee is piped into ffmpeg as raw PCM; its sample format is sniffed on each uncached capability probe, never assumed (AUG-107).
@@ -126,7 +127,7 @@ Give any agent working on the codebase a map of the client/server split, how a s
 - A stopped capture that no session claims is deleted after 10 minutes; a capture claimed by an upload is moved (rename, copy fallback) into the session folder.
 - Track alignment: the client records micStartedAt (Date.now() right after MediaRecorder.start()); systemOffsetMs = capture startedAt − micStartedAt is stored in session.json and applied by alignDualSegments before mergeDualStream, including on retranscribe.
 - Capture startedAt is the first-written-byte time: after spawning ffmpeg the server polls the WAV size with fs.stat every 25 ms (waitForFirstByte in systemCapture.ts) and records the moment it exceeds the 44-byte header (AUG-108).
-- Polling stops at the first byte, on process exit, or after 2 s; on timeout startedAt falls back to spawnedAt and the response carries startedAtSource 'spawn' (otherwise 'first-byte').
+- Polling stops at the first byte, on process exit, or after 8 s; on timeout startedAt falls back to spawnedAt and the response carries startedAtSource 'spawn' (otherwise 'first-byte'). The 8 s budget covers cold-start scenarios where the capture pipeline takes longer to produce its first byte (AUG-133).
 - POST /api/capture/start and /stop return startedAt, spawnedAt and startedAtSource so device startup latency (startedAt − spawnedAt) can be inspected; the same delta is logged with console.debug.
 - Capture ffmpeg runs with -flush_packets 1 (each packet reaches the file immediately instead of waiting for the ~32 KiB AVIO buffer, which is ≈1 s of 16 kHz mono s16le) and -fflags +bitexact (no LIST/INFO chunk, so the header is exactly 44 bytes).
 - The applied systemOffsetMs is stored in session.json only; it is no longer printed in the transcript header (debug it from the session file).

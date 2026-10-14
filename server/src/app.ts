@@ -15,8 +15,9 @@ import captureRouter from './routes/capture.js';
 import { setupLiveTranscription } from './services/liveTranscription.js';
 import { checkFfmpegAvailable, FFMPEG_MISSING_MESSAGE, fileExists, probeGpuBackend } from './services/whisper.js';
 import { gpuState } from './services/gpuBackend.js';
+import { ensureWhisperCuda } from './services/cudaDownloader.js';
 import { ensureWhisperModel } from './services/modelDownloader.js';
-import { cleanupOrphanedCaptures } from './services/systemCapture.js';
+import { cleanupOrphanedCaptures, detectCapabilities } from './services/systemCapture.js';
 import { migrateLegacyPreferences } from './services/preferencesStore.js';
 
 const __filename = fileURLToPath(import.meta.url);
@@ -122,7 +123,9 @@ export async function startServer(options: StartServerOptions = {}): Promise<Run
   console.log(`  Whisper binary: ${config.whisperBinPath}`);
   console.log(`  Whisper model: ${config.whisperModelPath}`);
   console.log(`  Platform: ${process.platform}-${process.arch} (whisper GPU: ${gpuState.describePolicy()})`);
-  void probeGpuBackend().then((backend) => {
+  // AUG-130: CUDA download + GPU probe run after the server is listening so the UI loads immediately.
+  // The probe re-runs after the download finishes so /api/health reports the correct backend.
+  void ensureWhisperCuda().then(() => probeGpuBackend()).then((backend) => {
     const reason = gpuState.fallbackReason();
     console.log(`  Whisper backend: ${backend}${reason ? ` (CPU fallback: ${reason})` : ''}`);
   });
@@ -131,6 +134,7 @@ export async function startServer(options: StartServerOptions = {}): Promise<Run
   console.log(`  Groq API: ${config.groqApiKey ? 'configured' : 'not configured (live mode uses local whisper only)'}`);
 
   void ensureWhisperModel();
+  void detectCapabilities();
 
   return {
     port,

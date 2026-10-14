@@ -162,7 +162,7 @@ const SetupGuide: React.FC<SetupGuideProps> = ({ health, onRefresh, onDismiss })
           <p className="diag-info-line diag-gpu-status">
             {health.gpuBackend === 'unknown'
               ? 'GPU: detecting…'
-              : `GPU acceleration: ${health.gpuBackend === 'vulkan' ? 'Vulkan' : 'Metal'}`}
+              : `GPU acceleration: ${health.gpuBackend === 'vulkan' ? 'Vulkan' : health.gpuBackend === 'cuda' ? 'CUDA (NVIDIA)' : 'Metal'}`}
           </p>
         )}
         {health.gpuBackend === 'cpu' && (

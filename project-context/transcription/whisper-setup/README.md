@@ -15,10 +15,11 @@
 - whisper/bin/ and whisper/.build/ are git-ignored; platform binaries are never committed to the repository.
 - npm run dev runs setup automatically through the root package.json predev hook, and a setup failure never blocks the app from starting.
 - ffmpeg is mandatory for browser recordings; the diagnostics page blocks "Proceed" when neither a bundled nor a PATH ffmpeg is found.
-- Windows x64 whisper-cli runs on Vulkan with automatic CPU fallback: a Vulkan-class failure is retried once with --no-gpu and the process stays on CPU (AUG-116).
+- Windows x64 supports CPU (default) or CUDA/NVIDIA GPU engine, chosen at install time; CUDA downloads on demand (~457 MB).
+- GPU engine choice persists in %APPDATA%/August/gpu-engine and is read by Electron main.ts as WHISPER_GPU_ENGINE.
 - WHISPER_USE_GPU=0|1 pins the GPU mode and disables the startup probe and the fallback; documented in .env.example.
-- /api/health reports gpuBackend ('vulkan' | 'metal' | 'cpu' | 'unknown') from services/gpuBackend.ts; the diagnostics page shows a plain-language CPU line when it is 'cpu'.
-- A missing vulkan-1.dll aborts whisper-cli before main() for every flag set including --no-gpu, because ggml-vulkan.dll is a static import in the v1.8.4 zip.
+- /api/health reports gpuBackend ('vulkan' | 'metal' | 'cuda' | 'cpu' | 'unknown'), gpuEngine ('cpu' | 'cuda') and cudaStatus from services/gpuBackend.ts and cudaDownloader.ts.
+- The CPU build (whisper-bin-x64.zip) is CPU-only; GPU acceleration on Windows uses the separate CUDA 12.4 variant (whisper-cublas-12.4.0-bin-x64.zip, AUG-130).
 - npm run setup bundles the Khronos Vulkan loader vulkan-1.dll plus VulkanRT-License.txt into whisper/bin/win-x64/ from LunarG's SHA256-pinned runtime zip (AUG-117, VULKAN_RUNTIME in setup.ts).
 - With the bundled loader and no GPU driver, whisper-cli runs on CPU by itself and exits 0 without printing the ggml_vulkan device banner.
 - The startup probe flips GpuState to cpu when the ggml_vulkan device banner is absent, so /api/health reports gpuBackend 'cpu' with no retry.
@@ -43,6 +44,14 @@ Explain the setup, binary-distribution, and model-download mechanics behind tran
 - Vulkan device banner: countVulkanDevices() in gpuBackend.ts parses "ggml_vulkan: Found N Vulkan devices" from stderr (printed even with --no-prints and for --help); null/0 means the loader found no driver and whisper-cli is on CPU.
 - Bundled VAD model (AUG-125): setupVadModel() in setup.ts is idempotent, skipping when the file exists with the pinned size 885098 bytes.
 - setupVadModel() downloads to .part, verifies SHA256 29940d98d42b91fbd05ce489f3ecf7c72f0a42f027e4875919a28fb4c04ea2cf, then renames; the source is huggingface ggml-org/whisper-vad, pinned in WHISPER_VAD_MODEL in config.ts.
+- CUDA variant (AUG-130): WHISPER_CUDA_BUILD in config.ts pins the v1.8.4 whisper-cublas-12.4.0-bin-x64.zip (SHA256 b07cff4e..., 457 MB); entries list the 9 files to extract from Release/ inside the zip.
+- CUDA directory layout: dev installs to whisper/bin/win-x64-cuda/; packaged installs download on demand to %APPDATA%/August/whisper/bin/win-x64-cuda/.
+- cudaDownloader.ts (ensureWhisperCuda): downloads and extracts the CUDA variant on first server start when WHISPER_GPU_ENGINE=cuda, following the modelDownloader.ts pattern; idempotent, never throws.
+- CUDA device banner: countCudaDevices() in gpuBackend.ts parses 'ggml_cuda_init: found N CUDA devices' from stderr; null/0 means no NVIDIA GPU and whisper-cli runs on CPU.
+- GPU engine selection: the NSIS installer (installer.nsh) shows a radio page for CPU vs GPU-NVIDIA; the choice persists in %APPDATA%/August/gpu-engine, read by Electron main.ts into WHISPER_GPU_ENGINE.
+- GpuEngine type ('cpu' | 'cuda') in config.ts: parseGpuEngine() reads WHISPER_GPU_ENGINE; resolveGpuPolicy() uses it so Windows returns nativeBackend 'cuda' only when the CUDA engine is selected.
+- defaultWhisperBinPath() in config.ts: when WHISPER_GPU_ENGINE=cuda on Windows, resolves to whisper/bin/win-x64-cuda/ instead of win-x64/.
+- setupWindowsCuda() in setup.ts: downloads the CUDA variant for dev machines; npm run setup runs it after the CPU variant so both are available for testing.
 - electron-builder extraResources already copy whole whisper/bin/darwin-${arch} and whisper/bin/win-x64 folders, so the VAD model ships in the DMG and the Windows installer without builder config changes.
 - The server resolves the VAD model via WHISPER_VAD_MODEL_PATH env, else next to the resolved whisper-cli (works for packaged resources/whisper/bin/<platform>/).
 - ffmpeg sources: Windows uses BtbN's LGPL static build from a permanent autobuild tag; macOS arm64/x64 use Martin Riedl's GPL static release builds, chosen because both publish per-arch static binaries with stable URLs.
@@ -81,10 +90,16 @@ Explain the setup, binary-distribution, and model-download mechanics behind tran
 - Offline failures (DNS/connect error codes) always surface as "No internet connection. Cannot download the whisper model."
 - A download aborts if no bytes arrive for 60 seconds (stall timeout).
 - Both the setup script and the model downloader route their downloads through the shared download.ts helper — never duplicate streaming or hashing logic.
-- GPU mode is owned by services/gpuBackend.ts (GpuState singleton): Metal on darwin-arm64, Vulkan on win32-x64, --no-gpu everywhere else.
+- GPU mode is owned by services/gpuBackend.ts (GpuState singleton): Metal on darwin-arm64, CUDA on win32-x64 when gpuEngine is 'cuda', --no-gpu everywhere else including Windows CPU builds.
 - config.whisperGpuOverride (WHISPER_USE_GPU) is the only configuration input; true/false lock the mode, null enables the probe and fallback.
-- Only the Vulkan build can fall back: on Metal and on a pinned mode, runWhisper() never retries and never alters flags.
-- classifyWhisperFailure() is conservative — only exit 0xC0000135 (STATUS_DLL_NOT_FOUND) or explicit Vulkan error phrasing on stderr counts as a GPU failure; kills, timeouts, ENOENT and every other exit are never retried.
+- Both Vulkan and CUDA builds can fall back: on Metal, CPU-only, and on a pinned mode, runWhisper() never retries and never alters flags.
+- CUDA variant is never bundled in the installer — it downloads on demand (~457 MB) on first launch when GPU-NVIDIA was chosen; the CPU variant is always bundled.
+- Silent/unattended installs default to CPU engine because GpuEngine is initialized as 'cpu' in customInit.
+- The uninstaller always deletes %APPDATA%/August/gpu-engine and %APPDATA%/August/whisper/bin/win-x64-cuda/ to clean up CUDA artifacts.
+- ensureWhisperCuda() runs before runPreflightChecks() and probeGpuBackend() in startServer(), so the CUDA binary is present before the health check and GPU probe.
+- The CUDA 12.4 zip is self-contained: all needed CUDA runtime DLLs (cublas64_12, cublasLt64_12, cudart64_12) ship inside the zip; no system CUDA toolkit required.
+- CUDA 11.8 was evaluated and rejected: its zip does not include cublas64_11.dll, requiring a system cuBLAS install (AUG-130 research).
+- classifyWhisperFailure() is conservative — only exit 0xC0000135 (STATUS_DLL_NOT_FOUND) or explicit Vulkan/CUDA error phrasing on stderr counts as a GPU failure; kills, timeouts, ENOENT and every other exit are never retried.
 - The healthy-run banner "ggml_vulkan: Found 1 Vulkan devices" is printed even with --no-prints and must never match the classifier, or unrelated failures on GPU machines would be re-run on CPU.
 - STATUS_STACK_BUFFER_OVERRUN (0xC0000409) stays classified as non-GPU because it is the non-ASCII path crash handled by toSafePath().
 - The CPU flip is process-wide and permanent until restart, so live chunks and later batch jobs run --no-gpu directly with no per-chunk retry storm.
@@ -122,12 +137,14 @@ Explain the setup, binary-distribution, and model-download mechanics behind tran
 ## Key Files
 
 - server/src/scripts/setup.ts — per-platform whisper-cli installer (setupVadModel() for the Silero VAD model, download for Windows, cmake build for macOS with a portable CMake fallback), legacy migration, pinned FFMPEG_BUILDS table and setupFfmpeg(), pinned VULKAN_RUNTIME and setupVulkanLoader() (Windows), ffmpeg pre-flight.
+- server/src/services/cudaDownloader.ts — ensureWhisperCuda(), CUDA variant download state machine, on-demand extraction of 9 DLLs + exe from the zip (AUG-130).
+- electron/build/installer.nsh — NSIS installer pages for model directory chooser (AUG-119) and GPU engine radio selection (AUG-130); persists choices to %APPDATA%/August/.
 - server/src/services/modelDownloader.ts — ensureWhisperModel(), model status state machine, checksum verification.
 - server/src/services/download.ts — shared streaming download and SHA256 helper (downloadToFile, isOfflineError) used by setup and the model downloader.
 - server/src/routes/setup.ts — GET /api/setup/status and the SSE /api/setup/download-progress stream.
-- server/src/config.ts — whisperPlatformDir(), whisperBinName(), ffmpegBinName(), resolveFfmpegPaths(), parseGpuOverride(), config.whisperGpuOverride, config.ffmpegPath/ffprobePath/ffmpegSource, WHISPER_CPP_VERSION, WHISPER_MODEL constants, repo-root .env loading.
+- server/src/config.ts — whisperPlatformDir(), whisperBinName(), ffmpegBinName(), resolveFfmpegPaths(), parseGpuOverride(), parseGpuEngine(), GpuEngine type, WHISPER_CUDA_BUILD, config.whisperGpuEngine, config.whisperGpuOverride, config.ffmpegPath/ffprobePath/ffmpegSource, WHISPER_CPP_VERSION, WHISPER_MODEL constants, repo-root .env loading.
 - server/src/config.test.ts — unit tests for the ffmpeg resolver precedence (env, bundled, PATH).
-- server/src/services/gpuBackend.ts — GPU policy resolution, GpuState (process-wide mode cache), conservative Vulkan failure classifier, countVulkanDevices() banner parser, runWithGpuFallback() retry-once engine (AUG-116/117).
+- server/src/services/gpuBackend.ts — GPU policy resolution (Metal/CUDA/Vulkan/CPU), GpuState (process-wide mode cache), conservative failure classifier, countVulkanDevices() and countCudaDevices() banner parsers, runWithGpuFallback() retry-once engine (AUG-116/117/130).
 - server/src/services/gpuBackend.test.ts — unit tests for the classifier, the state machine and the retry-once behaviour.
 - client/src/components/ModelDownloadModal.tsx — progress modal and error UI, mounted in App.tsx.
 - whisper/README.md — human-facing setup instructions, binary layout including bundled ffmpeg and the Vulkan loader, ffmpeg resolution order, third-party licence notices.

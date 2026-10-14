@@ -28,6 +28,7 @@
 - Long-press (≥500ms) on the Record button starts recording with saved preferences, bypassing the RecordingModePicker.
 - All animations and transitions disabled under prefers-reduced-motion: reduce.
 - Responsive: 720px switches to vertical layout, shrinks circuit nodes; 640px makes live panel full-width; 600px shrinks chronometer.
+- Sidebar footer shows a GPU/CPU indicator strip; green for GPU, yellow for CPU fallback, with an Idle/Transcribing sublabel.
 
 The frontend design system defines the Necron-themed visual language, color tokens, theme switching, and component styling rules for the August web app.
 
@@ -482,6 +483,10 @@ Session items use flex-direction: column layout instead of the previous horizont
 Bracket colors use hardcoded rgba(0, 200, 118, ...) since the sidebar background is always dark regardless of theme.
 Pulse animations are disabled under prefers-reduced-motion: reduce.
 Responsive: at 720px, center node shrinks to 84px, corner nodes to 56px.
+- Sidebar footer GPU/CPU indicator (.sidebar-footer-indicator) shows the current transcription engine as a slim strip at the bottom of the session list with an icon, label (GPU/CPU), and sublabel (Idle/Transcribing.../GPU not available).
+- GPU indicator uses --gpu-color (green) with --gpu-bg background; CPU fallback uses --cpu-fallback-color (yellow) with --cpu-fallback-bg — never red.
+- The indicator reads gpuBackend from /api/health (vulkan/metal/cuda → GPU green, cpu → CPU fallback yellow, unknown → hidden).
+- Running state for the GPU/CPU indicator is derived from sessions.some(s => s.status === 'transcribing'), not from a separate API field.
 
 ### Font Standards
 

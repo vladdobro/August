@@ -75,9 +75,13 @@ win:
       arch: [x64]
   # Authenticode signing: set CSC_LINK (path/base64 of the .pfx) and CSC_KEY_PASSWORD in the environment.
   # whisper-cli + its DLLs, the bundled Vulkan loader (vulkan-1.dll + VulkanRT-License.txt, AUG-117) and ffmpeg/ffprobe (AUG-115) — everything npm run setup placed in the folder.
+  # The CUDA variant (win-x64-cuda, ~642 MB, AUG-130) downloads on demand at first launch;
+  # uncomment the lines below to bundle it for offline installs (~+450 MB installer size).
   extraResources:
     - from: whisper/bin/win-x64
       to: whisper/bin/win-x64
+    # - from: whisper/bin/win-x64-cuda
+    #   to: whisper/bin/win-x64-cuda
 
 nsis:
   oneClick: false

@@ -2,7 +2,7 @@ import React, { useEffect, useRef, useState } from 'react';
 import type { UserPreferences } from '../services/preferences';
 import { DEFAULT_PREFERENCES, isSystemCaptureUsable, resolveSystemAudioSource } from '../services/preferences';
 import { browsePraxisFolder } from '../api';
-import type { CaptureCapabilities, SystemAudioSource } from '../types';
+import type { CaptureCapabilities, HealthStatus, SystemAudioSource } from '../types';
 import type { DesktopSettings } from '../desktop';
 import { acceleratorFromKeyboardEvent, formatAccelerator } from '../services/desktop';
 
@@ -13,6 +13,8 @@ interface SettingsModalProps {
   onPreferenceChange: (patch: Partial<UserPreferences>) => void;
   onReset: () => void;
   onClose: () => void;
+  gpuBackend?: HealthStatus['gpuBackend'];
+  isTranscribing: boolean;
 }
 
 interface SettingsDropdownOption {
@@ -88,6 +90,8 @@ const SettingsModal: React.FC<SettingsModalProps> = ({
   onPreferenceChange,
   onReset,
   onClose,
+  gpuBackend,
+  isTranscribing,
 }) => {
   const [confirmingReset, setConfirmingReset] = useState(false);
   const [browsing, setBrowsing] = useState(false);
@@ -317,6 +321,42 @@ const SettingsModal: React.FC<SettingsModalProps> = ({
                 onChange={(v) => onPreferenceChange({ retranscriptionLanguage: v || null })}
               />
             </div>
+            {gpuBackend && gpuBackend !== 'unknown' && (() => {
+              const isGpu = gpuBackend !== 'cpu';
+              const stateClass = isGpu ? 'settings-engine-status--gpu' : 'settings-engine-status--cpu-fallback';
+              const title = isGpu ? 'Transcription runs on GPU' : 'Transcription runs on CPU';
+              const detail = isGpu
+                ? (isTranscribing ? 'Currently transcribing with hardware acceleration.' : 'Faster processing with hardware acceleration.')
+                : (isTranscribing
+                    ? 'Currently transcribing \u2014 GPU is not available, transcription takes longer.'
+                    : 'GPU is not available on this computer \u2014 transcription will take longer than usual.');
+              return (
+                <div className={`settings-engine-status ${stateClass}`}>
+                  <svg className="engine-icon" viewBox="0 0 16 16" fill="none" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round">
+                    {isGpu ? (
+                      <>
+                        <rect x="2" y="4" width="12" height="8" />
+                        <line x1="6" y1="12" x2="6" y2="14" />
+                        <line x1="10" y1="12" x2="10" y2="14" />
+                        <line x1="4" y1="14" x2="12" y2="14" />
+                        <rect x="5" y="6" width="6" height="4" opacity="0.4" />
+                      </>
+                    ) : (
+                      <>
+                        <rect x="3" y="5" width="10" height="7" />
+                        <line x1="1" y1="8.5" x2="3" y2="8.5" />
+                        <line x1="13" y1="7" x2="15" y2="7" />
+                        <line x1="13" y1="10" x2="15" y2="10" />
+                      </>
+                    )}
+                  </svg>
+                  <div className="engine-text">
+                    <span className="engine-title">{title}</span>
+                    <span className="engine-detail">{detail}</span>
+                  </div>
+                </div>
+              );
+            })()}
           </div>
 
           <div className="settings-section">

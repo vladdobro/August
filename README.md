@@ -7,6 +7,25 @@ Pack DMG
 npm run electron:dist -- --mac
 ```
 
+## Download
+
+Grab the latest installer from **[GitHub Releases](https://github.com/vladdobro/August/releases/latest)**:
+
+| Platform | File | Notes |
+|----------|------|-------|
+| Windows | `August-x.y.z-win-x64.exe` | One-click NSIS installer with auto-update support |
+| Windows | `August-x.y.z-win-x64.msi` | Enterprise MSI (no auto-update) |
+| macOS (Apple Silicon) | `August-x.y.z-mac-arm64.dmg` | Drag to Applications |
+| macOS (Apple Silicon) | `August-x.y.z-mac-arm64.zip` | Used by the auto-updater internally |
+
+The whisper model (~874 MB) is not bundled — it downloads automatically on first launch with a progress indicator.
+
+**Windows SmartScreen:** The installer is currently unsigned. Windows shows an "unrecognized app" prompt — click "More info" → "Run anyway."
+
+**macOS Gatekeeper:** The app is ad-hoc signed. On first launch, right-click → Open, or go to System Settings → Privacy & Security → "Open Anyway."
+
+The `.exe` build checks for updates automatically (on launch and every 4 hours) and installs them silently on the next quit.
+
 August is a local-first meeting transcription app. A React + Vite client talks to an Express + TypeScript
 server, which transcribes audio with `whisper.cpp` (v1.8.4) via a bundled `whisper-cli` binary — no audio
 ever needs to leave the machine unless you opt into Groq for live transcription. August ships two ways:

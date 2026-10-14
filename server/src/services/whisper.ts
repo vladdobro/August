@@ -9,11 +9,14 @@ import { getModelStatus } from './modelDownloader.js';
 import type { TranscriptionLanguage, TranscriptSegment, WhisperJsonOutput } from '../types.js';
 import {
   classifyWhisperFailure,
+  countCudaDevices,
   countVulkanDevices,
   describeExit,
   gpuState,
   isProcessLoadFailure,
+  NO_CUDA_DEVICE_REASON,
   NO_VULKAN_DEVICE_REASON,
+  ranOnCpuWithoutCudaDevice,
   ranOnCpuWithoutVulkanDevice,
   runWithGpuFallback,
   type GpuBackend,
@@ -278,7 +281,7 @@ export async function boostAudio(audioPath: string): Promise<string> {
   return boostedPath;
 }
 
-/// One-time startup probe (AUG-116/117), Vulkan builds only: runs `whisper-cli --help`, which (a) catches the
+/// One-time startup probe (AUG-116/117/130), Vulkan and CUDA builds only: runs `whisper-cli --help`, which (a) catches the
 /// process-cannot-load case (missing DLL → STATUS_DLL_NOT_FOUND) and (b) initialises ggml-vulkan, so its device banner
 /// on stderr tells us whether the bundled loader found a GPU. No banner = no device = whisper-cli will run on CPU by
 /// itself, so the state flips to CPU right away and /api/health reports it. Device-level Vulkan failures only surface
@@ -286,7 +289,8 @@ export async function boostAudio(audioPath: string): Promise<string> {
 /// Never spawns on Metal, when WHISPER_USE_GPU pins the mode, or when the binary is absent.
 export async function probeGpuBackend(): Promise<GpuBackend> {
   const state = gpuState;
-  if (state.policy.locked || state.policy.nativeBackend !== 'vulkan' || !state.useGpu()) return state.backend();
+  const { nativeBackend } = state.policy;
+  if (state.policy.locked || (nativeBackend !== 'vulkan' && nativeBackend !== 'cuda') || !state.useGpu()) return state.backend();
   if (!(await fileExists(config.whisperBinPath))) return state.backend();
   const safeBinPath = await toSafePath(config.whisperBinPath);
   const probe = await new Promise<{ exit: WhisperExit | null; stderr: string }>((resolve) => {
@@ -299,22 +303,32 @@ export async function probeGpuBackend(): Promise<GpuBackend> {
     });
   });
   if (!probe.exit) {
-    const devices = countVulkanDevices(probe.stderr);
-    if (devices === null || devices === 0) {
-      state.markGpuUnusable(`startup probe: ${NO_VULKAN_DEVICE_REASON}`);
-      console.log(`[gpu] ${NO_VULKAN_DEVICE_LOG}`);
-    } else {
-      state.markGpuConfirmed();
+    if (nativeBackend === 'vulkan') {
+      const devices = countVulkanDevices(probe.stderr);
+      if (devices === null || devices === 0) {
+        state.markGpuUnusable(`startup probe: ${NO_VULKAN_DEVICE_REASON}`);
+        console.log(`[gpu] ${NO_VULKAN_DEVICE_LOG}`);
+      } else {
+        state.markGpuConfirmed();
+      }
+    } else if (nativeBackend === 'cuda') {
+      const devices = countCudaDevices(probe.stderr);
+      if (devices === null || devices === 0) {
+        state.markGpuUnusable(`startup probe: ${NO_CUDA_DEVICE_REASON}`);
+        console.log(`[gpu] whisper-cli found no CUDA device on this computer (no NVIDIA GPU or driver too old); transcription runs on CPU for this server run`);
+      } else {
+        state.markGpuConfirmed();
+      }
     }
     return state.backend();
   }
   if (classifyWhisperFailure(probe.exit) === 'gpu') {
     state.markGpuUnusable(`startup probe: ${describeExit(probe.exit)}`);
     if (isProcessLoadFailure(probe.exit)) {
-      console.error(
-        `[gpu] whisper-cli cannot start (${describeExit(probe.exit)}): a DLL it imports is missing. ` +
-        `npm run setup bundles vulkan-1.dll next to whisper-cli, so ${path.dirname(config.whisperBinPath)} is incomplete — re-run npm run setup (desktop app: reinstall).`,
-      );
+      const detail = nativeBackend === 'cuda'
+        ? `The CUDA variant is incomplete — try deleting the win-x64-cuda folder and restarting (the CUDA files will be re-downloaded).`
+        : `npm run setup bundles vulkan-1.dll next to whisper-cli, so ${path.dirname(config.whisperBinPath)} is incomplete — re-run npm run setup (desktop app: reinstall).`;
+      console.error(`[gpu] whisper-cli cannot start (${describeExit(probe.exit)}): a DLL it imports is missing. ${detail}`);
     }
   } else {
     console.warn(`[gpu] startup probe inconclusive (${describeExit(probe.exit)}); keeping the GPU enabled until the first job`);
@@ -350,7 +364,7 @@ async function vadModelAvailable(): Promise<boolean> {
 /// whisper-cli with the shared flag set, process tracking (for cancellation)
 /// and reading + parsing + cleaning up the JSON output file. Flags mirror
 /// SplitVox's WhisperTranscriber.cs: max-context 0 (anti-loop defense), GPU per
-/// gpuBackend.ts (Metal on Apple Silicon, Vulkan on Windows x64 with a one-shot
+/// gpuBackend.ts (Metal on Apple Silicon, CUDA on Windows x64 with GPU-NVIDIA, one-shot
 /// --no-gpu retry + process-wide CPU fallback, WHISPER_USE_GPU override), full JSON output for timestamps.
 /// Decoding is greedy (WHISPER_DECODING, AUG-125) and batch jobs and live chunks add whisper.cpp's Silero VAD (`vad`); timestamps
 /// stay on the original timeline because whisper.cpp maps VAD segments back. Note:
@@ -452,6 +466,9 @@ export async function runWhisper(opts: RunWhisperOptions): Promise<WhisperJsonOu
     // Vulkan builds only: Metal / CPU-only runs never print the banner.
     if (ranOnCpuWithoutVulkanDevice(gpuState, stderr)) {
       if (gpuState.markGpuUnusable(NO_VULKAN_DEVICE_REASON)) console.warn(`[gpu] ${NO_VULKAN_DEVICE_LOG}`);
+    }
+    if (ranOnCpuWithoutCudaDevice(gpuState, stderr)) {
+      if (gpuState.markGpuUnusable(NO_CUDA_DEVICE_REASON)) console.warn(`[gpu] whisper-cli found no CUDA device; transcription runs on CPU for this server run`);
     }
   } catch (err) {
     if (err instanceof WhisperError) {

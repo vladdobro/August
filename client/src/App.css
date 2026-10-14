@@ -47,6 +47,10 @@
   --status-transcribing: var(--necron-400);
   --status-completed: var(--necron-500);
   --status-failed: #d44040;
+  --gpu-color: var(--necron-500);
+  --gpu-bg: rgba(45, 107, 79, 0.12);
+  --cpu-fallback-color: #b8860b;
+  --cpu-fallback-bg: rgba(184, 134, 11, 0.10);
 
   --btn-radius: 0;
   --input-radius: 0;
@@ -93,6 +97,10 @@
   --status-transcribing: #00c876;
   --status-completed: #2dd690;
   --status-failed: #e05555;
+  --gpu-color: var(--necron-200);
+  --gpu-bg: rgba(0, 200, 118, 0.12);
+  --cpu-fallback-color: #d4a020;
+  --cpu-fallback-bg: rgba(212, 160, 32, 0.12);
 }
 
 /* ========== Reset ========== */
@@ -6513,6 +6521,100 @@ button:hover:not(:disabled):not(.sidebar-menu-item):not(.export-menu-item):not(.
 
 .mic-notice-dismiss:hover {
   color: var(--text-primary);
+}
+
+/* ========== GPU/CPU Indicator — Sidebar Footer ========== */
+
+.sidebar-footer-indicator {
+  padding: 10px 16px;
+  border-top: 1px solid var(--sidebar-border);
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  font-size: 12px;
+  flex-shrink: 0;
+  position: relative;
+  z-index: 2;
+}
+
+.sidebar-footer-indicator--gpu {
+  color: var(--gpu-color);
+}
+
+.sidebar-footer-indicator--cpu-fallback {
+  color: var(--cpu-fallback-color);
+  background: var(--cpu-fallback-bg);
+}
+
+.sidebar-footer-indicator .indicator-icon {
+  width: 14px;
+  height: 14px;
+  flex-shrink: 0;
+}
+
+.sidebar-footer-indicator .indicator-label {
+  font-family: var(--font-terminal);
+  font-weight: 600;
+  font-size: 12px;
+}
+
+.sidebar-footer-indicator .indicator-sublabel {
+  font-size: 11px;
+  font-weight: 400;
+  color: var(--sidebar-text-muted);
+  margin-left: auto;
+  font-family: var(--font-terminal);
+}
+
+.sidebar-footer-indicator--cpu-fallback .indicator-sublabel {
+  color: var(--cpu-fallback-color);
+}
+
+/* ========== GPU/CPU Indicator — Settings Info Panel ========== */
+
+.settings-engine-status {
+  padding: 10px 14px;
+  display: flex;
+  align-items: flex-start;
+  gap: 10px;
+  margin-top: 4px;
+}
+
+.settings-engine-status--gpu {
+  background: var(--gpu-bg);
+  border-left: 3px solid var(--gpu-color);
+}
+
+.settings-engine-status--cpu-fallback {
+  background: var(--cpu-fallback-bg);
+  border-left: 3px solid var(--cpu-fallback-color);
+}
+
+.settings-engine-status .engine-icon {
+  width: 16px;
+  height: 16px;
+  flex-shrink: 0;
+  margin-top: 1px;
+}
+
+.settings-engine-status .engine-title {
+  font-size: 13px;
+  font-weight: 600;
+}
+
+.settings-engine-status .engine-detail {
+  font-family: var(--font-terminal);
+  font-size: 11px;
+  color: var(--text-secondary);
+  line-height: 1.4;
+}
+
+.settings-engine-status--gpu .engine-title {
+  color: var(--gpu-color);
+}
+
+.settings-engine-status--cpu-fallback .engine-title {
+  color: var(--cpu-fallback-color);
 }
 
 @media (max-width: 768px) {

@@ -281,6 +281,8 @@ const App: React.FC = () => {
           onDiagnostics={() => { setSetupDismissed(false); setShowDiagnostics(true); }}
           onKeysAndTokens={() => setShowGroqKeyModal(true)}
           onSettings={() => setShowSettings(true)}
+          gpuBackend={healthStatus?.gpuBackend}
+          isTranscribing={sessions.some(s => s.status === 'transcribing')}
         />
 
         <main className="main-content">
@@ -347,6 +349,8 @@ const App: React.FC = () => {
           onPreferenceChange={handlePreferenceChange}
           onReset={handlePreferencesReset}
           onClose={() => setShowSettings(false)}
+          gpuBackend={healthStatus?.gpuBackend}
+          isTranscribing={sessions.some(s => s.status === 'transcribing')}
         />
       )}
       {shouldEnableAgentation && <Agentation endpoint={agentationEndpoint} />}

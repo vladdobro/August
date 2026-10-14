@@ -3,6 +3,7 @@ import { Router } from 'express';
 
 import { config, ENV_FILE_PATH } from '../config.js';
 import { checkFfmpegAvailable, fileExists, FFMPEG_MISSING_MESSAGE } from '../services/whisper.js';
+import { getCudaStatus } from '../services/cudaDownloader.js';
 import { gpuState } from '../services/gpuBackend.js';
 
 const router = Router();
@@ -21,6 +22,8 @@ router.get('/health', async (_req, res) => {
     ffmpegAvailable,
     ffmpegMessage: ffmpegAvailable ? null : FFMPEG_MISSING_MESSAGE,
     gpuBackend: gpuState.backend(),
+    gpuEngine: config.whisperGpuEngine,
+    cudaStatus: config.whisperGpuEngine === 'cuda' ? getCudaStatus().state : undefined,
     groqAvailable: !!config.groqApiKey,
   });
 });

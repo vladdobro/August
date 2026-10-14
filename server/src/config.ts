@@ -130,6 +130,27 @@ export const WHISPER_VAD_MODEL = {
   sizeBytes: 885098,
 } as const;
 
+export type GpuEngine = 'cpu' | 'cuda';
+
+/// CUDA variant of whisper-cli (AUG-130), downloaded on demand (dev: npm run setup, packaged: server at first launch).
+export const WHISPER_CUDA_BUILD = {
+  version: WHISPER_CPP_VERSION,
+  url: `https://github.com/ggml-org/whisper.cpp/releases/download/v${WHISPER_CPP_VERSION}/whisper-cublas-12.4.0-bin-x64.zip`,
+  sha256: 'b07cff4e59831b227896018facbb6334907bf324a342c84597c44f087823d252',
+  sizeBytes: 457024596,
+  extractedDir: 'win-x64-cuda',
+  entries: [
+    'whisper-cli.exe', 'ggml.dll', 'ggml-base.dll', 'ggml-cpu.dll',
+    'ggml-cuda.dll', 'whisper.dll', 'cublas64_12.dll', 'cublasLt64_12.dll', 'cudart64_12.dll',
+  ],
+} as const;
+
+export function parseGpuEngine(raw: string | undefined): GpuEngine {
+  const value = raw?.trim().toLowerCase();
+  if (value === 'cuda') return 'cuda';
+  return 'cpu';
+}
+
 /// Post-recording decoding parameters (AUG-125), ported from SplitVox: greedy decoding (beam search was 1.6-3.4x
 /// slower with no quality gain), flash attention left at whisper-cli's default (on).
 export const WHISPER_DECODING = {
@@ -142,7 +163,11 @@ function defaultWhisperModelPath(): string {
 }
 
 function defaultWhisperBinPath(): string {
-  return path.join(WHISPER_BIN_ROOT, whisperPlatformDir() ?? `${process.platform}-${process.arch}`, whisperBinName());
+  const gpuEngine = parseGpuEngine(process.env.WHISPER_GPU_ENGINE);
+  const dir = gpuEngine === 'cuda' && process.platform === 'win32'
+    ? WHISPER_CUDA_BUILD.extractedDir
+    : (whisperPlatformDir() ?? `${process.platform}-${process.arch}`);
+  return path.join(WHISPER_BIN_ROOT, dir, whisperBinName());
 }
 
 export interface AppConfig {
@@ -173,6 +198,11 @@ export interface AppConfig {
   // WHISPER_USE_GPU override (AUG-116): true/false pins the mode, null = platform default (Metal on Apple Silicon,
   // Vulkan on Windows x64, --no-gpu elsewhere) with automatic CPU fallback. Effective mode: services/gpuBackend.ts.
   whisperGpuOverride: boolean | null;
+  // GPU engine chosen at install time (AUG-130): WHISPER_GPU_ENGINE=cpu|cuda.
+  whisperGpuEngine: GpuEngine;
+  // Where the CUDA binary should live (set by Electron main, or derived from WHISPER_BIN_ROOT in dev).
+  // whisperBinPath may temporarily point to the CPU variant while CUDA downloads.
+  whisperCudaBinPath: string | null;
   groqApiKey: string | null;
 }
 
@@ -211,6 +241,12 @@ export const config: AppConfig = {
   audioteeSampleFormat: process.env.AUDIOTEE_SAMPLE_FORMAT?.trim() || null,
   audioteePath: audioteePaths.path,
   whisperGpuOverride: parseGpuOverride(process.env.WHISPER_USE_GPU),
+  whisperGpuEngine: parseGpuEngine(process.env.WHISPER_GPU_ENGINE),
+  whisperCudaBinPath: process.env.WHISPER_CUDA_BIN_PATH?.trim()
+    ? path.resolve(process.env.WHISPER_CUDA_BIN_PATH.trim())
+    : (parseGpuEngine(process.env.WHISPER_GPU_ENGINE) === 'cuda'
+      ? path.join(WHISPER_BIN_ROOT, WHISPER_CUDA_BUILD.extractedDir, whisperBinName())
+      : null),
   groqApiKey: process.env.GROQ_API_KEY?.trim() || null,
 };
 

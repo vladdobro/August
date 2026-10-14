@@ -14,6 +14,7 @@
 - Theme toggle remains in localStorage and is explicitly excluded from the preferences system.
 - migrateLegacyPreferences() in server/src/services/preferencesStore.ts moves a legacy server/src/data/user-preferences.json to server/data/ once on server start.
 - Runtime preferences must never live under server/src or be tracked in git; the path comes from config.dataDir.
+- Settings modal Transcription section includes a read-only GPU/CPU engine status block with left-border accent styling.
 
 Persistence layer for user preferences across sessions — auto-saves choices and provides a Settings UI for review/reset.
 
@@ -40,6 +41,10 @@ Eliminate repeated manual re-configuration every app session. Before this system
 - Source resolution: resolveSystemAudioSource() in client/src/services/preferences.ts maps 'browser' → browser, and 'auto'/'system' → system only when isSystemCaptureUsable() is true (systemCapture true and selfTest not 'failed'), otherwise browser.
 - Reset: DELETE /api/preferences removes the file; client reverts to empty object and applies defaults.
 - Mic notice: when saved micDeviceId is not found in available devices, a dismissible warning appears.
+- The Settings modal Transcription section shows a read-only engine status block (.settings-engine-status) displaying whether transcription runs on GPU or CPU with a plain-language explanation.
+- Engine status block uses left-border accent: 3px solid --gpu-color (green) for GPU, 3px solid --cpu-fallback-color (yellow) for CPU fallback.
+- Engine status reads gpuBackend and isTranscribing props threaded from App.tsx through healthStatus; no new server API fields.
+- Plain language only in the engine status block — no backend names (Vulkan/CUDA/Metal), device IDs, or method names shown to users.
 
 ## Invariants
 

@@ -1,5 +1,5 @@
 import React, { useEffect, useLayoutEffect, useRef, useState } from 'react';
-import type { SessionMetadata, SessionStatus } from '../types';
+import type { HealthStatus, SessionMetadata, SessionStatus } from '../types';
 import AboutModal from './AboutModal';
 
 interface SessionListProps {
@@ -14,6 +14,8 @@ interface SessionListProps {
   onDiagnostics: () => void;
   onKeysAndTokens: () => void;
   onSettings: () => void;
+  gpuBackend?: HealthStatus['gpuBackend'];
+  isTranscribing: boolean;
 }
 
 const ALL_STATUSES: SessionStatus[] = ['uploading', 'transcribing', 'failed', 'completed'];
@@ -68,6 +70,8 @@ const SessionList: React.FC<SessionListProps> = ({
   onDiagnostics,
   onKeysAndTokens,
   onSettings,
+  gpuBackend,
+  isTranscribing,
 }) => {
   const [menuOpen, setMenuOpen] = useState(false);
   const [showAbout, setShowAbout] = useState(false);
@@ -534,6 +538,38 @@ const SessionList: React.FC<SessionListProps> = ({
           )
         )}
       </div>
+      {gpuBackend && gpuBackend !== 'unknown' && (() => {
+        const isGpu = gpuBackend !== 'cpu';
+        const stateClass = isGpu ? 'sidebar-footer-indicator--gpu' : 'sidebar-footer-indicator--cpu-fallback';
+        const label = isGpu ? 'GPU' : 'CPU';
+        const sublabel = isGpu
+          ? (isTranscribing ? 'Transcribing\u2026' : 'Idle')
+          : (isTranscribing ? 'Transcribing\u2026' : 'GPU not available');
+        return (
+          <div className={`sidebar-footer-indicator ${stateClass}`}>
+            <svg className="indicator-icon" viewBox="0 0 16 16" fill="none" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round">
+              {isGpu ? (
+                <>
+                  <rect x="2" y="4" width="12" height="8" />
+                  <line x1="6" y1="12" x2="6" y2="14" />
+                  <line x1="10" y1="12" x2="10" y2="14" />
+                  <line x1="4" y1="14" x2="12" y2="14" />
+                  <rect x="5" y="6" width="6" height="4" opacity="0.4" />
+                </>
+              ) : (
+                <>
+                  <rect x="3" y="5" width="10" height="7" />
+                  <line x1="1" y1="8.5" x2="3" y2="8.5" />
+                  <line x1="13" y1="7" x2="15" y2="7" />
+                  <line x1="13" y1="10" x2="15" y2="10" />
+                </>
+              )}
+            </svg>
+            <span className="indicator-label">{label}</span>
+            <span className="indicator-sublabel">{sublabel}</span>
+          </div>
+        );
+      })()}
       {contextMenu && desktop && (
         <div
           ref={contextMenuRef}

@@ -67,7 +67,7 @@ const SAMPLE_FORMAT_PROBE_TIMEOUT_MS = 450;
 // buffer (≈1 s of 16 kHz mono s16le), and `-fflags +bitexact` so the header
 // is exactly the 44-byte RIFF/fmt/data preamble with no LIST/INFO chunk.
 const FIRST_BYTE_POLL_MS = 25;
-const FIRST_BYTE_TIMEOUT_MS = 2_000;
+const FIRST_BYTE_TIMEOUT_MS = 8_000;
 const WAV_HEADER_BYTES = 44;
 
 export type StartedAtSource = 'first-byte' | 'spawn';
@@ -375,6 +375,10 @@ function spawnCapturePipeline(
     );
     procs.push(ffmpeg);
   }
+  // The capture source is piped into ffmpeg.stdin, so a stop (helper/tap killed first, ffmpeg exits on EOF) or an
+  // early ffmpeg exit makes the next write fail with EPIPE. Without a listener that 'error' event is an uncaught
+  // exception — in the packaged app a "JavaScript error in the main process" dialog. It is expected, never fatal.
+  ffmpeg.stdin?.on('error', (err) => collect(`ffmpeg stdin: ${err.message}\n`));
   ffmpeg.stderr?.on('data', collect);
   ffmpeg.on('error', (err) => collect(`ffmpeg: ${err.message}\n`));
   const exited = new Promise<void>((resolve) => {
@@ -561,7 +565,10 @@ export async function detectCapabilities(force = false): Promise<CaptureCapabili
 /// method (AUG-106).
 async function resolveCaptureMethod(): Promise<ResolvedCapabilities> {
   if (cachedCapabilities && Date.now() - cachedCapabilities.at < CAPABILITY_TTL_MS) return cachedCapabilities.value;
-  return probeMethod();
+  if (inflightProbe) return inflightProbe;
+  const caps = await probeMethod();
+  cachedCapabilities = { value: caps, at: Date.now() };
+  return caps;
 }
 
 function stripInternal(caps: ResolvedCapabilities): CaptureCapabilities {

@@ -1,0 +1,15 @@
+{
+  "id": "133-uh7olh",
+  "assignee": "jarvis.json",
+  "priority": "high",
+  "status": "to_review",
+  "title": "[133] First recording after app launch loses first ~30 s of system audio ([Them] track)",
+  "why_we_need_this": "On the first recording after the app starts, the system audio track is shorter than the mic track and [Them] lines are missing for the first ~30 s (example 14.10.2026 15:46:53: system 00:00:56 vs mic 00:01:25, banner \"System audio track is shorter than mic\"). Second and later recordings are fine. Users lose the other party's speech at the start of every session after launch.",
+  "acceptance_criteria": "1. Root cause identified from code/logs (server system capture start path on Windows and macOS, cold-start behaviour such as loopback/audiotee warm-up, self-test, lazy init, late first data) and documented in the task.\n2. After a fresh app launch, the first recording has a system audio track whose duration matches the mic track (within ~1 s) and [Them] lines appear from the start.\n3. Second and later recordings behave as before (no regression).\n4. Fix works on both Windows and macOS (or macOS impact explicitly assessed).\n5. project-context updated with the cause and the fix.",
+  "important_constraints": "Two platforms: macOS and Windows. Do not show diagnostics (offsets, dB, method names) in user UI; keep in logs. Other agents may be editing files in the working tree; do not revert their changes.",
+  "labels": [],
+  "on_hold_reason": "",
+  "contextRouterIncluded": true,
+  "created_at": 1791982359628,
+  "column_entered_at": 1791983681032
+}

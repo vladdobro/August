@@ -1,21 +1,21 @@
 import { config } from '../config.js';
 
 /// Backend reported by /api/health and the startup log (AUG-116).
-export type GpuBackend = 'vulkan' | 'metal' | 'cpu' | 'unknown';
+export type GpuBackend = 'vulkan' | 'metal' | 'cuda' | 'cpu' | 'unknown';
 
 export interface GpuPolicy {
   /// Backend the platform's whisper-cli build uses when the GPU is enabled; null = CPU-only platform.
-  nativeBackend: 'vulkan' | 'metal' | null;
+  nativeBackend: 'vulkan' | 'metal' | 'cuda' | null;
   /// Initial mode: true = spawn without --no-gpu.
   useGpu: boolean;
   /// true when WHISPER_USE_GPU pinned the mode — no startup probe, no runtime fallback.
   locked: boolean;
 }
 
-export function resolveGpuPolicy(input: { platform: string; arch: string; override: boolean | null }): GpuPolicy {
+export function resolveGpuPolicy(input: { platform: string; arch: string; override: boolean | null; gpuEngine?: string }): GpuPolicy {
   const nativeBackend: GpuPolicy['nativeBackend'] =
     input.platform === 'darwin' && input.arch === 'arm64' ? 'metal'
-    : input.platform === 'win32' && input.arch === 'x64' ? 'vulkan'
+    : input.platform === 'win32' && input.arch === 'x64' && input.gpuEngine === 'cuda' ? 'cuda'
     : null;
   if (input.override !== null) return { nativeBackend, useGpu: input.override, locked: true };
   return { nativeBackend, useGpu: nativeBackend !== null, locked: false };
@@ -46,6 +46,10 @@ const PROCESS_LOAD_FAILURE_CODES = new Set<number>([STATUS_DLL_NOT_FOUND]);
 /// --no-prints, so an unrelated failure on a working GPU machine is never re-run on the CPU.
 const GPU_STDERR_PATTERNS: RegExp[] = [
   /vulkan-1\.dll/i,
+  /ggml_cuda_init.*(?:error|fail)/i,
+  /CUDA error/i,
+  /cudaError\w*/i,
+  /failed to initiali[sz]e.*cuda/i,
   /ggml_vulkan:\s*(error|failed|no devices? found|found 0 vulkan devices)/i,
   /ggml_backend_vk\w*:.*\b(error|fail)/i,
   /\bvk::\w*(Error|Exception)\b/,
@@ -68,6 +72,16 @@ export function countVulkanDevices(stderr: string): number | null {
 
 /// Reason recorded on GpuState when whisper-cli started fine but the loader saw no Vulkan device (log-only text).
 export const NO_VULKAN_DEVICE_REASON = 'no Vulkan device found; whisper-cli runs on CPU';
+
+/// Banner ggml-cuda prints on stderr: "ggml_cuda_init: found 1 CUDA devices:". Absent when no NVIDIA GPU/driver (AUG-130).
+const CUDA_DEVICE_BANNER = /ggml_cuda_init:\s*found\s+(\d+)\s+CUDA devices?/i;
+
+export function countCudaDevices(stderr: string): number | null {
+  const match = CUDA_DEVICE_BANNER.exec(stderr ?? '');
+  return match ? Number(match[1]) : null;
+}
+
+export const NO_CUDA_DEVICE_REASON = 'no CUDA device found; whisper-cli runs on CPU';
 
 /// Node reports NTSTATUS exit codes as uint32 (3221225781); other layers show them signed (-1073741515).
 export function normalizeExitCode(code: number | string | null | undefined): number | null {
@@ -114,8 +128,9 @@ export class GpuState {
 
   constructor(public readonly policy: GpuPolicy) {
     this.gpuEnabled = policy.useGpu;
-    // Metal has no known post-start failure mode and a pinned mode is the user's call: both count as resolved.
-    this.confirmed = policy.locked || policy.nativeBackend !== 'vulkan';
+    // Metal has no post-start failure, CPU-only has no GPU, and a pinned mode is the user's call: all count as resolved.
+    // Only vulkan and cuda need probing.
+    this.confirmed = policy.locked || (policy.nativeBackend !== 'vulkan' && policy.nativeBackend !== 'cuda');
   }
 
   useGpu(): boolean {
@@ -125,14 +140,15 @@ export class GpuState {
   /// 'unknown' only while an unpinned Vulkan build has not yet proven it can start (see probeGpuBackend()).
   backend(): GpuBackend {
     if (!this.gpuEnabled) return 'cpu';
-    if (this.policy.nativeBackend === null) return 'unknown';
+    if (this.policy.nativeBackend === null) return 'cpu';
     if (this.policy.nativeBackend === 'vulkan' && !this.confirmed) return 'unknown';
+    if (this.policy.nativeBackend === 'cuda' && !this.confirmed) return 'unknown';
     return this.policy.nativeBackend;
   }
 
   /// True while a job may still switch this process to CPU: GPU on, not pinned, and a Vulkan build.
   canFallBack(): boolean {
-    return this.gpuEnabled && !this.policy.locked && this.policy.nativeBackend === 'vulkan';
+    return this.gpuEnabled && !this.policy.locked && (this.policy.nativeBackend === 'vulkan' || this.policy.nativeBackend === 'cuda');
   }
 
   markGpuConfirmed(): void {
@@ -156,9 +172,15 @@ export class GpuState {
     const { nativeBackend, useGpu, locked } = this.policy;
     if (locked) return useGpu ? `forced on via WHISPER_USE_GPU=1 (${nativeBackend ?? 'no native backend'})` : 'forced off via WHISPER_USE_GPU=0';
     if (nativeBackend === 'vulkan') return 'vulkan, automatic CPU fallback';
+    if (nativeBackend === 'cuda') return 'cuda (NVIDIA), automatic CPU fallback';
     if (nativeBackend === 'metal') return 'metal';
-    return 'off (no GPU backend for this platform)';
+    return 'off (CPU-only build)';
   }
+}
+
+/// CUDA twin of ranOnCpuWithoutVulkanDevice (AUG-130).
+export function ranOnCpuWithoutCudaDevice(state: GpuState, stderr: string): boolean {
+  return state.useGpu() && state.policy.nativeBackend === 'cuda' && !countCudaDevices(stderr);
 }
 
 /// True when a successful GPU-mode run without the ggml-vulkan device banner means whisper-cli silently ran on CPU
@@ -202,5 +224,5 @@ export async function runWithGpuFallback<T>(
 
 /// Process singleton used by runWhisper(), the startup probe and /api/health.
 export const gpuState = new GpuState(
-  resolveGpuPolicy({ platform: process.platform, arch: process.arch, override: config.whisperGpuOverride }),
+  resolveGpuPolicy({ platform: process.platform, arch: process.arch, override: config.whisperGpuOverride, gpuEngine: config.whisperGpuEngine }),
 );

@@ -103,11 +103,36 @@ function configureServerEnv(): void {
   process.env.AUGUST_DATA_DIR ??= dataDir;
   process.env.WHISPER_MODEL_PATH ??= path.join(modelsDir, WHISPER_MODEL_FILE);
 
+  // GPU engine chosen in the installer (AUG-130): `cpu` (default) or `cuda` (Windows x64, NVIDIA).
+  let gpuEngine = 'cpu';
+  try {
+    const raw = fs.readFileSync(path.join(userData, 'gpu-engine'), 'utf-8').trim();
+    if (raw === 'cuda') gpuEngine = raw;
+  } catch {}
+  process.env.WHISPER_GPU_ENGINE ??= gpuEngine;
+
   const platformDir = whisperPlatformDir();
   if (platformDir && !process.env.WHISPER_BIN_PATH) {
     const binName = process.platform === 'win32' ? 'whisper-cli.exe' : 'whisper-cli';
-    const bundled = path.join(process.resourcesPath, 'whisper', 'bin', platformDir, binName);
-    if (fs.existsSync(bundled)) process.env.WHISPER_BIN_PATH = bundled;
+    if (gpuEngine === 'cuda' && process.platform === 'win32') {
+      // CUDA variant: check bundled first, then user data download location.
+      // Tell the server WHERE the CUDA binary should live so it can download it there.
+      const bundledCuda = path.join(process.resourcesPath, 'whisper', 'bin', 'win-x64-cuda', binName);
+      const downloadedCuda = path.join(userData, 'whisper', 'bin', 'win-x64-cuda', binName);
+      process.env.WHISPER_CUDA_BIN_PATH = fs.existsSync(bundledCuda) ? bundledCuda : downloadedCuda;
+      if (fs.existsSync(bundledCuda)) {
+        process.env.WHISPER_BIN_PATH = bundledCuda;
+      } else if (fs.existsSync(downloadedCuda)) {
+        process.env.WHISPER_BIN_PATH = downloadedCuda;
+      } else {
+        // CUDA not yet downloaded — use bundled CPU variant so the app is immediately usable
+        const cpuBin = path.join(process.resourcesPath, 'whisper', 'bin', platformDir, binName);
+        if (fs.existsSync(cpuBin)) process.env.WHISPER_BIN_PATH = cpuBin;
+      }
+    } else {
+      const bundled = path.join(process.resourcesPath, 'whisper', 'bin', platformDir, binName);
+      if (fs.existsSync(bundled)) process.env.WHISPER_BIN_PATH = bundled;
+    }
   }
 
   // ffmpeg + ffprobe ship next to whisper-cli (AUG-115). FFMPEG_PATH is the server's highest-precedence

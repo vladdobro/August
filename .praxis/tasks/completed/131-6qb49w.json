@@ -1,0 +1,14 @@
+{
+  "id": "131-6qb49w",
+  "assignee": "jarvis.json",
+  "status": "completed",
+  "title": "[131] Design: show whether transcription runs on GPU or CPU (3-4 mockups to choose from)",
+  "why_we_need_this": "Users cannot tell whether transcription uses the GPU or the CPU. Today this is visible only in the log and, partly, the diagnostics page (which even says \"engine operational\" while running on CPU). With a GPU/CPU choice coming (see task 130-u6jjf4) people need a clear, honest signal of what is actually in use, and a hint when the app silently fell back to CPU. The owner wants to pick the placement and look from several concrete mockups before anything is implemented.",
+  "acceptance_criteria": "1. Find where the signal can live in the current UI and list the candidate places with pros/cons (e.g. main recorder screen near the status, transcription progress state, session card/detail, Settings modal, diagnostics page, desktop tray/title bar). Use real components from the client (@client/src/components) as the starting point.\n2. Deliver 3-4 distinct mockups (static HTML, published as a viewable artifact or committed under a design/mockups folder, owner picks one). Each mockup differs in placement or form, not only in color, and has a short name and one-line rationale.\n3. Every mockup shows all states: GPU in use (Vulkan/CUDA on Windows, Metal on macOS, worded as plain \"GPU\"), CPU by choice, CPU as an automatic fallback after a GPU failure or missing driver (visibly distinct, with a plain-language hint), and the state while a transcription is running vs idle.\n4. Mockups follow the existing brandbook: angular brutalist, border-radius 0 everywhere; color priority schema green = top, yellow = high, outline = normal, red only for danger (CPU fallback must not be red); correct in both themes if the app has them.\n5. Plain language only: no technical diagnostics in the user UI (no backend method names, device IDs, dB levels, offsets); such details stay in logs / session.json.\n6. For each mockup note what data it needs (e.g. gpuBackend from /api/health, per-session actual backend) and whether it needs new server fields; flag anything that changes the API.\n7. Recommend one mockup with reasons, but the owner decides. No production code changes in this task; implementation becomes a follow-up task after the choice.",
+  "important_constraints": "Mockups only; no changes to the shipped app. Must work for both platforms (Windows and macOS): macOS shows Metal as \"GPU\", and the macOS UI must not mention Vulkan/CUDA. Respect the \"no diagnostics in user UI\" rule. Related to task 130-u6jjf4 (GPU/CPU installer choice); do not duplicate its work.",
+  "labels": [],
+  "on_hold_reason": "",
+  "contextRouterIncluded": true,
+  "created_at": 1791907942649,
+  "column_entered_at": 1791989790161
+}
