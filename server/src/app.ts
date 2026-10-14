@@ -125,15 +125,16 @@ export async function startServer(options: StartServerOptions = {}): Promise<Run
   console.log(`  Platform: ${process.platform}-${process.arch} (whisper GPU: ${gpuState.describePolicy()})`);
   // AUG-130: CUDA download + GPU probe run after the server is listening so the UI loads immediately.
   // The probe re-runs after the download finishes so /api/health reports the correct backend.
+  // Model download waits for CUDA to finish — running both large downloads concurrently starves the
+  // model download (HuggingFace CDN) of bandwidth and triggers the stall timeout.
   void ensureWhisperCuda().then(() => probeGpuBackend()).then((backend) => {
     const reason = gpuState.fallbackReason();
     console.log(`  Whisper backend: ${backend}${reason ? ` (CPU fallback: ${reason})` : ''}`);
-  });
+  }).then(() => ensureWhisperModel());
   console.log(`  Live transcription: ws://localhost:${port}/api/live-transcribe`);
   console.log(`  System capture: GET /api/capture/capabilities (loopback only)`);
   console.log(`  Groq API: ${config.groqApiKey ? 'configured' : 'not configured (live mode uses local whisper only)'}`);
 
-  void ensureWhisperModel();
   void detectCapabilities();
 
   return {
