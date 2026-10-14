@@ -58,11 +58,11 @@ interface FfmpegArchive {
 const FFMPEG_BUILDS: Record<WhisperPlatformDir, FfmpegArchive[]> = {
   'win-x64': [
     {
-      url: 'https://github.com/BtbN/FFmpeg-Builds/releases/download/autobuild-2026-09-20-13-11/ffmpeg-n9.0.2-3-ga5923073bf-win64-lgpl-9.0.zip',
-      sha256: 'ec1706ea5c63a73030e485ec6954f0d6a672508c9548a1c5ed07c85c90ee4ef3',
+      url: 'https://github.com/BtbN/FFmpeg-Builds/releases/download/autobuild-2026-10-04-20-51/ffmpeg-n9.0.2-22-g46d8f462ee-win64-lgpl-9.0.zip',
+      sha256: 'f09755a07c2f1e9fcc83171604d08023534870693da53cf4c6ecac08b95080b9',
       entries: [
-        { archivePath: path.join('ffmpeg-n9.0.2-3-ga5923073bf-win64-lgpl-9.0', 'bin', 'ffmpeg.exe'), target: 'ffmpeg' },
-        { archivePath: path.join('ffmpeg-n9.0.2-3-ga5923073bf-win64-lgpl-9.0', 'bin', 'ffprobe.exe'), target: 'ffprobe' },
+        { archivePath: path.join('ffmpeg-n9.0.2-22-g46d8f462ee-win64-lgpl-9.0', 'bin', 'ffmpeg.exe'), target: 'ffmpeg' },
+        { archivePath: path.join('ffmpeg-n9.0.2-22-g46d8f462ee-win64-lgpl-9.0', 'bin', 'ffprobe.exe'), target: 'ffprobe' },
       ],
     },
   ],
