@@ -15,10 +15,12 @@
 - whisper/bin/ and whisper/.build/ are git-ignored; platform binaries are never committed to the repository.
 - npm run dev runs setup automatically through the root package.json predev hook, and a setup failure never blocks the app from starting.
 - ffmpeg is mandatory for browser recordings; the diagnostics page blocks "Proceed" when neither a bundled nor a PATH ffmpeg is found.
-- Windows x64 supports CPU (default) or CUDA/NVIDIA GPU engine, chosen at install time; CUDA downloads on demand (~457 MB).
-- GPU engine choice persists in %APPDATA%/August/gpu-engine and is read by Electron main.ts as WHISPER_GPU_ENGINE.
-- WHISPER_USE_GPU=0|1 pins the GPU mode and disables the startup probe and the fallback; documented in .env.example.
-- /api/health reports gpuBackend ('vulkan' | 'metal' | 'cuda' | 'cpu' | 'unknown'), gpuEngine ('cpu' | 'cuda') and cudaStatus from services/gpuBackend.ts and cudaDownloader.ts.
+- Windows x64 supports CPU (default) or CUDA/NVIDIA GPU engine; switchable in-app via Settings or at install time; CUDA downloads on demand (~457 MB).
+- GPU engine choice persists in user-preferences.json (gpuEngine field) and is read at config init by readPersistedGpuEngine().
+- WHISPER_GPU_ENGINE env overrides the persisted gpuEngine; WHISPER_USE_GPU=0|1 pins the GPU mode and disables the probe and fallback.
+- nvidiaDetect.ts detects NVIDIA GPUs via nvidia-smi on Windows; result is cached process-wide and exposed in /api/health.
+- POST /api/engine/switch toggles between cpu and cuda at runtime; GET /api/engine/cuda-progress streams CUDA download progress via SSE.
+- /api/health reports gpuBackend, gpuEngine, nvidiaGpu ({detected, gpuName}), and cudaStatus from gpuBackend.ts, nvidiaDetect.ts, and cudaDownloader.ts.
 - The CPU build (whisper-bin-x64.zip) is CPU-only; GPU acceleration on Windows uses the separate CUDA 12.4 variant (whisper-cublas-12.4.0-bin-x64.zip, AUG-130).
 - npm run setup bundles the Khronos Vulkan loader vulkan-1.dll plus VulkanRT-License.txt into whisper/bin/win-x64/ from LunarG's SHA256-pinned runtime zip (AUG-117, VULKAN_RUNTIME in setup.ts).
 - With the bundled loader and no GPU driver, whisper-cli runs on CPU by itself and exits 0 without printing the ggml_vulkan device banner.
@@ -50,7 +52,12 @@ Explain the setup, binary-distribution, and model-download mechanics behind tran
 - CUDA device banner: countCudaDevices() in gpuBackend.ts parses 'ggml_cuda_init: found N CUDA devices' from stderr; null/0 means no NVIDIA GPU and whisper-cli runs on CPU.
 - GPU engine selection: the NSIS installer (installer.nsh) shows a radio page for CPU vs GPU-NVIDIA; the choice persists in %APPDATA%/August/gpu-engine, read by Electron main.ts into WHISPER_GPU_ENGINE.
 - GpuEngine type ('cpu' | 'cuda') in config.ts: parseGpuEngine() reads WHISPER_GPU_ENGINE; resolveGpuPolicy() uses it so Windows returns nativeBackend 'cuda' only when the CUDA engine is selected.
-- defaultWhisperBinPath() in config.ts: when WHISPER_GPU_ENGINE=cuda on Windows, resolves to whisper/bin/win-x64-cuda/ instead of win-x64/.
+- readPersistedGpuEngine() in config.ts: reads WHISPER_GPU_ENGINE env first (overrides everything), then gpuEngine from user-preferences.json, defaults to 'cpu'.
+- defaultWhisperBinPath() in config.ts: when gpuEngine is 'cuda' on Windows, resolves to whisper/bin/win-x64-cuda/ instead of win-x64/.
+- In-app engine switch (AUG-136): POST /api/engine/switch validates NVIDIA GPU detected, refuses if WHISPER_GPU_ENGINE env is set (409), persists to user-preferences.json, mutates runtime config and rebuilds GpuState singleton.
+- NVIDIA GPU detection: detectNvidiaGpu() in nvidiaDetect.ts runs nvidia-smi --query-gpu=name with 5s timeout on win32; result is cached for the process lifetime.
+- Engine switch CUDA download: when switching to cuda and CUDA binaries are missing, the switch endpoint starts ensureWhisperCuda() in background and streams progress via GET /api/engine/cuda-progress (SSE).
+- Settings modal GPU selector: on Windows with NVIDIA GPU detected, Settings shows a CPU/GPU(NVIDIA) dropdown with CUDA download progress bar and status hints.
 - setupWindowsCuda() in setup.ts: downloads the CUDA variant for dev machines; npm run setup runs it after the CPU variant so both are available for testing.
 - electron-builder extraResources already copy whole whisper/bin/darwin-${arch} and whisper/bin/win-x64 folders, so the VAD model ships in the DMG and the Windows installer without builder config changes.
 - The server resolves the VAD model via WHISPER_VAD_MODEL_PATH env, else next to the resolved whisper-cli (works for packaged resources/whisper/bin/<platform>/).
@@ -97,6 +104,10 @@ Explain the setup, binary-distribution, and model-download mechanics behind tran
 - Silent/unattended installs default to CPU engine because GpuEngine is initialized as 'cpu' in customInit.
 - The uninstaller always deletes %APPDATA%/August/gpu-engine and %APPDATA%/August/whisper/bin/win-x64-cuda/ to clean up CUDA artifacts.
 - ensureWhisperCuda() runs before runPreflightChecks() and probeGpuBackend() in startServer(), so the CUDA binary is present before the health check and GPU probe.
+- The engine switch endpoint refuses with 409 when WHISPER_GPU_ENGINE env is set — env overrides are operator-level and must not be toggled from the UI.
+- The engine switch endpoint refuses with 400 when requesting cuda without a detected NVIDIA GPU.
+- Engine switch mutates config.whisperGpuEngine, config.whisperBinPath, and config.whisperCudaBinPath at runtime; GpuState is rebuilt via Object.assign(gpuState, new GpuState(newPolicy)).
+- readPersistedGpuEngine() uses sync fs.readFileSync at module-load time; the preferences file path is derived from config.dataDir.
 - The CUDA 12.4 zip is self-contained: all needed CUDA runtime DLLs (cublas64_12, cublasLt64_12, cudart64_12) ship inside the zip; no system CUDA toolkit required.
 - CUDA 11.8 was evaluated and rejected: its zip does not include cublas64_11.dll, requiring a system cuBLAS install (AUG-130 research).
 - classifyWhisperFailure() is conservative — only exit 0xC0000135 (STATUS_DLL_NOT_FOUND) or explicit Vulkan/CUDA error phrasing on stderr counts as a GPU failure; kills, timeouts, ENOENT and every other exit are never retried.
@@ -145,6 +156,8 @@ Explain the setup, binary-distribution, and model-download mechanics behind tran
 - server/src/config.ts — whisperPlatformDir(), whisperBinName(), ffmpegBinName(), resolveFfmpegPaths(), parseGpuOverride(), parseGpuEngine(), GpuEngine type, WHISPER_CUDA_BUILD, config.whisperGpuEngine, config.whisperGpuOverride, config.ffmpegPath/ffprobePath/ffmpegSource, WHISPER_CPP_VERSION, WHISPER_MODEL constants, repo-root .env loading.
 - server/src/config.test.ts — unit tests for the ffmpeg resolver precedence (env, bundled, PATH).
 - server/src/services/gpuBackend.ts — GPU policy resolution (Metal/CUDA/Vulkan/CPU), GpuState (process-wide mode cache), conservative failure classifier, countVulkanDevices() and countCudaDevices() banner parsers, runWithGpuFallback() retry-once engine (AUG-116/117/130).
+- server/src/services/nvidiaDetect.ts — detectNvidiaGpu() NVIDIA GPU detection via nvidia-smi, cached process-wide (AUG-136).
+- server/src/routes/engine.ts — POST /api/engine/switch and GET /api/engine/cuda-progress SSE stream (AUG-136).
 - server/src/services/gpuBackend.test.ts — unit tests for the classifier, the state machine and the retry-once behaviour.
 - client/src/components/ModelDownloadModal.tsx — progress modal and error UI, mounted in App.tsx.
 - whisper/README.md — human-facing setup instructions, binary layout including bundled ffmpeg and the Vulkan loader, ffmpeg resolution order, third-party licence notices.

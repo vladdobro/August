@@ -21,6 +21,17 @@ async function handleJsonResponse<T>(res: Response): Promise<T> {
   return res.json() as Promise<T>;
 }
 
+export async function switchEngine(engine: 'cpu' | 'cuda'): Promise<{ ok: boolean; engine: string; cudaStatus: string }> {
+  const res = await fetch(`${API_BASE}/engine/switch`, {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({ engine }),
+  });
+  return handleJsonResponse<{ ok: boolean; engine: string; cudaStatus: string }>(res);
+}
+
+export const CUDA_PROGRESS_URL = `${API_BASE}/engine/cuda-progress`;
+
 export async function fetchSessions(): Promise<SessionMetadata[]> {
   const res = await fetch(`${API_BASE}/sessions`);
   return handleJsonResponse<SessionMetadata[]>(res);

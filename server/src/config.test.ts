@@ -1,7 +1,7 @@
 import path from 'node:path';
 import { describe, expect, test } from 'vitest';
 
-import { parseGpuOverride, resolveAudioteePath, resolveFfmpegPaths } from './config.js';
+import { parseGpuEngine, parseGpuOverride, resolveAudioteePath, resolveFfmpegPaths } from './config.js';
 
 const winName = (tool: 'ffmpeg' | 'ffprobe') => `${tool}.exe`;
 const existsIn = (files: string[]) => (filePath: string) => files.includes(filePath);
@@ -100,5 +100,17 @@ describe('parseGpuOverride (AUG-116)', () => {
     expect(parseGpuOverride('')).toBeNull();
     expect(parseGpuOverride('   ')).toBeNull();
     expect(parseGpuOverride('auto')).toBeNull();
+  });
+});
+
+describe('parseGpuEngine (AUG-136)', () => {
+  test('recognises cuda', () => {
+    expect(parseGpuEngine('cuda')).toBe('cuda');
+    expect(parseGpuEngine(' CUDA ')).toBe('cuda');
+  });
+  test('anything else defaults to cpu', () => {
+    expect(parseGpuEngine(undefined)).toBe('cpu');
+    expect(parseGpuEngine('')).toBe('cpu');
+    expect(parseGpuEngine('vulkan')).toBe('cpu');
   });
 });

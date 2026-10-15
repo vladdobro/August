@@ -2,7 +2,7 @@
 
 ## TL;DR
 - User preferences persist as a flat JSON file at server/data/user-preferences.json with GET/PATCH/DELETE REST endpoints.
-- All 13 preference fields are optional; the client applies defaults when absent from the server response.
+- All 14 preference fields are optional; the client applies defaults when absent from the server response.
 - systemAudioSource ('auto' | 'browser' | 'system', default 'auto') chooses HOW system audio is captured; the systemAudio boolean stays the on/off switch.
 - systemAudio defaults to true in DEFAULT_PREFERENCES; FileUpload's initial toggle reads that same constant so Settings and the record screen never disagree when the key is unsaved.
 - The System (direct) option is disabled when systemCapture is false or selfTest is 'failed'; it stays enabled on 'silent'.
@@ -15,6 +15,7 @@
 - migrateLegacyPreferences() in server/src/services/preferencesStore.ts moves a legacy server/src/data/user-preferences.json to server/data/ once on server start.
 - Runtime preferences must never live under server/src or be tracked in git; the path comes from config.dataDir.
 - Settings modal Transcription section includes a read-only GPU/CPU engine status block with left-border accent styling.
+- On Windows with NVIDIA GPU detected, Settings shows a CPU/GPU(NVIDIA) engine dropdown; gpuEngine persists via PATCH /api/preferences.
 
 Persistence layer for user preferences across sessions — auto-saves choices and provides a Settings UI for review/reset.
 
@@ -26,7 +27,7 @@ Eliminate repeated manual re-configuration every app session. Before this system
 
 - Preferences file: server/data/user-preferences.json — a flat JSON object, created on first PATCH, deleted on reset. The path is derived from config.dataDir (server/src/config.ts), the same root as sessions, uploads, captures, and perf-stats.json.
 - Legacy migration: before AUG-109 the file lived at server/src/data/user-preferences.json and was tracked in git. On every server start, migrateLegacyPreferences() (server/src/services/preferencesStore.ts) moves that file to server/data/ once, removes the old copy, and logs the move. It never overwrites an existing server/data/ file.
-- Schema: 13 optional fields (language, micDeviceId, systemAudio, systemAudioSource, recordingMode, liveEngine, audioBoost, retranscriptionLanguage, praxisProjectPath, sidebarCollapsed, sessionSortOrder, skipStopConfirmation, skipClearConfirmation).
+- Schema: 14 optional fields (language, micDeviceId, systemAudio, systemAudioSource, recordingMode, liveEngine, audioBoost, retranscriptionLanguage, praxisProjectPath, sidebarCollapsed, sessionSortOrder, skipStopConfirmation, skipClearConfirmation, gpuEngine).
 - Server allowlist: ALLOWED_KEYS set in the route filters unknown keys from PATCH requests.
 - Auto-save: when the user changes language, mic, or system audio in FileUpload, a PATCH request fires immediately.
 - Load on startup: App.tsx calls GET /api/preferences on mount and distributes values as props.
@@ -41,9 +42,10 @@ Eliminate repeated manual re-configuration every app session. Before this system
 - Source resolution: resolveSystemAudioSource() in client/src/services/preferences.ts maps 'browser' → browser, and 'auto'/'system' → system only when isSystemCaptureUsable() is true (systemCapture true and selfTest not 'failed'), otherwise browser.
 - Reset: DELETE /api/preferences removes the file; client reverts to empty object and applies defaults.
 - Mic notice: when saved micDeviceId is not found in available devices, a dismissible warning appears.
-- The Settings modal Transcription section shows a read-only engine status block (.settings-engine-status) displaying whether transcription runs on GPU or CPU with a plain-language explanation.
+- On Windows with NVIDIA GPU detected, Settings Transcription shows an interactive CPU/GPU(NVIDIA) dropdown that calls POST /api/engine/switch; CUDA download progress streams via SSE.
+- When GPU selected and CUDA present, a green status line shows "GPU (NVIDIA) — ready"; when CPU selected with NVIDIA detected, a yellow hint suggests switching.
+- On macOS or Windows without NVIDIA, Transcription shows the existing read-only engine status block (.settings-engine-status).
 - Engine status block uses left-border accent: 3px solid --gpu-color (green) for GPU, 3px solid --cpu-fallback-color (yellow) for CPU fallback.
-- Engine status reads gpuBackend and isTranscribing props threaded from App.tsx through healthStatus; no new server API fields.
 - Plain language only in the engine status block — no backend names (Vulkan/CUDA/Metal), device IDs, or method names shown to users.
 
 ## Invariants

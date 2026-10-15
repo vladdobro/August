@@ -350,6 +350,10 @@ const App: React.FC = () => {
           onReset={handlePreferencesReset}
           onClose={() => setShowSettings(false)}
           gpuBackend={healthStatus?.gpuBackend}
+          gpuEngine={healthStatus?.gpuEngine}
+          nvidiaGpu={healthStatus?.nvidiaGpu}
+          cudaStatus={healthStatus?.cudaStatus}
+          onHealthRefresh={() => checkHealth().then(setHealthStatus).catch(() => {})}
           isTranscribing={sessions.some(s => s.status === 'transcribing')}
         />
       )}

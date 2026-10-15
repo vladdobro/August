@@ -7,6 +7,7 @@ import express from 'express';
 
 import { config, whisperPlatformDir } from './config.js';
 import healthRouter from './routes/health.js';
+import engineRouter from './routes/engine.js';
 import sessionsRouter, { recoverOrphanedSessions } from './routes/sessions.js';
 import setupRouter from './routes/setup.js';
 import praxisRouter from './routes/praxis.js';
@@ -70,6 +71,7 @@ export async function startServer(options: StartServerOptions = {}): Promise<Run
   app.use(express.json());
 
   app.use('/api', healthRouter);
+  app.use('/api', engineRouter);
   app.use('/api/sessions', sessionsRouter);
   app.use('/api/setup', setupRouter);
   app.use('/api/praxis', praxisRouter);

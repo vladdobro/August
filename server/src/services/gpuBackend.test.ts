@@ -14,9 +14,17 @@ import {
 } from './gpuBackend.js';
 
 describe('resolveGpuPolicy', () => {
-  test('win32/x64 -> vulkan, gpu on, unlocked', () => {
+  test('win32/x64 (default) -> no native backend, cpu, unlocked', () => {
     expect(resolveGpuPolicy({ platform: 'win32', arch: 'x64', override: null })).toEqual({
-      nativeBackend: 'vulkan',
+      nativeBackend: null,
+      useGpu: false,
+      locked: false,
+    });
+  });
+
+  test('win32/x64 with gpuEngine=cuda -> cuda, gpu on, unlocked', () => {
+    expect(resolveGpuPolicy({ platform: 'win32', arch: 'x64', override: null, gpuEngine: 'cuda' })).toEqual({
+      nativeBackend: 'cuda',
       useGpu: true,
       locked: false,
     });
@@ -46,9 +54,9 @@ describe('resolveGpuPolicy', () => {
     });
   });
 
-  test('override false on win32 -> locked cpu, still knows the native backend', () => {
+  test('override false on win32 -> locked cpu', () => {
     expect(resolveGpuPolicy({ platform: 'win32', arch: 'x64', override: false })).toEqual({
-      nativeBackend: 'vulkan',
+      nativeBackend: null,
       useGpu: false,
       locked: true,
     });
@@ -176,21 +184,21 @@ describe('describeExit', () => {
 });
 
 describe('GpuState', () => {
-  test('fresh vulkan state is unknown until confirmed', () => {
-    const state = new GpuState(resolveGpuPolicy({ platform: 'win32', arch: 'x64', override: null }));
+  test('fresh cuda state is unknown until confirmed', () => {
+    const state = new GpuState(resolveGpuPolicy({ platform: 'win32', arch: 'x64', override: null, gpuEngine: 'cuda' }));
     expect(state.backend()).toBe('unknown');
     expect(state.useGpu()).toBe(true);
     expect(state.canFallBack()).toBe(true);
   });
 
-  test('markGpuConfirmed flips backend to vulkan', () => {
-    const state = new GpuState(resolveGpuPolicy({ platform: 'win32', arch: 'x64', override: null }));
+  test('markGpuConfirmed flips backend to cuda', () => {
+    const state = new GpuState(resolveGpuPolicy({ platform: 'win32', arch: 'x64', override: null, gpuEngine: 'cuda' }));
     state.markGpuConfirmed();
-    expect(state.backend()).toBe('vulkan');
+    expect(state.backend()).toBe('cuda');
   });
 
   test('markGpuUnusable flips to cpu and is idempotent', () => {
-    const state = new GpuState(resolveGpuPolicy({ platform: 'win32', arch: 'x64', override: null }));
+    const state = new GpuState(resolveGpuPolicy({ platform: 'win32', arch: 'x64', override: null, gpuEngine: 'cuda' }));
     expect(state.markGpuUnusable('x')).toBe(true);
     expect(state.backend()).toBe('cpu');
     expect(state.useGpu()).toBe(false);
@@ -206,9 +214,9 @@ describe('GpuState', () => {
     expect(state.canFallBack()).toBe(false);
   });
 
-  test('locked vulkan (override true) resolves immediately, no fallback', () => {
-    const state = new GpuState(resolveGpuPolicy({ platform: 'win32', arch: 'x64', override: true }));
-    expect(state.backend()).toBe('vulkan');
+  test('locked cuda (override true) resolves immediately, no fallback', () => {
+    const state = new GpuState(resolveGpuPolicy({ platform: 'win32', arch: 'x64', override: true, gpuEngine: 'cuda' }));
+    expect(state.backend()).toBe('cuda');
     expect(state.canFallBack()).toBe(false);
   });
 
@@ -219,13 +227,15 @@ describe('GpuState', () => {
 
   test('describePolicy strings', () => {
     expect(new GpuState(resolveGpuPolicy({ platform: 'win32', arch: 'x64', override: null })).describePolicy())
-      .toBe('vulkan, automatic CPU fallback');
+      .toBe('off (CPU-only build)');
     expect(new GpuState(resolveGpuPolicy({ platform: 'darwin', arch: 'arm64', override: null })).describePolicy())
       .toBe('metal');
+    expect(new GpuState(resolveGpuPolicy({ platform: 'win32', arch: 'x64', override: null, gpuEngine: 'cuda' })).describePolicy())
+      .toBe('cuda (NVIDIA), automatic CPU fallback');
     expect(new GpuState(resolveGpuPolicy({ platform: 'linux', arch: 'x64', override: null })).describePolicy())
-      .toBe('off (no GPU backend for this platform)');
+      .toBe('off (CPU-only build)');
     expect(new GpuState(resolveGpuPolicy({ platform: 'win32', arch: 'x64', override: true })).describePolicy())
-      .toBe('forced on via WHISPER_USE_GPU=1 (vulkan)');
+      .toBe('forced on via WHISPER_USE_GPU=1 (no native backend)');
     expect(new GpuState(resolveGpuPolicy({ platform: 'win32', arch: 'x64', override: false })).describePolicy())
       .toBe('forced off via WHISPER_USE_GPU=0');
   });
@@ -237,9 +247,9 @@ describe('ranOnCpuWithoutVulkanDevice', () => {
     expect(ranOnCpuWithoutVulkanDevice(state, '')).toBe(false);
   });
 
-  test('vulkan policy without banner is a CPU run', () => {
+  test('win32/x64 default (no vulkan backend) returns false', () => {
     const state = new GpuState(resolveGpuPolicy({ platform: 'win32', arch: 'x64', override: null }));
-    expect(ranOnCpuWithoutVulkanDevice(state, '')).toBe(true);
+    expect(ranOnCpuWithoutVulkanDevice(state, '')).toBe(false);
   });
 
   test('vulkan policy with banner is not a CPU run', () => {
@@ -266,7 +276,7 @@ const otherError = (partial: Partial<WhisperExit> = {}) =>
 
 describe('runWithGpuFallback', () => {
   test('gpu-class failure retries once with --no-gpu and flips state to cpu', async () => {
-    const state = new GpuState(resolveGpuPolicy({ platform: 'win32', arch: 'x64', override: null }));
+    const state = new GpuState(resolveGpuPolicy({ platform: 'win32', arch: 'x64', override: null, gpuEngine: 'cuda' }));
     const calls: boolean[] = [];
     const attempt = vi.fn(async (useGpu: boolean) => {
       calls.push(useGpu);
@@ -284,7 +294,7 @@ describe('runWithGpuFallback', () => {
   });
 
   test('unrelated failure is not retried', async () => {
-    const state = new GpuState(resolveGpuPolicy({ platform: 'win32', arch: 'x64', override: null }));
+    const state = new GpuState(resolveGpuPolicy({ platform: 'win32', arch: 'x64', override: null, gpuEngine: 'cuda' }));
     const attempt = vi.fn(async () => { throw otherError(); });
     const log = vi.fn();
     await expect(runWithGpuFallback(state, attempt, { exitOf, log, label: 'job' })).rejects.toThrow('whisper failed');
@@ -294,7 +304,7 @@ describe('runWithGpuFallback', () => {
   });
 
   test('after a flip, a later call runs attempt(false) exactly once', async () => {
-    const state = new GpuState(resolveGpuPolicy({ platform: 'win32', arch: 'x64', override: null }));
+    const state = new GpuState(resolveGpuPolicy({ platform: 'win32', arch: 'x64', override: null, gpuEngine: 'cuda' }));
     state.markGpuUnusable('previous failure');
     const attempt = vi.fn(async (useGpu: boolean) => { expect(useGpu).toBe(false); return 'ok'; });
     const log = vi.fn();
@@ -304,7 +314,7 @@ describe('runWithGpuFallback', () => {
   });
 
   test('retry also failing rethrows the retry error', async () => {
-    const state = new GpuState(resolveGpuPolicy({ platform: 'win32', arch: 'x64', override: null }));
+    const state = new GpuState(resolveGpuPolicy({ platform: 'win32', arch: 'x64', override: null, gpuEngine: 'cuda' }));
     const attempt = vi.fn(async (useGpu: boolean) => {
       if (useGpu) throw gpuError();
       throw otherError({ stderr: 'still broken' });
@@ -332,8 +342,8 @@ describe('runWithGpuFallback', () => {
     expect(state.backend()).toBe('metal');
   });
 
-  test('locked vulkan (override true): gpu-class failure is thrown through', async () => {
-    const state = new GpuState(resolveGpuPolicy({ platform: 'win32', arch: 'x64', override: true }));
+  test('locked cuda (override true): gpu-class failure is thrown through', async () => {
+    const state = new GpuState(resolveGpuPolicy({ platform: 'win32', arch: 'x64', override: true, gpuEngine: 'cuda' }));
     const attempt = vi.fn(async () => { throw gpuError(); });
     const log = vi.fn();
     await expect(runWithGpuFallback(state, attempt, { exitOf, log, label: 'job' })).rejects.toThrow('whisper failed');
@@ -341,11 +351,11 @@ describe('runWithGpuFallback', () => {
   });
 
   test('successful gpu attempt confirms the backend', async () => {
-    const state = new GpuState(resolveGpuPolicy({ platform: 'win32', arch: 'x64', override: null }));
+    const state = new GpuState(resolveGpuPolicy({ platform: 'win32', arch: 'x64', override: null, gpuEngine: 'cuda' }));
     const attempt = vi.fn(async () => 'ok');
     const log = vi.fn();
     const result = await runWithGpuFallback(state, attempt, { exitOf, log, label: 'job' });
     expect(result).toBe('ok');
-    expect(state.backend()).toBe('vulkan');
+    expect(state.backend()).toBe('cuda');
   });
 });

@@ -151,6 +151,20 @@ export function parseGpuEngine(raw: string | undefined): GpuEngine {
   return 'cpu';
 }
 
+function readPersistedGpuEngine(): GpuEngine {
+  const envOverride = process.env.WHISPER_GPU_ENGINE?.trim();
+  if (envOverride) return parseGpuEngine(envOverride);
+  try {
+    const prefsPath = path.join(dataDir, 'user-preferences.json');
+    const raw = fs.readFileSync(prefsPath, 'utf-8');
+    const prefs = JSON.parse(raw);
+    if (prefs.gpuEngine === 'cuda') return 'cuda';
+  } catch {
+    // file doesn't exist or is invalid
+  }
+  return 'cpu';
+}
+
 /// Post-recording decoding parameters (AUG-125), ported from SplitVox: greedy decoding (beam search was 1.6-3.4x
 /// slower with no quality gain), flash attention left at whisper-cli's default (on).
 export const WHISPER_DECODING = {
@@ -163,7 +177,7 @@ function defaultWhisperModelPath(): string {
 }
 
 function defaultWhisperBinPath(): string {
-  const gpuEngine = parseGpuEngine(process.env.WHISPER_GPU_ENGINE);
+  const gpuEngine = readPersistedGpuEngine();
   const dir = gpuEngine === 'cuda' && process.platform === 'win32'
     ? WHISPER_CUDA_BUILD.extractedDir
     : (whisperPlatformDir() ?? `${process.platform}-${process.arch}`);
@@ -241,10 +255,10 @@ export const config: AppConfig = {
   audioteeSampleFormat: process.env.AUDIOTEE_SAMPLE_FORMAT?.trim() || null,
   audioteePath: audioteePaths.path,
   whisperGpuOverride: parseGpuOverride(process.env.WHISPER_USE_GPU),
-  whisperGpuEngine: parseGpuEngine(process.env.WHISPER_GPU_ENGINE),
+  whisperGpuEngine: readPersistedGpuEngine(),
   whisperCudaBinPath: process.env.WHISPER_CUDA_BIN_PATH?.trim()
     ? path.resolve(process.env.WHISPER_CUDA_BIN_PATH.trim())
-    : (parseGpuEngine(process.env.WHISPER_GPU_ENGINE) === 'cuda'
+    : (readPersistedGpuEngine() === 'cuda'
       ? path.join(WHISPER_BIN_ROOT, WHISPER_CUDA_BUILD.extractedDir, whisperBinName())
       : null),
   groqApiKey: process.env.GROQ_API_KEY?.trim() || null,

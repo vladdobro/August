@@ -16,6 +16,7 @@ export interface UserPreferences {
   sessionSortOrder?: 'newest' | 'oldest' | 'alphabetical';
   skipStopConfirmation?: boolean;
   skipClearConfirmation?: boolean;
+  gpuEngine?: 'cpu' | 'cuda';
 }
 
 export const DEFAULT_PREFERENCES: Required<UserPreferences> = {
@@ -34,6 +35,7 @@ export const DEFAULT_PREFERENCES: Required<UserPreferences> = {
   sessionSortOrder: 'newest',
   skipStopConfirmation: false,
   skipClearConfirmation: false,
+  gpuEngine: 'cpu',
 };
 
 export async function getPreferences(): Promise<UserPreferences> {

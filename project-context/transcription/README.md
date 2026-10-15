@@ -4,7 +4,7 @@
 - whisper-cli (whisper.cpp), built for Windows and macOS, transcribes session audio locally; output is raw timestamped segments in milliseconds.
 - runWhisper() in whisper.ts is the single whisper-cli invocation path for both batch and live transcription.
 - runWhisper() retries a Vulkan-class failure once with --no-gpu and keeps the process on CPU afterwards (AUG-116, services/gpuBackend.ts).
-- On Windows the Khronos Vulkan loader is bundled next to whisper-cli, so a machine without a GPU driver transcribes on CPU automatically (AUG-117, whisper-setup route).
+- On Windows x64, GPU transcription uses the CUDA engine (switchable in Settings); CPU is the default; the bundled Vulkan loader is legacy (AUG-117/136).
 - TranscriptMerger filters hallucinations and filler, dedupes near-duplicate segments, and joins nearby segments into readable lines.
 - stripCreditHallucination replaces the "Редактор субтитров А.Семкин Корректор А.Егорова" hallucination with [OOPS] via regex, not silent drop.
 - A session moves through uploading, transcribing, then completed or failed — the client polls status until it leaves transcribing.
@@ -93,7 +93,7 @@ Document the exact mechanics of turning a recorded or uploaded audio file into a
 - The no-speech gate drops a segment only when no_speech_prob is high AND the text is blacklisted; in practice it is a no-op because the field is absent.
 - dedupHallucinations in mergeDualStream compares against the previous kept segment of any role, so an identical [Me] reply after [Them] within 30 s is dropped.
 - --max-context 0 on every invocation.
-- GPU flag per services/gpuBackend.ts: Metal on Apple Silicon, Vulkan on Windows x64 with automatic CPU fallback, --no-gpu elsewhere; WHISPER_USE_GPU=0|1 pins it.
+- GPU flag per services/gpuBackend.ts: Metal on Apple Silicon, CUDA on Windows x64 when gpuEngine='cuda', CPU otherwise; automatic CPU fallback on Metal/CUDA; WHISPER_USE_GPU=0|1 pins it.
 - Non-GPU whisper failures (bad audio, missing model, cancellation, timeout) are never retried — classification lives in classifyWhisperFailure() and must stay conservative.
 - All whisper-cli spawning goes through runWhisper() — never duplicate invocation logic in callers.
 - ffmpeg-missing errors use the shared FFMPEG_MISSING_MESSAGE with per-platform install commands.

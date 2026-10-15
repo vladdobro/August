@@ -6617,6 +6617,32 @@ button:hover:not(:disabled):not(.sidebar-menu-item):not(.export-menu-item):not(.
   color: var(--cpu-fallback-color);
 }
 
+.settings-cuda-progress {
+  margin: -2px 0 8px;
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+}
+
+.settings-cuda-progress-bar {
+  height: 4px;
+  background: var(--border-color);
+  border-radius: 0;
+  overflow: hidden;
+}
+
+.settings-cuda-progress-fill {
+  height: 100%;
+  background: var(--gpu-color);
+  transition: width 0.3s ease;
+}
+
+.settings-cuda-progress-text {
+  font-family: var(--font-terminal);
+  font-size: 11px;
+  color: var(--text-secondary);
+}
+
 @media (max-width: 768px) {
   .settings-card {
     max-height: 90vh;

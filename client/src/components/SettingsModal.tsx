@@ -1,7 +1,7 @@
 import React, { useEffect, useRef, useState } from 'react';
 import type { UserPreferences } from '../services/preferences';
 import { DEFAULT_PREFERENCES, isSystemCaptureUsable, resolveSystemAudioSource } from '../services/preferences';
-import { browsePraxisFolder } from '../api';
+import { browsePraxisFolder, switchEngine, CUDA_PROGRESS_URL } from '../api';
 import type { CaptureCapabilities, HealthStatus, SystemAudioSource } from '../types';
 import type { DesktopSettings } from '../desktop';
 import { acceleratorFromKeyboardEvent, formatAccelerator } from '../services/desktop';
@@ -14,6 +14,10 @@ interface SettingsModalProps {
   onReset: () => void;
   onClose: () => void;
   gpuBackend?: HealthStatus['gpuBackend'];
+  gpuEngine?: HealthStatus['gpuEngine'];
+  nvidiaGpu?: HealthStatus['nvidiaGpu'];
+  cudaStatus?: HealthStatus['cudaStatus'];
+  onHealthRefresh: () => void;
   isTranscribing: boolean;
 }
 
@@ -91,8 +95,15 @@ const SettingsModal: React.FC<SettingsModalProps> = ({
   onReset,
   onClose,
   gpuBackend,
+  gpuEngine,
+  nvidiaGpu,
+  cudaStatus,
+  onHealthRefresh,
   isTranscribing,
 }) => {
+  const [engineSwitching, setEngineSwitching] = useState(false);
+  const [cudaProgress, setCudaProgress] = useState<number>(0);
+  const [cudaError, setCudaError] = useState<string | null>(null);
   const [confirmingReset, setConfirmingReset] = useState(false);
   const [browsing, setBrowsing] = useState(false);
 
@@ -321,7 +332,87 @@ const SettingsModal: React.FC<SettingsModalProps> = ({
                 onChange={(v) => onPreferenceChange({ retranscriptionLanguage: v || null })}
               />
             </div>
-            {gpuBackend && gpuBackend !== 'unknown' && (() => {
+            {nvidiaGpu?.detected ? (() => {
+              const currentEngine = gpuEngine ?? 'cpu';
+              const isDownloading = cudaStatus === 'downloading';
+              const handleEngineChange = async (v: string) => {
+                if (v === currentEngine || engineSwitching || isTranscribing) return;
+                setEngineSwitching(true);
+                setCudaError(null);
+                try {
+                  const result = await switchEngine(v as 'cpu' | 'cuda');
+                  if (v === 'cuda' && result.cudaStatus === 'downloading') {
+                    const evtSource = new EventSource(CUDA_PROGRESS_URL);
+                    evtSource.onmessage = (event) => {
+                      try {
+                        const data = JSON.parse(event.data);
+                        setCudaProgress(data.percent ?? 0);
+                        if (data.state === 'present') {
+                          evtSource.close();
+                          setCudaProgress(100);
+                          onHealthRefresh();
+                        } else if (data.state === 'missing' && data.error) {
+                          evtSource.close();
+                          setCudaError(data.error);
+                        }
+                      } catch {}
+                    };
+                    evtSource.onerror = () => {
+                      evtSource.close();
+                    };
+                  }
+                  onHealthRefresh();
+                } catch (err) {
+                  setCudaError((err as Error).message || 'Failed to switch engine');
+                } finally {
+                  setEngineSwitching(false);
+                }
+              };
+              return (
+                <>
+                  <div className="settings-row">
+                    <label className="settings-label">Engine</label>
+                    <SettingsDropdown
+                      value={currentEngine}
+                      options={[
+                        { value: 'cpu', label: 'CPU' },
+                        { value: 'cuda', label: 'GPU (NVIDIA)', disabled: isTranscribing },
+                      ]}
+                      onChange={(v) => void handleEngineChange(v)}
+                    />
+                  </div>
+                  {isDownloading && (
+                    <div className="settings-cuda-progress">
+                      <div className="settings-cuda-progress-bar">
+                        <div className="settings-cuda-progress-fill" style={{ width: `${cudaProgress}%` }} />
+                      </div>
+                      <span className="settings-cuda-progress-text">Installing GPU engine... {cudaProgress.toFixed(0)}%</span>
+                    </div>
+                  )}
+                  {cudaError && (
+                    <div className="settings-hint settings-hint--warn">{cudaError}</div>
+                  )}
+                  {currentEngine === 'cpu' && !isDownloading && !cudaError && (
+                    <div className="settings-hint settings-hint--warn">Your computer has an NVIDIA GPU. Switch to GPU for faster transcription.</div>
+                  )}
+                  {currentEngine === 'cuda' && cudaStatus === 'present' && (
+                    <div className={`settings-engine-status settings-engine-status--gpu`}>
+                      <svg className="engine-icon" viewBox="0 0 16 16" fill="none" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round">
+                        <rect x="2" y="4" width="12" height="8" />
+                        <line x1="6" y1="12" x2="6" y2="14" />
+                        <line x1="10" y1="12" x2="10" y2="14" />
+                        <line x1="4" y1="14" x2="12" y2="14" />
+                        <rect x="5" y="6" width="6" height="4" opacity="0.4" />
+                      </svg>
+                      <div className="engine-text">
+                        <span className="engine-title">Transcription runs on GPU</span>
+                        <span className="engine-detail">{isTranscribing ? 'Currently transcribing with hardware acceleration.' : 'Faster processing with hardware acceleration.'}</span>
+                      </div>
+                    </div>
+                  )}
+                </>
+              );
+            })() : gpuBackend && gpuBackend !== 'unknown' && (() => {
               const isGpu = gpuBackend !== 'cpu';
               const stateClass = isGpu ? 'settings-engine-status--gpu' : 'settings-engine-status--cpu-fallback';
               const title = isGpu ? 'Transcription runs on GPU' : 'Transcription runs on CPU';

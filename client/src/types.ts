@@ -31,6 +31,9 @@ export interface HealthStatus {
   groqAvailable: boolean;
   // 'cpu' when whisper runs without the GPU (platform default, WHISPER_USE_GPU=0, or runtime fallback — AUG-116).
   gpuBackend?: 'vulkan' | 'metal' | 'cuda' | 'cpu' | 'unknown';
+  gpuEngine?: 'cpu' | 'cuda';
+  nvidiaGpu?: { detected: boolean; gpuName: string | null };
+  cudaStatus?: 'present' | 'downloading' | 'missing' | 'not-needed';
 }
 
 export type ModelState = 'present' | 'downloading' | 'missing';
