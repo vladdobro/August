@@ -1,7 +1,7 @@
 {
   "name": "august",
   "productName": "August",
-  "version": "0.0.26",
+  "version": "0.0.27",
   "description": "Local-first meeting transcription with whisper.cpp — web app and Electron desktop shell",
   "author": "vladdobro",
   "private": true,
