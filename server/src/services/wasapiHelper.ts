@@ -29,6 +29,7 @@ export type WasapiHelperStatus =
 const SUPPORTED_FORMATS = new Set(['u8', 's16le', 's24le', 's32le', 'f32le', 'f64le']);
 const COMPILE_TIMEOUT_MS = 60_000;
 const PROBE_TIMEOUT_MS = 5_000;
+const PROBE_RETRY_DELAY_MS = 1_000;
 const OUTPUT_EXCERPT_CHARS = 300;
 const HELPER_EXIT_NO_DEVICE = 2;
 
@@ -114,20 +115,26 @@ export async function ensureWasapiHelper(): Promise<{ ok: true; exePath: string;
 }
 
 export async function probeWasapiHelper(exePath: string): Promise<{ ok: true; probe: WasapiProbe } | { ok: false; reason: string }> {
-  return new Promise((resolve) => {
-    execFile(exePath, ['--probe'], { timeout: PROBE_TIMEOUT_MS, windowsHide: true }, (error, stdout, stderr) => {
-      if (error) {
-        // execFile reports the exit status as error.code (a number), while spawn failures use a string code such as ENOENT.
-        const code: unknown = (error as { code?: unknown }).code;
-        if (code === HELPER_EXIT_NO_DEVICE) { resolve({ ok: false, reason: 'no default output device (nothing selected in Sound settings > Output)' }); return; }
-        resolve({ ok: false, reason: `helper probe failed: ${excerpt(stderr ?? '') || error.message}` });
-        return;
-      }
-      const probe = parseWasapiProbe(stdout ?? '');
-      if (!probe) { resolve({ ok: false, reason: `helper probe printed an unreadable format line: ${excerpt(stdout ?? '')}` }); return; }
-      resolve({ ok: true, probe });
+  const attempt = (): Promise<{ ok: true; probe: WasapiProbe } | { ok: false; reason: string; retryable: boolean }> =>
+    new Promise((resolve) => {
+      execFile(exePath, ['--probe'], { timeout: PROBE_TIMEOUT_MS, windowsHide: true }, (error, stdout, stderr) => {
+        if (error) {
+          const code: unknown = (error as { code?: unknown }).code;
+          if (code === HELPER_EXIT_NO_DEVICE) { resolve({ ok: false, reason: 'no default output device (nothing selected in Sound settings > Output)', retryable: false }); return; }
+          if (typeof code === 'string') { resolve({ ok: false, reason: `helper probe spawn error: ${error.message}`, retryable: false }); return; }
+          resolve({ ok: false, reason: `helper probe failed (exit ${typeof code === 'number' ? code : '?'}): ${excerpt(stderr ?? '') || error.message}`, retryable: true });
+          return;
+        }
+        const probe = parseWasapiProbe(stdout ?? '');
+        if (!probe) { resolve({ ok: false, reason: `helper probe printed an unreadable format line: ${excerpt(stdout ?? '')}`, retryable: false }); return; }
+        resolve({ ok: true, probe });
+      });
     });
-  });
+  const first = await attempt();
+  if (first.ok || !('retryable' in first) || !first.retryable) return first.ok ? first : { ok: false, reason: first.reason };
+  await new Promise((r) => setTimeout(r, PROBE_RETRY_DELAY_MS));
+  const second = await attempt();
+  return second.ok ? second : { ok: false, reason: second.reason };
 }
 
 /// Build (if needed) and probe in one call; this is what the capability probe uses.

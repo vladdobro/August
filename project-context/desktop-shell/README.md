@@ -57,6 +57,7 @@ A desktop shell exists so non-technical users get a one-click install with no te
 - The hotkey must contain at least one modifier; a failed registration keeps the previous shortcut and reports the error to Settings.
 - Session notifications are derived by polling; the first poll only seeds state so pre-existing completed sessions never notify.
 - macOS GUI apps do not inherit the shell PATH, so the shell appends /opt/homebrew/bin and /usr/local/bin before starting the server (the audiotee and ffmpeg PATH fallbacks; the packaged app ships its own audiotee in resources/whisper/bin/darwin-<arch>/).
+- Windows packaged builds carry a pre-compiled wasapi-loopback.exe in data/tools/ (placed by afterPack); the server's ensureWasapiHelper skips csc.exe compilation when the source hash matches.
 - The bundled ffmpeg must stay inside whisper/bin/<platform>/ so the existing extraResources entry ships it without any electron-builder change.
 - Unpackaged runs (npm run electron:start, --dev) leave FFMPEG_PATH unset so the server's own resolver finds the repo's whisper/bin/<platform>/ffmpeg or falls back to PATH.
 - getDisplayMedia needs setDisplayMediaRequestHandler in Electron: Windows supplies system audio as a loopback track; macOS uses the native picker on 15+ and otherwise returns video only, so server-side capture stays the preferred macOS path.
@@ -71,7 +72,7 @@ A desktop shell exists so non-technical users get a one-click install with no te
 - resources layout: whisper/bin/<platform>/ holds whisper-cli plus ffmpeg and ffprobe, all signed by electron-builder along with the app.
 - electron-builder targets: mac dmg+zip per arch, win nsis+msi x64.
 - Signing env vars: CSC_LINK, CSC_KEY_PASSWORD, APPLE_ID, APPLE_APP_SPECIFIC_PASSWORD, APPLE_TEAM_ID.
-- Unsigned macOS builds are ad-hoc signed by the afterPack hook electron/scripts/afterPack.cjs; Apple Silicon shows a re-packaged unsigned app as "damaged" and xattr cannot fix that.
+- electron/scripts/afterPack.cjs — afterPack hook: (Windows) pre-compiles the WASAPI loopback helper with csc.exe into data/tools/ so the packaged app doesn't depend on csc.exe at runtime (AUG-135); (macOS) ad-hoc signs unsigned builds with codesign (Apple Silicon requires a valid seal).
 - Ad-hoc signed macOS apps show the "unverified developer" Gatekeeper prompt; users bypass it with right-click → Open, Privacy & Security → Open Anyway, or xattr -cr on the app.
 - The release workflow exports CSC_LINK and Apple credentials only when the secrets are non-empty; an empty CSC_LINK makes electron-builder abort with "not a file".
 - The release workflow creates the GitHub release with gh before any build job; electron-builder itself creates duplicate releases when its dmg and zip publishers race on a fresh tag.
