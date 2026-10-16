@@ -533,6 +533,11 @@ The ?diagnostics query param forces the diagnostics view; ?mock=whisper,model,ff
 ffmpeg is mandatory — allReady requires whisperReady && modelReady && ffmpegReady, and needsSetup in App.tsx includes !healthStatus.ffmpegAvailable.
 When ffmpeg is missing but whisper+model are ready, an "Install FFmpeg" section appears on both platforms: `npm run setup` (downloads the bundled ffmpeg) with a copy button, then a one-line manual fallback (`winget install ffmpeg` / `brew install ffmpeg`).
 Clickable whisper/models/ path opens the native file manager via POST /api/setup/open-model-folder.
+- On Windows with nvidiaGpu.detected and gpuEngine='cpu', the Diagnostics page shows a "Switch to GPU (NVIDIA)" button below the CPU notice.
+- The GPU switch button calls POST /api/engine/switch and streams CUDA download progress (~457 MB) inline via SSE, reusing the diag-progress styles.
+- After CUDA download completes, Diagnostics refreshes health and shows green "GPU (NVIDIA) — active" status with a GPU icon.
+- When gpuEnginePinned is true (WHISPER_GPU_ENGINE env set), the switch button is hidden and replaced with "Engine is set by system configuration."
+- macOS and Windows without NVIDIA: Diagnostics GPU switch section is not rendered.
 
 ### Praxis Modal
 

@@ -1,5 +1,5 @@
 import React, { useCallback, useEffect, useState } from 'react';
-import { fetchSetupStatus, SETUP_PROGRESS_URL } from '../api';
+import { fetchSetupStatus, SETUP_PROGRESS_URL, switchEngine, CUDA_PROGRESS_URL } from '../api';
 import type { HealthStatus, ModelSetupStatus } from '../types';
 
 interface SetupGuideProps {
@@ -71,6 +71,10 @@ const SetupGuide: React.FC<SetupGuideProps> = ({ health, onRefresh, onDismiss })
   const [refreshing, setRefreshing] = useState(false);
   const [showSkipWarning, setShowSkipWarning] = useState(false);
   const [noGpu, setNoGpu] = useState(false);
+  const [engineSwitching, setEngineSwitching] = useState(false);
+  const [cudaProgress, setCudaProgress] = useState(0);
+  const [cudaError, setCudaError] = useState<string | null>(null);
+  const [switchedToGpu, setSwitchedToGpu] = useState(false);
 
   const setupCommand = isMac
     ? 'brew install whisper-cpp ffmpeg'
@@ -140,12 +144,53 @@ const SetupGuide: React.FC<SetupGuideProps> = ({ health, onRefresh, onDismiss })
     }
   };
 
+  const handleGpuSwitch = async () => {
+    setEngineSwitching(true);
+    setCudaError(null);
+    try {
+      const result = await switchEngine('cuda');
+      if (result.cudaStatus === 'downloading') {
+        const evtSource = new EventSource(CUDA_PROGRESS_URL);
+        evtSource.onmessage = (event) => {
+          try {
+            const data = JSON.parse(event.data);
+            setCudaProgress(data.percent ?? 0);
+            if (data.state === 'present') {
+              evtSource.close();
+              setCudaProgress(100);
+              setSwitchedToGpu(true);
+              setEngineSwitching(false);
+              void onRefresh();
+            } else if (data.state === 'missing' && data.error) {
+              evtSource.close();
+              setCudaError(data.error);
+              setEngineSwitching(false);
+            }
+          } catch {}
+        };
+        evtSource.onerror = () => {
+          evtSource.close();
+          setEngineSwitching(false);
+        };
+      } else {
+        setSwitchedToGpu(true);
+        setEngineSwitching(false);
+        void onRefresh();
+      }
+    } catch (err) {
+      setCudaError((err as Error).message || 'Failed to switch engine');
+      setEngineSwitching(false);
+    }
+  };
+
   const isDownloading = modelStatus?.state === 'downloading';
 
   const whisperReady = health.whisperAvailable;
   const modelReady = health.modelAvailable && (!modelStatus || modelStatus.state !== 'downloading');
   const ffmpegReady = health.ffmpegAvailable;
   const allReady = whisperReady && modelReady && ffmpegReady;
+  const showGpuSwitch = !isMac && health.nvidiaGpu?.detected && (health.gpuEngine === 'cpu' || health.gpuEngine === undefined) && !switchedToGpu;
+  const showGpuReady = !isMac && health.nvidiaGpu?.detected && (health.gpuEngine === 'cuda' || switchedToGpu) && (health.cudaStatus === 'present' || health.cudaStatus === 'not-needed');
 
   return (
     <div className="diag-page">
@@ -158,17 +203,62 @@ const SetupGuide: React.FC<SetupGuideProps> = ({ health, onRefresh, onDismiss })
             <HintPopup text="Whisper is the speech-to-text engine. The GGML model contains the neural network weights. FFmpeg handles audio format conversion." />
           </p>
         </div>
-        {allReady && health.gpuBackend && health.gpuBackend !== 'cpu' && (
+        {allReady && health.gpuBackend && health.gpuBackend !== 'cpu' && !showGpuReady && (
           <p className="diag-info-line diag-gpu-status">
             {health.gpuBackend === 'unknown'
               ? 'GPU: detecting…'
               : `GPU acceleration: ${health.gpuBackend === 'vulkan' ? 'Vulkan' : health.gpuBackend === 'cuda' ? 'CUDA (NVIDIA)' : 'Metal'}`}
           </p>
         )}
-        {health.gpuBackend === 'cpu' && (
+
+        {showGpuReady && (
+          <div className="diag-gpu-ready">
+            <svg className="diag-gpu-icon" viewBox="0 0 16 16" fill="none" stroke="#00c876" strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round">
+              <rect x="2" y="4" width="12" height="8" />
+              <line x1="6" y1="12" x2="6" y2="14" />
+              <line x1="10" y1="12" x2="10" y2="14" />
+              <line x1="4" y1="14" x2="12" y2="14" />
+              <rect x="5" y="6" width="6" height="4" opacity="0.4" />
+            </svg>
+            <span>GPU (NVIDIA) — active</span>
+          </div>
+        )}
+
+        {health.gpuBackend === 'cpu' && !showGpuSwitch && (
           <p className="diag-info-line diag-cpu-notice">
             Transcription runs on CPU — processing will take longer.
           </p>
+        )}
+
+        {showGpuSwitch && (
+          <div className="diag-gpu-switch">
+            <p className="diag-info-line diag-cpu-notice">
+              Transcription runs on CPU — processing will take longer.
+            </p>
+            {health.gpuEnginePinned ? (
+              <p className="diag-info-line diag-gpu-pinned">Engine is set by system configuration.</p>
+            ) : engineSwitching && health.cudaStatus !== 'downloading' ? (
+              <button className="diag-gpu-switch-btn" disabled type="button">Switching…</button>
+            ) : health.cudaStatus === 'downloading' || (engineSwitching && cudaProgress > 0) ? (
+              <div className="diag-section">
+                <div className="diag-progress">
+                  <div className="diag-progress-track">
+                    <div className="diag-progress-fill" style={{ width: `${cudaProgress}%` }} />
+                  </div>
+                  <div className="diag-progress-text">
+                    Installing GPU engine… {cudaProgress.toFixed(0)}%
+                  </div>
+                </div>
+              </div>
+            ) : (
+              <button className="diag-gpu-switch-btn" onClick={handleGpuSwitch} type="button">
+                Switch to GPU (NVIDIA)
+              </button>
+            )}
+            {cudaError && (
+              <p className="diag-info-line diag-gpu-error">{cudaError}</p>
+            )}
+          </div>
         )}
 
         {/* Circuit node layout — all positions in % so SVG lines and CSS nodes share the same coordinate space */}

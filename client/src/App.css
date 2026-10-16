@@ -5504,6 +5504,72 @@ body {
   margin: 0 0 16px;
   color: #00c876;
 }
+.diag-gpu-switch {
+  margin: 0 0 16px;
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+  align-items: center;
+}
+.diag-gpu-switch .diag-cpu-notice {
+  margin: 0;
+}
+.diag-gpu-switch-btn {
+  display: inline-block;
+  padding: 8px 20px;
+  border: 1px solid var(--accent);
+  border-radius: 0;
+  background: transparent;
+  color: var(--accent);
+  font-family: var(--font-terminal);
+  font-size: 12px;
+  font-weight: 700;
+  cursor: pointer;
+  text-transform: uppercase;
+  letter-spacing: 0.06em;
+  transition: background 0.15s, color 0.15s, transform 0.15s;
+}
+.diag-gpu-switch-btn:hover:not(:disabled) {
+  background: var(--accent);
+  color: var(--bg-primary);
+  transform: translateY(-1px);
+}
+.diag-gpu-switch-btn:disabled {
+  opacity: 0.5;
+  cursor: not-allowed;
+}
+.diag-gpu-switch-btn:focus-visible {
+  outline: 2px solid var(--accent);
+  outline-offset: 2px;
+}
+.diag-gpu-pinned {
+  font-family: var(--font-terminal);
+  font-size: 11px;
+  color: var(--text-secondary);
+}
+.diag-gpu-error {
+  color: #d4a028;
+}
+.diag-gpu-ready {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: 8px;
+  margin: 0 0 16px;
+  font-size: 12px;
+  font-weight: 600;
+  color: #00c876;
+  font-family: var(--font-terminal);
+}
+.diag-gpu-icon {
+  width: 16px;
+  height: 16px;
+  flex-shrink: 0;
+}
+.diag-gpu-switch .diag-section {
+  width: 100%;
+  margin-bottom: 0;
+}
 
 .diag-inline-path {
   color: var(--necron-300);
