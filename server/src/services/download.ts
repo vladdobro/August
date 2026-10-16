@@ -42,6 +42,19 @@ export function isOfflineError(err: unknown): boolean {
   return false;
 }
 
+function extractErrorCode(err: unknown): string {
+  let cur: unknown = err;
+  let code: string | undefined;
+  let depth = 0;
+  while (cur && depth < 5) {
+    const c = (cur as { code?: unknown })?.code;
+    if (typeof c === 'string') code = c;
+    cur = (cur as { cause?: unknown })?.cause;
+    depth++;
+  }
+  return code ?? 'unknown';
+}
+
 /// Streams `url` to `destPath` while computing its SHA256 in the same pass.
 /// Aborts if no bytes arrive for `stallTimeoutMs` (default 60s). On any
 /// failure, `destPath` is deleted (best effort) and the error is rethrown —
@@ -114,7 +127,8 @@ export async function downloadToFile(
   } catch (err) {
     await fs.unlink(destPath).catch(() => {});
     if (isOfflineError(err)) {
-      throw new OfflineError(offlineMessage);
+      const code = extractErrorCode(err);
+      throw new OfflineError(`${offlineMessage} [${code}]`);
     }
     throw err;
   } finally {

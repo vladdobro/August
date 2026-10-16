@@ -154,7 +154,7 @@ async function doEnsure(): Promise<void> {
     await fs.rm(extractDir, { recursive: true, force: true }).catch(() => {});
     let error: string;
     if (isOfflineError(err)) {
-      error = 'No internet connection. Cannot download the CUDA whisper-cli.';
+      error = (err as Error)?.message || 'No internet connection. Cannot download the CUDA whisper-cli.';
     } else {
       error = `CUDA whisper download failed: ${(err as Error)?.message || err}. Restart to retry.`;
     }

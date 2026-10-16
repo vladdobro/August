@@ -26,12 +26,15 @@ export interface HealthStatus {
   status: string;
   whisperAvailable: boolean;
   modelAvailable: boolean;
+  modelPath?: string;
+  modelError?: string | null;
   ffmpegAvailable: boolean;
   ffmpegMessage?: string | null;
   groqAvailable: boolean;
   // 'cpu' when whisper runs without the GPU (platform default, WHISPER_USE_GPU=0, or runtime fallback — AUG-116).
   gpuBackend?: 'vulkan' | 'metal' | 'cuda' | 'cpu' | 'unknown';
   gpuEngine?: 'cpu' | 'cuda';
+  gpuEnginePinned?: boolean;
   nvidiaGpu?: { detected: boolean; gpuName: string | null };
   cudaStatus?: 'present' | 'downloading' | 'missing' | 'not-needed';
 }

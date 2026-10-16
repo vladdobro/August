@@ -7,6 +7,7 @@
 - The renderer is the same React client loaded from http://127.0.0.1:<free port>/ served by the embedded server; no IPC replaces REST/WebSocket.
 - Packaged macOS builds keep session data in ~/Library/Application Support/August/data, never inside August.app, because the signed bundle is replaced on every update/reinstall (AUG-121).
 - Packaged Windows builds keep session data in <install dir>/data next to the per-user NSIS install; models, settings and logs stay under userData on both platforms; paths reach the server via AUGUST_DATA_DIR, WHISPER_MODEL_PATH, WHISPER_BIN_PATH and FFMPEG_PATH set before the server module is imported.
+- Packaged builds override globalThis.fetch with electron.net.fetch before importing the server module; Node.js undici does not respect system proxy, certificates or firewall (AUG-138).
 - whisper-cli, ffmpeg and ffprobe are bundled from whisper/bin/<platform>/ into resources/whisper/bin/ as extraResources; the ~874 MB model is never bundled and auto-downloads on first launch.
 - The Windows extraResources folder also carries the bundled Vulkan loader vulkan-1.dll and its VulkanRT-License.txt placed by npm run setup (AUG-117).
 - Packaged builds set FFMPEG_PATH to the resources copy of ffmpeg (AUG-115), so a fresh machine needs no ffmpeg install.
@@ -62,6 +63,8 @@ A desktop shell exists so non-technical users get a one-click install with no te
 - Unpackaged runs (npm run electron:start, --dev) leave FFMPEG_PATH unset so the server's own resolver finds the repo's whisper/bin/<platform>/ffmpeg or falls back to PATH.
 - getDisplayMedia needs setDisplayMediaRequestHandler in Electron: Windows supplies system audio as a loopback track; macOS uses the native picker on 15+ and otherwise returns video only, so server-side capture stays the preferred macOS path.
 - Chromium memory hygiene: spare renderer, media router, translate, webgl, spellcheck, plugins disabled; do not re-enable without a reason.
+- Packaged builds override globalThis.fetch with electron.net.fetch in startEmbeddedServer() before the server module is imported; Node.js undici does not respect system proxy, Windows certificate store, or firewall rules, causing "No internet connection" download failures when the browser can reach the same URL (AUG-138).
+- startEmbeddedServer() logs WHISPER_MODEL_PATH and AUGUST_DATA_DIR at startup for path resolution debugging.
 - electron/build/ is force-included in git (.gitignore negation) because electron-builder needs icon.png and tray PNGs at build time; regenerate with npm run electron:icons, never hand-edit.
 - App and tray icons use square corners by design (brand rule: no border radius).
 

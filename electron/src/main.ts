@@ -9,6 +9,7 @@ import {
   globalShortcut,
   ipcMain,
   Menu,
+  net,
   Notification,
   session,
   shell,
@@ -112,13 +113,14 @@ function configureServerEnv(): void {
   process.env.AUGUST_DATA_DIR ??= dataDir;
   process.env.WHISPER_MODEL_PATH ??= path.join(modelsDir, WHISPER_MODEL_FILE);
 
-  // GPU engine chosen in the installer (AUG-130): `cpu` (default) or `cuda` (Windows x64, NVIDIA).
+  // GPU engine: read the installer's choice for bin-path resolution below, but do NOT set
+  // WHISPER_GPU_ENGINE env — that pins the engine and blocks the in-app switch (AUG-136/137).
+  // The server reads the active engine from user-preferences.json via readPersistedGpuEngine().
   let gpuEngine = 'cpu';
   try {
     const raw = fs.readFileSync(path.join(userData, 'gpu-engine'), 'utf-8').trim();
     if (raw === 'cuda') gpuEngine = raw;
   } catch {}
-  process.env.WHISPER_GPU_ENGINE ??= gpuEngine;
 
   const platformDir = whisperPlatformDir();
   if (platformDir && !process.env.WHISPER_BIN_PATH) {
@@ -156,6 +158,16 @@ function configureServerEnv(): void {
 async function startEmbeddedServer(): Promise<RunningServer> {
   ensureToolPaths();
   configureServerEnv();
+
+  if (app.isPackaged) {
+    // Chromium's network stack respects system proxy, certificates and firewall
+    // rules that Node.js's built-in fetch (undici) does not — fixes "No internet
+    // connection" when the browser can reach the same URL (AUG-138).
+    globalThis.fetch = net.fetch as typeof globalThis.fetch;
+  }
+  console.log(`  WHISPER_MODEL_PATH: ${process.env.WHISPER_MODEL_PATH ?? '(default)'}`);
+  console.log(`  AUGUST_DATA_DIR: ${process.env.AUGUST_DATA_DIR ?? '(default)'}`);
+
   const entry = path.join(appRoot, 'server', 'dist', 'app.js');
   if (!fs.existsSync(entry)) {
     throw new Error(`Server build not found at ${entry}. Run "npm run build" first.`);

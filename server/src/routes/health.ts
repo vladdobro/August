@@ -2,6 +2,7 @@ import fs from 'node:fs/promises';
 import { Router } from 'express';
 
 import { config, ENV_FILE_PATH } from '../config.js';
+import { getModelStatus } from '../services/modelDownloader.js';
 import { checkFfmpegAvailable, fileExists, FFMPEG_MISSING_MESSAGE } from '../services/whisper.js';
 import { getCudaStatus } from '../services/cudaDownloader.js';
 import { gpuState } from '../services/gpuBackend.js';
@@ -16,14 +17,18 @@ router.get('/health', async (_req, res) => {
     checkFfmpegAvailable(),
   ]);
 
+  const ms = getModelStatus();
   res.json({
     status: 'ok',
     whisperAvailable,
     modelAvailable,
+    modelPath: config.whisperModelPath,
+    modelError: ms.error,
     ffmpegAvailable,
     ffmpegMessage: ffmpegAvailable ? null : FFMPEG_MISSING_MESSAGE,
     gpuBackend: gpuState.backend(),
     gpuEngine: config.whisperGpuEngine,
+    gpuEnginePinned: !!process.env.WHISPER_GPU_ENGINE?.trim(),
     nvidiaGpu: detectNvidiaGpu(),
     cudaStatus: getCudaStatus().state,
     groqAvailable: !!config.groqApiKey,

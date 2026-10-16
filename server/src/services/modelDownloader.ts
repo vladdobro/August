@@ -128,8 +128,8 @@ async function doEnsureWhisperModel(): Promise<void> {
     } catch (err) {
       await fs.unlink(partPath).catch(() => {});
       if (isOfflineError(err)) {
-        const error = 'No internet connection. Cannot download the whisper model.';
-        console.error(error);
+        const error = (err as Error)?.message || 'No internet connection. Cannot download the whisper model.';
+        console.error(`Model download: ${error}`);
         setStatus({ state: 'missing', verifying: false, error });
         return;
       }
