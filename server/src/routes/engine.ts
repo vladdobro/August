@@ -7,7 +7,19 @@ import { ensureWhisperCuda, getCudaStatus, onCudaStatus } from '../services/cuda
 import { gpuState, GpuState, resolveGpuPolicy } from '../services/gpuBackend.js';
 import { detectNvidiaGpu } from '../services/nvidiaDetect.js';
 import { PREFS_PATH } from '../services/preferencesStore.js';
-import { fileExists } from '../services/whisper.js';
+import { fileExists, probeGpuBackend } from '../services/whisper.js';
+
+// In packaged builds process.resourcesPath points to the Electron resources
+// folder where extraResources places whisper binaries. WHISPER_BIN_ROOT resolves
+// from the server source tree which lands inside resources/app/ — a different
+// directory that does NOT contain extraResources files. Use resourcesPath when
+// available so paths work in both packaged and dev builds.
+function resolveCpuBinDir(): string {
+  const platDir = whisperPlatformDir() ?? `${process.platform}-${process.arch}`;
+  const rp = (process as NodeJS.Process & { resourcesPath?: string }).resourcesPath;
+  if (rp) return path.join(rp, 'whisper', 'bin', platDir);
+  return path.join(WHISPER_BIN_ROOT, platDir);
+}
 
 const router = Router();
 
@@ -55,22 +67,25 @@ router.post('/engine/switch', async (req, res) => {
   config.whisperGpuEngine = engine;
 
   if (engine === 'cuda') {
-    const cudaBinPath = path.join(WHISPER_BIN_ROOT, WHISPER_CUDA_BUILD.extractedDir, whisperBinName());
-    config.whisperCudaBinPath = cudaBinPath;
+    // Reuse the CUDA path resolved at startup (Electron sets WHISPER_CUDA_BIN_PATH
+    // to the AppData download location). Only fall back to WHISPER_BIN_ROOT for dev.
+    if (!config.whisperCudaBinPath) {
+      config.whisperCudaBinPath = path.join(WHISPER_BIN_ROOT, WHISPER_CUDA_BUILD.extractedDir, whisperBinName());
+    }
 
-    if (await fileExists(cudaBinPath)) {
-      config.whisperBinPath = cudaBinPath;
-      config.whisperVadModelPath = path.join(path.dirname(cudaBinPath), WHISPER_VAD_MODEL.fileName);
+    if (await fileExists(config.whisperCudaBinPath)) {
+      config.whisperBinPath = config.whisperCudaBinPath;
+      config.whisperVadModelPath = path.join(path.dirname(config.whisperCudaBinPath), WHISPER_VAD_MODEL.fileName);
+      void probeGpuBackend();
     } else {
-      // Start CUDA download in background
-      void ensureWhisperCuda();
+      void ensureWhisperCuda().then(() => probeGpuBackend());
     }
   } else {
-    // Switch back to CPU
-    const platDir = whisperPlatformDir() ?? `${process.platform}-${process.arch}`;
-    config.whisperBinPath = path.join(WHISPER_BIN_ROOT, platDir, whisperBinName());
+    // Switch back to CPU — use the correct resources path for packaged builds
+    const dir = resolveCpuBinDir();
+    config.whisperBinPath = path.join(dir, whisperBinName());
     config.whisperCudaBinPath = null;
-    config.whisperVadModelPath = path.join(WHISPER_BIN_ROOT, platDir, WHISPER_VAD_MODEL.fileName);
+    config.whisperVadModelPath = path.join(dir, WHISPER_VAD_MODEL.fileName);
   }
 
   // Rebuild gpuState with the new engine

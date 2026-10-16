@@ -291,7 +291,10 @@ export async function probeGpuBackend(): Promise<GpuBackend> {
   const state = gpuState;
   const { nativeBackend } = state.policy;
   if (state.policy.locked || (nativeBackend !== 'vulkan' && nativeBackend !== 'cuda') || !state.useGpu()) return state.backend();
-  if (!(await fileExists(config.whisperBinPath))) return state.backend();
+  if (!(await fileExists(config.whisperBinPath))) {
+    state.markGpuUnusable(`whisper binary not found at ${config.whisperBinPath}`);
+    return state.backend();
+  }
   const safeBinPath = await toSafePath(config.whisperBinPath);
   const probe = await new Promise<{ exit: WhisperExit | null; stderr: string }>((resolve) => {
     execFile(safeBinPath, ['--help'], { timeout: 10_000 }, (error, _stdout, stderr) => {
