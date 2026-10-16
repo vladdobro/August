@@ -1,0 +1,14 @@
+{
+  "id": "AUG-136-gnemef",
+  "assignee": "jarvis.json",
+  "status": "to_review",
+  "title": "[AUG-136] In-app GPU engine switch and CUDA install in Settings",
+  "why_we_need_this": "The CPU/CUDA engine is chosen only in the Windows installer (AUG-130). In dev mode and for users who picked CPU, transcription runs on CPU even on a machine with an NVIDIA GPU (RTX 4060 here), diagnostics are all green, and Settings only shows a read-only engine status. Users cannot switch or install the GPU engine without reinstalling.",
+  "acceptance_criteria": "1. Server detects an NVIDIA GPU (nvidia-smi) on Windows x64 and exposes it via /api/health without breaking existing fields.\n2. Settings → Transcription has a CPU / GPU (NVIDIA) selector; GPU option is shown only when an NVIDIA GPU is detected.\n3. Selecting GPU when CUDA binaries are missing starts the cudaDownloader (~457 MB) with visible progress; transcription stays on CPU until it finishes.\n4. The choice persists across restarts (packaged and dev) and applies without reinstall; WHISPER_GPU_ENGINE env still wins if set explicitly.\n5. When a GPU is detected but the engine is CPU, diagnostics show a yellow plain-language hint pointing to the switch (no backend names/DLLs in UI).\n6. Works on Windows; macOS behaviour unchanged (Metal, no selector).\n7. Unit tests cover engine resolution and persistence; project-context (whisper-setup, preferences) updated.",
+  "important_constraints": "",
+  "labels": [],
+  "on_hold_reason": "",
+  "contextRouterIncluded": true,
+  "created_at": 1792055126758,
+  "column_entered_at": 1792066416996
+}

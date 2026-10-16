@@ -1,7 +1,8 @@
 {
   "id": "129-hlcxhi",
   "assignee": "jarvis.json",
-  "status": "in_progress",
+  "priority": "medium",
+  "status": "completed",
   "title": "[129] Publish Electron installers via GitHub Releases",
   "why_we_need_this": "Users need a simple way to download the August desktop app. Installers (.exe 118 MB, .msi 132 MB) exceed GitHub's 100 MB file limit and must not be committed to git history. GitHub Releases is the right channel and is already configured as the electron-updater feed (publish block in @electron/electron-builder.yml), so it also enables auto-update.",
   "acceptance_criteria": "1. Confirm @electron/release/ is git-ignored and no installer binaries are committed.\n2. Decide repo visibility for distribution (public repo, or separate public releases repo) and apply it in the publish config if needed.\n3. Run `npx electron-builder --config electron/electron-builder.yml --publish always` with GH_TOKEN set; a GitHub Release for the current version exists with the .exe, .msi, latest.yml and .blockmap assets.\n4. Windows code-signing certificate is verified as valid (not self-signed), or SmartScreen warning is documented for users.\n5. Licenses of bundled whisper models and binaries are checked as permitting redistribution.\n6. macOS .dmg/.zip are built on a Mac and attached to the same release (or documented as a follow-up).\n7. A fresh install from the release downloads, runs, and auto-updates to a newer release.\n8. Short download/release instructions added to README or project-context/desktop-shell.",
@@ -10,5 +11,5 @@
   "on_hold_reason": "",
   "contextRouterIncluded": true,
   "created_at": 1791890774512,
-  "column_entered_at": 1791993687430
+  "column_entered_at": 1792021459209
 }

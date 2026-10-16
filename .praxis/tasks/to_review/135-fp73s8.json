@@ -1,0 +1,19 @@
+{
+  "id": "135-fp73s8",
+  "assignee": "jarvis.json",
+  "priority": "high",
+  "status": "to_review",
+  "title": "[135] Fix WASAPI loopback helper probe failure in packaged Electron app",
+  "why_we_need_this": "Live transcription with system audio capture doesn't work in the packaged Electron app on Windows. The error banner reads: \"WASAPI helper unavailable: helper probe failed: Command failed: D:\\claude\\August\\installed\\data\\tools\\wasapi-loopback.exe --probe .\" — the compiled C# helper either wasn't bundled or fails at the expected path. Without this, users must fall back to Stereo Mix or VB-Cable for system audio, which don't work with Bluetooth/USB headsets.",
+  "acceptance_criteria": "1. `wasapi-loopback.exe --probe` succeeds when run from the packaged app's data/tools directory\n2. Live transcription with system audio source = \"system\" captures audio in the packaged Electron app without the \"Direct system capture is unavailable\" banner\n3. The WASAPI helper is either bundled into the installer or compiled on first launch via the bundled csc.exe\n4. No regression on the dev (unpackaged) code path — `npm run dev` still probes and uses the helper correctly",
+  "important_constraints": "- WasapiLoopback.cs must stay C# 5 compatible (csc v4.0.30319)\n- The helper uses raw COM interop — no external .NET dependencies\n- Both dev and packaged code paths must work\n- Check whether the issue is missing binary, wrong path resolution, or runtime failure",
+  "labels": [
+    "bug",
+    "desktop",
+    "windows"
+  ],
+  "on_hold_reason": "",
+  "contextRouterIncluded": true,
+  "created_at": 1792021432376,
+  "column_entered_at": 1792023232172
+}
