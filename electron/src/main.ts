@@ -125,16 +125,19 @@ function configureServerEnv(): void {
   const platformDir = whisperPlatformDir();
   if (platformDir && !process.env.WHISPER_BIN_PATH) {
     const binName = process.platform === 'win32' ? 'whisper-cli.exe' : 'whisper-cli';
-    if (gpuEngine === 'cuda' && process.platform === 'win32') {
-      // CUDA variant: check bundled first, then user data download location.
-      // Tell the server WHERE the CUDA binary should live so it can download it there.
+
+    // Always tell the server where CUDA binaries should live, even when starting
+    // in CPU mode — the user may switch to CUDA at runtime via the Diagnostics UI.
+    if (process.platform === 'win32') {
       const bundledCuda = path.join(process.resourcesPath, 'whisper', 'bin', 'win-x64-cuda', binName);
       const downloadedCuda = path.join(userData, 'whisper', 'bin', 'win-x64-cuda', binName);
-      process.env.WHISPER_CUDA_BIN_PATH = fs.existsSync(bundledCuda) ? bundledCuda : downloadedCuda;
-      if (fs.existsSync(bundledCuda)) {
-        process.env.WHISPER_BIN_PATH = bundledCuda;
-      } else if (fs.existsSync(downloadedCuda)) {
-        process.env.WHISPER_BIN_PATH = downloadedCuda;
+      process.env.WHISPER_CUDA_BIN_PATH ??= fs.existsSync(bundledCuda) ? bundledCuda : downloadedCuda;
+    }
+
+    if (gpuEngine === 'cuda' && process.platform === 'win32') {
+      const cudaPath = process.env.WHISPER_CUDA_BIN_PATH!;
+      if (fs.existsSync(cudaPath)) {
+        process.env.WHISPER_BIN_PATH = cudaPath;
       } else {
         // CUDA not yet downloaded — use bundled CPU variant so the app is immediately usable
         const cpuBin = path.join(process.resourcesPath, 'whisper', 'bin', platformDir, binName);
