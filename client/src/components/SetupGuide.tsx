@@ -110,6 +110,13 @@ const SetupGuide: React.FC<SetupGuideProps> = ({ health, onRefresh, onDismiss })
     return pollModelStatus();
   }, [pollModelStatus, onRefresh]);
 
+  // Poll health while GPU backend probe is in progress
+  useEffect(() => {
+    if (health.gpuBackend !== 'unknown') return;
+    const id = setInterval(() => { void onRefresh(); }, 2000);
+    return () => clearInterval(id);
+  }, [health.gpuBackend, onRefresh]);
+
   const handleCopy = async () => {
     try {
       await navigator.clipboard.writeText(setupCommand);
