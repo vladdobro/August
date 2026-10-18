@@ -110,8 +110,8 @@ even when a driver installed its own copy.
 ## Overriding paths
 
 The model path, the whisper-cli binary path and the ffmpeg executable can be overridden via environment
-variables (see `.env.example` at the repo root): `WHISPER_MODEL_PATH`, `WHISPER_BIN_PATH`, `FFMPEG_PATH` and
-`WHISPER_USE_GPU`. Leave them empty to use the defaults described above.
+variables (see `.env.example` at the repo root): `WHISPER_MODEL_PATH`, `WHISPER_BIN_PATH`, `FFMPEG_PATH`,
+`WHISPER_USE_GPU`, `WHISPER_GPU_ENGINE` and `WHISPER_GPU_ENGINE_DEFAULT`. Leave them empty to use the defaults described above.
 
 ## Third-party licences
 

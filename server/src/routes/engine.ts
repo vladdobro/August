@@ -3,11 +3,11 @@ import path from 'node:path';
 import fs from 'node:fs/promises';
 
 import { config, WHISPER_BIN_ROOT, WHISPER_CUDA_BUILD, whisperBinName, whisperPlatformDir, WHISPER_VAD_MODEL } from '../config.js';
-import { ensureWhisperCuda, getCudaStatus, onCudaStatus } from '../services/cudaDownloader.js';
-import { gpuState, GpuState, resolveGpuPolicy } from '../services/gpuBackend.js';
+import { cudaBuildComplete, ensureWhisperCuda, getCudaStatus, onCudaStatus } from '../services/cudaDownloader.js';
+import { gpuState, resolveGpuPolicy } from '../services/gpuBackend.js';
 import { detectNvidiaGpu } from '../services/nvidiaDetect.js';
 import { PREFS_PATH } from '../services/preferencesStore.js';
-import { fileExists, probeGpuBackend } from '../services/whisper.js';
+import { probeGpuBackend } from '../services/whisper.js';
 
 // In packaged builds process.resourcesPath points to the Electron resources
 // folder where extraResources places whisper binaries. WHISPER_BIN_ROOT resolves
@@ -66,6 +66,15 @@ router.post('/engine/switch', async (req, res) => {
   // Update runtime config
   config.whisperGpuEngine = engine;
 
+  // Rebuild the process GPU state BEFORE probing: probeGpuBackend() reads the policy synchronously, and reset()
+  // bumps the epoch so jobs spawned under the old engine cannot confirm or flip the new state (AUG-140).
+  gpuState.reset(resolveGpuPolicy({
+    platform: process.platform,
+    arch: process.arch,
+    override: config.whisperGpuOverride,
+    gpuEngine: config.whisperGpuEngine,
+  }));
+
   if (engine === 'cuda') {
     // Reuse the CUDA path resolved at startup (Electron sets WHISPER_CUDA_BIN_PATH
     // to the AppData download location). Only fall back to WHISPER_BIN_ROOT for dev.
@@ -73,30 +82,20 @@ router.post('/engine/switch', async (req, res) => {
       config.whisperCudaBinPath = path.join(WHISPER_BIN_ROOT, WHISPER_CUDA_BUILD.extractedDir, whisperBinName());
     }
 
-    if (await fileExists(config.whisperCudaBinPath)) {
-      config.whisperBinPath = config.whisperCudaBinPath;
-      config.whisperVadModelPath = path.join(path.dirname(config.whisperCudaBinPath), WHISPER_VAD_MODEL.fileName);
-      void probeGpuBackend();
-    } else {
-      void ensureWhisperCuda().then(() => probeGpuBackend());
-    }
+    // Always go through ensureWhisperCuda(): it activates a complete build immediately, and re-downloads when the
+    // folder is missing or incomplete (interrupted download), so a retry from the UI needs no restart (AUG-140).
+    const complete = await cudaBuildComplete(path.dirname(config.whisperCudaBinPath));
+    void ensureWhisperCuda().then(() => probeGpuBackend());
+    res.json({ ok: true, engine: config.whisperGpuEngine, cudaStatus: complete ? 'present' : 'downloading' });
+    return;
   } else {
-    // Switch back to CPU — use the correct resources path for packaged builds
+    // Switch back to CPU — use the correct resources path for packaged builds. config.whisperCudaBinPath is where
+    // the CUDA build lives (Electron: %APPDATA%); it is engine-independent and must survive a CPU switch, or the
+    // next cuda switch falls back to WHISPER_BIN_ROOT inside resources/app and downloads there (AUG-140).
     const dir = resolveCpuBinDir();
     config.whisperBinPath = path.join(dir, whisperBinName());
-    config.whisperCudaBinPath = null;
     config.whisperVadModelPath = path.join(dir, WHISPER_VAD_MODEL.fileName);
   }
-
-  // Rebuild gpuState with the new engine
-  const newPolicy = resolveGpuPolicy({
-    platform: process.platform,
-    arch: process.arch,
-    override: config.whisperGpuOverride,
-    gpuEngine: config.whisperGpuEngine,
-  });
-  // Mutate the singleton — GpuState is process-wide
-  Object.assign(gpuState, new GpuState(newPolicy));
 
   res.json({
     ok: true,

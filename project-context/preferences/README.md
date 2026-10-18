@@ -43,7 +43,7 @@ Eliminate repeated manual re-configuration every app session. Before this system
 - Reset: DELETE /api/preferences removes the file; client reverts to empty object and applies defaults.
 - Mic notice: when saved micDeviceId is not found in available devices, a dismissible warning appears.
 - On Windows with NVIDIA GPU detected, Settings Transcription shows an interactive CPU/GPU(NVIDIA) dropdown that calls POST /api/engine/switch; CUDA download progress streams via SSE.
-- When GPU selected and CUDA present, a green status line shows "GPU (NVIDIA) — ready"; when CPU selected with NVIDIA detected, a yellow hint suggests switching.
+- When GPU selected, CUDA present and gpuBackend is 'cuda', Settings shows the green "Transcription runs on GPU" block; with gpuBackend 'cpu' a yellow hint says the GPU could not be used (AUG-140); when CPU selected with NVIDIA detected, a yellow hint suggests switching.
 - On macOS or Windows without NVIDIA, Transcription shows the existing read-only engine status block (.settings-engine-status).
 - Engine status block uses left-border accent: 3px solid --gpu-color (green) for GPU, 3px solid --cpu-fallback-color (yellow) for CPU fallback.
 - Plain language only in the engine status block — no backend names (Vulkan/CUDA/Metal), device IDs, or method names shown to users.

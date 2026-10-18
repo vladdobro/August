@@ -395,7 +395,7 @@ const SettingsModal: React.FC<SettingsModalProps> = ({
                   {currentEngine === 'cpu' && !isDownloading && !cudaError && (
                     <div className="settings-hint settings-hint--warn">Your computer has an NVIDIA GPU. Switch to GPU for faster transcription.</div>
                   )}
-                  {currentEngine === 'cuda' && cudaStatus === 'present' && (
+                  {currentEngine === 'cuda' && (cudaStatus === 'present' || cudaStatus === 'not-needed') && gpuBackend === 'cuda' && (
                     <div className={`settings-engine-status settings-engine-status--gpu`}>
                       <svg className="engine-icon" viewBox="0 0 16 16" fill="none" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round">
                         <rect x="2" y="4" width="12" height="8" />
@@ -409,6 +409,9 @@ const SettingsModal: React.FC<SettingsModalProps> = ({
                         <span className="engine-detail">{isTranscribing ? 'Currently transcribing with hardware acceleration.' : 'Faster processing with hardware acceleration.'}</span>
                       </div>
                     </div>
+                  )}
+                  {currentEngine === 'cuda' && (cudaStatus === 'present' || cudaStatus === 'not-needed') && gpuBackend === 'cpu' && (
+                    <div className="settings-hint settings-hint--warn">GPU (NVIDIA) could not be used — transcription runs on CPU. Open Diagnostics to retry.</div>
                   )}
                 </>
               );

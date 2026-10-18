@@ -13,6 +13,7 @@ import {
   countVulkanDevices,
   describeExit,
   gpuState,
+  isNativeGpuBinary,
   isProcessLoadFailure,
   NO_CUDA_DEVICE_REASON,
   NO_VULKAN_DEVICE_REASON,
@@ -287,17 +288,28 @@ export async function boostAudio(audioPath: string): Promise<string> {
 /// itself, so the state flips to CPU right away and /api/health reports it. Device-level Vulkan failures only surface
 /// once a model is loaded, so the first real transcription is the second half of the probe (runWhisper's retry).
 /// Never spawns on Metal, when WHISPER_USE_GPU pins the mode, or when the binary is absent.
-export async function probeGpuBackend(): Promise<GpuBackend> {
+/// whisper-cli --help on the CUDA build loads ~200 MB of CUDA DLLs; on a loaded machine that exceeded the old 10 s
+/// limit, the probe was killed and the backend stayed 'unknown' until the first job (AUG-140).
+const PROBE_TIMEOUT_MS = 30_000;
+const PROBE_RETRY_DELAY_MS = 5_000;
+
+export async function probeGpuBackend(attempt = 1): Promise<GpuBackend> {
   const state = gpuState;
   const { nativeBackend } = state.policy;
   if (state.policy.locked || (nativeBackend !== 'vulkan' && nativeBackend !== 'cuda') || !state.useGpu()) return state.backend();
+  if (!isNativeGpuBinary(state, config.whisperBinPath)) {
+    // cuda policy but the CPU build is what we have (CUDA download failed or missing): say so instead of "no CUDA device".
+    state.markGpuUnusable('CUDA whisper-cli is not installed; running the CPU build');
+    console.warn('[gpu] CUDA whisper-cli is not installed (download missing or failed) — transcription runs on CPU until it is installed');
+    return state.backend();
+  }
   if (!(await fileExists(config.whisperBinPath))) {
     state.markGpuUnusable(`whisper binary not found at ${config.whisperBinPath}`);
     return state.backend();
   }
   const safeBinPath = await toSafePath(config.whisperBinPath);
   const probe = await new Promise<{ exit: WhisperExit | null; stderr: string }>((resolve) => {
-    execFile(safeBinPath, ['--help'], { timeout: 10_000 }, (error, _stdout, stderr) => {
+    execFile(safeBinPath, ['--help'], { timeout: PROBE_TIMEOUT_MS }, (error, _stdout, stderr) => {
       const text = stderr ?? '';
       resolve({
         exit: error ? { code: error.code, signal: error.signal, killed: error.killed, stderr: text } : null,
@@ -333,6 +345,11 @@ export async function probeGpuBackend(): Promise<GpuBackend> {
         : `npm run setup bundles vulkan-1.dll next to whisper-cli, so ${path.dirname(config.whisperBinPath)} is incomplete — re-run npm run setup (desktop app: reinstall).`;
       console.error(`[gpu] whisper-cli cannot start (${describeExit(probe.exit)}): a DLL it imports is missing. ${detail}`);
     }
+  } else if (attempt < 2) {
+    // Not a GPU failure (e.g. killed by the timeout under load): try once more before leaving the backend 'unknown'.
+    console.warn(`[gpu] startup probe inconclusive (${describeExit(probe.exit)}); retrying once in ${PROBE_RETRY_DELAY_MS / 1000}s`);
+    await new Promise((resolve) => setTimeout(resolve, PROBE_RETRY_DELAY_MS));
+    return probeGpuBackend(attempt + 1);
   } else {
     console.warn(`[gpu] startup probe inconclusive (${describeExit(probe.exit)}); keeping the GPU enabled until the first job`);
   }
@@ -379,11 +396,16 @@ async function vadModelAvailable(): Promise<boolean> {
 /// transcriptMerger.ts are the primary defenses and are unaffected.
 export async function runWhisper(opts: RunWhisperOptions): Promise<WhisperJsonOutput> {
   const { audioPath, language, outputBase, trackingKey } = opts;
-  const binName = path.basename(config.whisperBinPath);
+  // Snapshot the binary and the GPU-state epoch at spawn time: the engine may switch or the CUDA variant may finish
+  // downloading while this job runs, and the result must then be judged against what was actually spawned (AUG-140).
+  const spawnBinPath = config.whisperBinPath;
+  const binName = path.basename(spawnBinPath);
+  const epoch = gpuState.epoch();
+  const outcomeApplies = () => gpuState.epoch() === epoch && isNativeGpuBinary(gpuState, spawnBinPath);
 
-  if (!(await fileExists(config.whisperBinPath))) {
+  if (!(await fileExists(spawnBinPath))) {
     throw new WhisperError(
-      `${binName} not found at "${config.whisperBinPath}". Run \`npm run setup\` to download it (see whisper/README.md).`,
+      `${binName} not found at "${spawnBinPath}". Run \`npm run setup\` to download it (see whisper/README.md).`,
     );
   }
   if (!(await fileExists(config.whisperModelPath))) {
@@ -405,7 +427,7 @@ export async function runWhisper(opts: RunWhisperOptions): Promise<WhisperJsonOu
 
   const [safeModelPath, safeBinPath, safeAudioPath, safeOutputBase, safeVadPath] = await Promise.all([
     toSafePath(config.whisperModelPath),
-    toSafePath(config.whisperBinPath),
+    toSafePath(spawnBinPath),
     toSafePath(audioPath),
     toSafePath(outputBase),
     toSafePath(config.whisperVadModelPath),
@@ -463,22 +485,25 @@ export async function runWhisper(opts: RunWhisperOptions): Promise<WhisperJsonOu
       exitOf: (err) => (err instanceof WhisperError ? err.exit ?? null : null),
       log: (message) => console.warn(`[gpu] ${message}`),
       label: path.basename(audioPath),
+      outcomeApplies,
     });
     // A Vulkan-build GPU-mode run that printed no ggml-vulkan device banner ran on CPU inside whisper-cli (bundled
     // loader, no driver). Flip the state so /api/health says so and later jobs pass --no-gpu directly (AUG-117).
     // Vulkan builds only: Metal / CPU-only runs never print the banner.
-    if (ranOnCpuWithoutVulkanDevice(gpuState, stderr)) {
-      if (gpuState.markGpuUnusable(NO_VULKAN_DEVICE_REASON)) console.warn(`[gpu] ${NO_VULKAN_DEVICE_LOG}`);
-    }
-    if (ranOnCpuWithoutCudaDevice(gpuState, stderr)) {
-      if (gpuState.markGpuUnusable(NO_CUDA_DEVICE_REASON)) console.warn(`[gpu] whisper-cli found no CUDA device; transcription runs on CPU for this server run`);
+    if (outcomeApplies()) {
+      if (ranOnCpuWithoutVulkanDevice(gpuState, stderr)) {
+        if (gpuState.markGpuUnusable(NO_VULKAN_DEVICE_REASON)) console.warn(`[gpu] ${NO_VULKAN_DEVICE_LOG}`);
+      }
+      if (ranOnCpuWithoutCudaDevice(gpuState, stderr)) {
+        if (gpuState.markGpuUnusable(NO_CUDA_DEVICE_REASON)) console.warn(`[gpu] whisper-cli found no CUDA device; transcription runs on CPU for this server run`);
+      }
     }
   } catch (err) {
     if (err instanceof WhisperError) {
       if (err.exit && isProcessLoadFailure(err.exit)) {
         console.error(
           `[gpu] ${binName} could not be loaded (${describeExit(err.exit)}): a DLL it imports is missing. ` +
-          `npm run setup bundles vulkan-1.dll next to ${binName}, so ${path.dirname(config.whisperBinPath)} is incomplete — re-run npm run setup (desktop app: reinstall).`,
+          `npm run setup bundles vulkan-1.dll next to ${binName}, so ${path.dirname(spawnBinPath)} is incomplete — re-run npm run setup (desktop app: reinstall).`,
         );
         throw new WhisperError(WHISPER_RUNTIME_MISSING_MESSAGE, err);
       }

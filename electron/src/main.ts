@@ -113,14 +113,15 @@ function configureServerEnv(): void {
   process.env.AUGUST_DATA_DIR ??= dataDir;
   process.env.WHISPER_MODEL_PATH ??= path.join(modelsDir, WHISPER_MODEL_FILE);
 
-  // GPU engine: read the installer's choice for bin-path resolution below, but do NOT set
-  // WHISPER_GPU_ENGINE env — that pins the engine and blocks the in-app switch (AUG-136/137).
-  // The server reads the active engine from user-preferences.json via readPersistedGpuEngine().
+  // GPU engine chosen in the installer (%APPDATA%/August/gpu-engine). Passed to the server as a NON-pinning default
+  // (WHISPER_GPU_ENGINE_DEFAULT): user-preferences.json wins once the user switches in-app, and WHISPER_GPU_ENGINE is
+  // deliberately not set because that would lock the in-app switch (AUG-136/137/140).
   let gpuEngine = 'cpu';
   try {
     const raw = fs.readFileSync(path.join(userData, 'gpu-engine'), 'utf-8').trim();
     if (raw === 'cuda') gpuEngine = raw;
   } catch {}
+  process.env.WHISPER_GPU_ENGINE_DEFAULT ??= gpuEngine;
 
   const platformDir = whisperPlatformDir();
   if (platformDir && !process.env.WHISPER_BIN_PATH) {

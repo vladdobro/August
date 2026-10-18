@@ -4,6 +4,7 @@
 - whisper-cli (whisper.cpp), built for Windows and macOS, transcribes session audio locally; output is raw timestamped segments in milliseconds.
 - runWhisper() in whisper.ts is the single whisper-cli invocation path for both batch and live transcription.
 - runWhisper() retries a Vulkan-class failure once with --no-gpu and keeps the process on CPU afterwards (AUG-116, services/gpuBackend.ts).
+- runWhisper() may confirm or flip the GPU state only if the job ran the native GPU binary and the GpuState epoch is unchanged since spawn (AUG-140).
 - On Windows x64, GPU transcription uses the CUDA engine (switchable in Settings); CPU is the default; the bundled Vulkan loader is legacy (AUG-117/136).
 - TranscriptMerger filters hallucinations and filler, dedupes near-duplicate segments, and joins nearby segments into readable lines.
 - stripCreditHallucination replaces the "Редактор субтитров А.Семкин Корректор А.Егорова" hallucination with [OOPS] via regex, not silent drop.

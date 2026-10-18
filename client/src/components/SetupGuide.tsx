@@ -117,6 +117,31 @@ const SetupGuide: React.FC<SetupGuideProps> = ({ health, onRefresh, onDismiss })
     return () => clearInterval(id);
   }, [health.gpuBackend, onRefresh]);
 
+  // Stream CUDA download progress whenever the server reports a download (button-triggered or started at launch
+  // because the installer chose GPU), and refresh health when it settles.
+  useEffect(() => {
+    if (health.cudaStatus !== 'downloading') return;
+    const es = new EventSource(CUDA_PROGRESS_URL);
+    es.onmessage = (event) => {
+      try {
+        const data = JSON.parse(event.data);
+        setCudaProgress(data.percent ?? 0);
+        if (data.state === 'present') {
+          es.close();
+          setCudaProgress(100);
+          setSwitchedToGpu(true);
+          void onRefresh();
+        } else if (data.state === 'missing' && data.error) {
+          es.close();
+          setCudaError(data.error);
+          void onRefresh();
+        }
+      } catch { /* ignore */ }
+    };
+    es.onerror = () => { es.close(); void onRefresh(); };
+    return () => es.close();
+  }, [health.cudaStatus, onRefresh]);
+
   const handleCopy = async () => {
     try {
       await navigator.clipboard.writeText(setupCommand);
@@ -154,38 +179,14 @@ const SetupGuide: React.FC<SetupGuideProps> = ({ health, onRefresh, onDismiss })
   const handleGpuSwitch = async () => {
     setEngineSwitching(true);
     setCudaError(null);
+    setCudaProgress(0);
     try {
       const result = await switchEngine('cuda');
-      if (result.cudaStatus === 'downloading') {
-        const evtSource = new EventSource(CUDA_PROGRESS_URL);
-        evtSource.onmessage = (event) => {
-          try {
-            const data = JSON.parse(event.data);
-            setCudaProgress(data.percent ?? 0);
-            if (data.state === 'present') {
-              evtSource.close();
-              setCudaProgress(100);
-              setSwitchedToGpu(true);
-              setEngineSwitching(false);
-              void onRefresh();
-            } else if (data.state === 'missing' && data.error) {
-              evtSource.close();
-              setCudaError(data.error);
-              setEngineSwitching(false);
-            }
-          } catch {}
-        };
-        evtSource.onerror = () => {
-          evtSource.close();
-          setEngineSwitching(false);
-        };
-      } else {
-        setSwitchedToGpu(true);
-        setEngineSwitching(false);
-        void onRefresh();
-      }
+      if (result.cudaStatus !== 'downloading') setSwitchedToGpu(true);
+      await onRefresh();
     } catch (err) {
       setCudaError((err as Error).message || 'Failed to switch engine');
+    } finally {
       setEngineSwitching(false);
     }
   };
@@ -196,8 +197,17 @@ const SetupGuide: React.FC<SetupGuideProps> = ({ health, onRefresh, onDismiss })
   const modelReady = health.modelAvailable && (!modelStatus || modelStatus.state !== 'downloading');
   const ffmpegReady = health.ffmpegAvailable;
   const allReady = whisperReady && modelReady && ffmpegReady;
-  const showGpuSwitch = !isMac && health.nvidiaGpu?.detected && (health.gpuEngine === 'cpu' || health.gpuEngine === undefined) && !switchedToGpu;
-  const showGpuReady = !isMac && health.nvidiaGpu?.detected && (health.gpuEngine === 'cuda' || switchedToGpu) && (health.cudaStatus === 'present' || health.cudaStatus === 'not-needed');
+  // Windows + NVIDIA states (AUG-137/140). "active" is driven by the real backend (/api/health gpuBackend), never by
+  // the selected engine alone: engine=cuda with backend=cpu means the GPU could not be used.
+  const nvidia = !isMac && !!health.nvidiaGpu?.detected;
+  const engineCuda = health.gpuEngine === 'cuda' || switchedToGpu;
+  const cudaInstalled = health.cudaStatus === 'present' || health.cudaStatus === 'not-needed';
+  const cudaDownloading = health.cudaStatus === 'downloading' || engineSwitching;
+  const showCudaDownload = nvidia && cudaDownloading;
+  const showGpuSwitch = nvidia && !cudaDownloading && (!engineCuda || health.cudaStatus === 'missing');
+  const showGpuReady = nvidia && engineCuda && cudaInstalled && health.gpuBackend === 'cuda';
+  const showGpuStarting = nvidia && engineCuda && cudaInstalled && health.gpuBackend === 'unknown';
+  const showGpuFallback = nvidia && engineCuda && cudaInstalled && health.gpuBackend === 'cpu';
 
   return (
     <div className="diag-page">
@@ -210,7 +220,7 @@ const SetupGuide: React.FC<SetupGuideProps> = ({ health, onRefresh, onDismiss })
             <HintPopup text="Whisper is the speech-to-text engine. The GGML model contains the neural network weights. FFmpeg handles audio format conversion." />
           </p>
         </div>
-        {allReady && health.gpuBackend && health.gpuBackend !== 'cpu' && !showGpuReady && (
+        {allReady && !nvidia && health.gpuBackend && health.gpuBackend !== 'cpu' && (
           <p className="diag-info-line diag-gpu-status">
             {health.gpuBackend === 'unknown'
               ? 'GPU: detecting…'
@@ -231,22 +241,38 @@ const SetupGuide: React.FC<SetupGuideProps> = ({ health, onRefresh, onDismiss })
           </div>
         )}
 
-        {health.gpuBackend === 'cpu' && !showGpuSwitch && (
+        {showGpuStarting && (
+          <p className="diag-info-line diag-gpu-status">GPU (NVIDIA) — starting…</p>
+        )}
+
+        {showGpuFallback && (
+          <div className="diag-gpu-switch">
+            <p className="diag-info-line diag-cpu-notice">
+              GPU (NVIDIA) could not be used — transcription runs on CPU.
+            </p>
+            {!health.gpuEnginePinned && (
+              <button className="diag-gpu-switch-btn" onClick={handleGpuSwitch} type="button">
+                Retry GPU engine (NVIDIA)
+              </button>
+            )}
+            {cudaError && (
+              <p className="diag-info-line diag-gpu-error">{cudaError}</p>
+            )}
+          </div>
+        )}
+
+        {!nvidia && health.gpuBackend === 'cpu' && (
           <p className="diag-info-line diag-cpu-notice">
             Transcription runs on CPU — processing will take longer.
           </p>
         )}
 
-        {showGpuSwitch && (
+        {showCudaDownload && (
           <div className="diag-gpu-switch">
             <p className="diag-info-line diag-cpu-notice">
               Transcription runs on CPU — processing will take longer.
             </p>
-            {health.gpuEnginePinned ? (
-              <p className="diag-info-line diag-gpu-pinned">Engine is set by system configuration.</p>
-            ) : engineSwitching && health.cudaStatus !== 'downloading' ? (
-              <button className="diag-gpu-switch-btn" disabled type="button">Switching…</button>
-            ) : health.cudaStatus === 'downloading' || (engineSwitching && cudaProgress > 0) ? (
+            {health.cudaStatus === 'downloading' ? (
               <div className="diag-section">
                 <div className="diag-progress">
                   <div className="diag-progress-track">
@@ -258,13 +284,28 @@ const SetupGuide: React.FC<SetupGuideProps> = ({ health, onRefresh, onDismiss })
                 </div>
               </div>
             ) : (
+              <button className="diag-gpu-switch-btn" disabled type="button">Switching…</button>
+            )}
+          </div>
+        )}
+
+        {showGpuSwitch && (
+          <div className="diag-gpu-switch">
+            <p className="diag-info-line diag-cpu-notice">
+              Transcription runs on CPU — processing will take longer.
+            </p>
+            {health.gpuEnginePinned ? (
+              <p className="diag-info-line diag-gpu-pinned">Engine is set by system configuration.</p>
+            ) : (
               <button className="diag-gpu-switch-btn" onClick={handleGpuSwitch} type="button">
-                Switch to GPU (NVIDIA)
+                {health.cudaStatus === 'missing' ? 'Install GPU engine (NVIDIA)' : 'Switch to GPU (NVIDIA)'}
               </button>
             )}
-            {cudaError && (
+            {cudaError ? (
               <p className="diag-info-line diag-gpu-error">{cudaError}</p>
-            )}
+            ) : health.cudaStatus === 'missing' && engineCuda ? (
+              <p className="diag-info-line diag-gpu-error">The GPU engine is not installed yet.</p>
+            ) : null}
           </div>
         )}
 

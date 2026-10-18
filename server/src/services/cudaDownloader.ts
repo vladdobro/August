@@ -38,6 +38,17 @@ export function onCudaStatus(listener: (s: CudaStatus) => void): () => void {
   return () => emitter.off('status', listener);
 }
 
+/// True only when every file of the CUDA build is present. A folder left by an interrupted download may hold
+/// whisper-cli.exe without its DLLs; treating that as installed makes whisper-cli fail with 0xC0000135 (AUG-140).
+export async function cudaBuildComplete(dir: string): Promise<boolean> {
+  const present = await Promise.all(WHISPER_CUDA_BUILD.entries.map((entry) => fileExists(path.join(dir, entry))));
+  return present.every(Boolean);
+}
+
+async function removeCudaEntries(dir: string): Promise<void> {
+  await Promise.all(WHISPER_CUDA_BUILD.entries.map((entry) => fs.unlink(path.join(dir, entry)).catch(() => {})));
+}
+
 let ensurePromise: Promise<void> | null = null;
 
 export async function ensureWhisperCuda(): Promise<void> {
@@ -60,13 +71,16 @@ function vadCandidates(targetDir: string): string[] {
 
 async function doEnsure(): Promise<void> {
   const binPath = config.whisperCudaBinPath ?? config.whisperBinPath;
-  if (await fileExists(binPath)) {
+  const targetDir = path.dirname(binPath);
+  if (await cudaBuildComplete(targetDir)) {
     config.whisperBinPath = binPath;
-    setStatus({ state: 'present', binPath, error: null });
+    config.whisperVadModelPath = path.join(targetDir, WHISPER_VAD_MODEL.fileName);
+    setStatus({ state: 'present', binPath, percent: 100, error: null });
     return;
   }
 
-  const targetDir = path.dirname(binPath);
+  // Incomplete leftovers from an interrupted download: start clean so a retry never mixes old and new files.
+  await removeCudaEntries(targetDir);
   await fs.mkdir(targetDir, { recursive: true });
 
   setStatus({ state: 'downloading', binPath, percent: 0, error: null });
@@ -152,6 +166,9 @@ async function doEnsure(): Promise<void> {
   } catch (err) {
     await fs.unlink(zipPath).catch(() => {});
     await fs.rm(extractDir, { recursive: true, force: true }).catch(() => {});
+    // Drop partially copied files: a whisper-cli.exe left next to missing DLLs would count as "present" on the
+    // next attempt and then fail to start with 0xC0000135 (AUG-140).
+    await removeCudaEntries(targetDir);
     let error: string;
     if (isOfflineError(err)) {
       error = (err as Error)?.message || 'No internet connection. Cannot download the CUDA whisper-cli.';

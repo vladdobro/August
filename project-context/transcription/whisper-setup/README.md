@@ -16,8 +16,13 @@
 - npm run dev runs setup automatically through the root package.json predev hook, and a setup failure never blocks the app from starting.
 - ffmpeg is mandatory for browser recordings; the diagnostics page blocks "Proceed" when neither a bundled nor a PATH ffmpeg is found.
 - Windows x64 supports CPU (default) or CUDA/NVIDIA GPU engine; switchable in-app via Settings or Diagnostics screen; CUDA downloads on demand (~457 MB).
+- In packaged Electron builds, GPU/CPU binary paths must use process.resourcesPath (extraResources), not WHISPER_BIN_ROOT which resolves into resources/app/ (server source tree).
 - GPU engine choice persists in user-preferences.json (gpuEngine field) and is read at config init by readPersistedGpuEngine().
 - WHISPER_GPU_ENGINE env overrides the persisted gpuEngine; WHISPER_USE_GPU=0|1 pins the GPU mode and disables the probe and fallback.
+- WHISPER_GPU_ENGINE_DEFAULT (the installer choice, set by Electron main) applies only while user-preferences.json has no gpuEngine; it never pins the engine (AUG-140).
+- A whisper job that ran the CPU build under a cuda policy never confirms or flips GpuState; only the CUDA build prints the ggml_cuda_init banner (AUG-140).
+- gpuState.reset() bumps an epoch that runWhisper() snapshots at spawn, so jobs outliving an engine switch cannot alter the new state (AUG-140).
+- Diagnostics shows "GPU (NVIDIA) — active" only when /api/health gpuBackend is 'cuda'; engine cuda with backend cpu shows a "could not be used" notice (AUG-140).
 - nvidiaDetect.ts detects NVIDIA GPUs via nvidia-smi on Windows; result is cached process-wide and exposed in /api/health.
 - POST /api/engine/switch toggles between cpu and cuda at runtime; GET /api/engine/cuda-progress streams CUDA download progress via SSE.
 - /api/health reports gpuBackend, gpuEngine, nvidiaGpu ({detected, gpuName}), and cudaStatus from gpuBackend.ts, nvidiaDetect.ts, and cudaDownloader.ts.
@@ -51,20 +56,30 @@ Explain the setup, binary-distribution, and model-download mechanics behind tran
 - setupVadModel() downloads to .part, verifies SHA256 29940d98d42b91fbd05ce489f3ecf7c72f0a42f027e4875919a28fb4c04ea2cf, then renames; the source is huggingface ggml-org/whisper-vad, pinned in WHISPER_VAD_MODEL in config.ts.
 - CUDA variant (AUG-130): WHISPER_CUDA_BUILD in config.ts pins the v1.8.4 whisper-cublas-12.4.0-bin-x64.zip (SHA256 b07cff4e..., 457 MB); entries list the 9 files to extract from Release/ inside the zip.
 - CUDA directory layout: dev installs to whisper/bin/win-x64-cuda/; packaged installs download on demand to %APPDATA%/August/whisper/bin/win-x64-cuda/.
-- cudaDownloader.ts (ensureWhisperCuda): downloads and extracts the CUDA variant on first server start when WHISPER_GPU_ENGINE=cuda, following the modelDownloader.ts pattern; idempotent, never throws.
+- cudaDownloader.ts (ensureWhisperCuda): downloads and extracts the CUDA variant on first server start when the active engine is cuda, following the modelDownloader.ts pattern; idempotent, never throws.
 - CUDA device banner: countCudaDevices() in gpuBackend.ts parses 'ggml_cuda_init: found N CUDA devices' from stderr; null/0 means no NVIDIA GPU and whisper-cli runs on CPU.
-- GPU engine selection: the NSIS installer (installer.nsh) shows a radio page for CPU vs GPU-NVIDIA; the choice persists in %APPDATA%/August/gpu-engine, read by Electron main.ts into WHISPER_GPU_ENGINE.
+- GPU engine selection: the NSIS installer (installer.nsh) shows a radio page for CPU vs GPU-NVIDIA; the choice persists in %APPDATA%/August/gpu-engine, read by Electron main.ts into WHISPER_GPU_ENGINE_DEFAULT (a non-pinning default, AUG-140).
 - GpuEngine type ('cpu' | 'cuda') in config.ts: parseGpuEngine() reads WHISPER_GPU_ENGINE; resolveGpuPolicy() uses it so Windows returns nativeBackend 'cuda' only when the CUDA engine is selected.
-- readPersistedGpuEngine() in config.ts: reads WHISPER_GPU_ENGINE env first (overrides everything), then gpuEngine from user-preferences.json, defaults to 'cpu'.
+- readPersistedGpuEngine() in config.ts: WHISPER_GPU_ENGINE env first (overrides everything), then an explicit gpuEngine ('cpu' | 'cuda') in user-preferences.json, then WHISPER_GPU_ENGINE_DEFAULT, else 'cpu'.
 - defaultWhisperBinPath() in config.ts: when gpuEngine is 'cuda' on Windows, resolves to whisper/bin/win-x64-cuda/ instead of win-x64/.
-- In-app engine switch (AUG-136): POST /api/engine/switch validates NVIDIA GPU detected, refuses if WHISPER_GPU_ENGINE env is set (409), persists to user-preferences.json, mutates runtime config and rebuilds GpuState singleton.
+- In-app engine switch (AUG-136): POST /api/engine/switch validates NVIDIA GPU detected, refuses if WHISPER_GPU_ENGINE env is set (409), persists to user-preferences.json, mutates runtime config and calls gpuState.reset() BEFORE any probe.
 - Diagnostics screen GPU switch (AUG-137): when nvidiaGpu.detected and gpuEngine='cpu' on Windows, SetupGuide.tsx shows a Switch to GPU button; hidden when gpuEnginePinned (WHISPER_GPU_ENGINE env set).
+- Diagnostics shows an "Install GPU engine (NVIDIA)" button when gpuEngine='cuda' and cudaStatus is 'missing' (launch-time download failed); it re-posts /api/engine/switch to retry (AUG-140).
+- SetupGuide.tsx subscribes to /api/engine/cuda-progress whenever health.cudaStatus is 'downloading', so a launch-time CUDA download (installer chose GPU) shows progress too (AUG-140).
 - NVIDIA GPU detection: detectNvidiaGpu() in nvidiaDetect.ts runs nvidia-smi --query-gpu=name with 5s timeout on win32; result is cached for the process lifetime.
 - Engine switch CUDA download: when switching to cuda and CUDA binaries are missing, the switch endpoint starts ensureWhisperCuda() in background and streams progress via GET /api/engine/cuda-progress (SSE).
 - Settings modal GPU selector: on Windows with NVIDIA GPU detected, Settings shows a CPU/GPU(NVIDIA) dropdown with CUDA download progress bar and status hints.
 - setupWindowsCuda() in setup.ts: downloads the CUDA variant for dev machines; npm run setup runs it after the CPU variant so both are available for testing.
 - electron-builder extraResources already copy whole whisper/bin/darwin-${arch} and whisper/bin/win-x64 folders, so the VAD model ships in the DMG and the Windows installer without builder config changes.
 - The server resolves the VAD model via WHISPER_VAD_MODEL_PATH env, else next to the resolved whisper-cli (works for packaged resources/whisper/bin/<platform>/).
+- Packaged-build path resolution (AUG-138): WHISPER_BIN_ROOT resolves to resources/app/whisper/bin/ in packaged builds, which is the server source tree — NOT where extraResources places binaries (resources/whisper/bin/).
+- resolveCpuBinDir() in engine.ts uses process.resourcesPath when available so engine switch paths work in both packaged and dev builds.
+- Electron main.ts always sets WHISPER_CUDA_BIN_PATH on Windows regardless of gpuEngine, so the server knows the CUDA binary location even when starting in CPU mode — the user may switch to CUDA at runtime.
+- probeGpuBackend() is called after every engine switch (both immediate and post-CUDA-download) to confirm the GPU backend; it runs asynchronously with a 30s timeout and one retry after 5s when the result is inconclusive (AUG-140).
+- An inconclusive probe (killed by timeout, non-GPU exit) leaves the backend 'unknown' until the first job only after the retry also fails; the old 10s limit was exceeded on a loaded machine.
+- gpuState.reset() must run before probeGpuBackend() is invoked: the probe reads the policy synchronously, and probing under the old CPU policy is a no-op that leaves the backend 'unknown' (AUG-140).
+- probeGpuBackend() marks the state CPU with reason "CUDA whisper-cli is not installed" when the active binary is not the CUDA build under a cuda policy, instead of reporting "no CUDA device" (AUG-140).
+- SetupGuide.tsx polls /api/health every 2s while gpuBackend === 'unknown' to resolve the race between the async GPU probe and the UI refresh.
 - ffmpeg sources: Windows uses BtbN's LGPL static build from a permanent autobuild tag; macOS arm64/x64 use Martin Riedl's GPL static release builds, chosen because both publish per-arch static binaries with stable URLs.
 - Shared zip extraction: extractZip() tries tar (bsdtar on Windows 10+/macOS) and falls back to PowerShell Expand-Archive on Windows; whisper-cli and ffmpeg archives share it.
 - Windows extraction calls System32 tar.exe (bsdtar) by absolute path because Git Bash puts GNU tar first on PATH and GNU tar rejects drive-letter paths as remote hosts.
@@ -110,7 +125,15 @@ Explain the setup, binary-distribution, and model-download mechanics behind tran
 - ensureWhisperCuda() runs before runPreflightChecks() and probeGpuBackend() in startServer(), so the CUDA binary is present before the health check and GPU probe.
 - The engine switch endpoint refuses with 409 when WHISPER_GPU_ENGINE env is set — env overrides are operator-level and must not be toggled from the UI.
 - The engine switch endpoint refuses with 400 when requesting cuda without a detected NVIDIA GPU.
-- Engine switch mutates config.whisperGpuEngine, config.whisperBinPath, and config.whisperCudaBinPath at runtime; GpuState is rebuilt via Object.assign(gpuState, new GpuState(newPolicy)).
+- Engine switch mutates config.whisperGpuEngine and config.whisperBinPath at runtime (never config.whisperCudaBinPath); GpuState is rebuilt via gpuState.reset(newPolicy), which bumps the epoch (AUG-140).
+- Switching to CPU must keep config.whisperCudaBinPath: it is the engine-independent CUDA location (Electron: %APPDATA%), and nulling it made the next cuda switch download into resources/app (AUG-140).
+- A CUDA build counts as installed only when every WHISPER_CUDA_BUILD entry exists (cudaBuildComplete); an incomplete folder is wiped and re-downloaded by ensureWhisperCuda() (AUG-140).
+- POST /api/engine/switch to cuda always runs ensureWhisperCuda() (never a bare fileExists), so "Install" / "Retry GPU engine" in Diagnostics works without restarting the app (AUG-140).
+- Diagnostics shows a "Retry GPU engine (NVIDIA)" button when engine is cuda but gpuBackend is cpu; it re-posts /api/engine/switch, which resets GpuState and re-probes (AUG-140).
+- In packaged builds, engine switch CPU paths must resolve via process.resourcesPath, never via WHISPER_BIN_ROOT — the latter points into resources/app/ which lacks extraResources binaries.
+- WHISPER_CUDA_BIN_PATH must be set by Electron main on every Windows startup, not just when gpuEngine is 'cuda' — the user can switch engines at runtime via the Diagnostics UI.
+- The engine switch must always chain probeGpuBackend() after changing the binary path — without it, gpuState stays 'unknown' and the frontend shows "GPU: detecting…" indefinitely.
+- The frontend must poll health while gpuBackend is 'unknown' — a single refresh after engine switch or CUDA download races with the async probe and may read stale state.
 - readPersistedGpuEngine() uses sync fs.readFileSync at module-load time; the preferences file path is derived from config.dataDir.
 - The CUDA 12.4 zip is self-contained: all needed CUDA runtime DLLs (cublas64_12, cublasLt64_12, cudart64_12) ship inside the zip; no system CUDA toolkit required.
 - CUDA 11.8 was evaluated and rejected: its zip does not include cublas64_11.dll, requiring a system cuBLAS install (AUG-130 research).
@@ -118,6 +141,10 @@ Explain the setup, binary-distribution, and model-download mechanics behind tran
 - The healthy-run banner "ggml_vulkan: Found 1 Vulkan devices" is printed even with --no-prints and must never match the classifier, or unrelated failures on GPU machines would be re-run on CPU.
 - STATUS_STACK_BUFFER_OVERRUN (0xC0000409) stays classified as non-GPU because it is the non-ASCII path crash handled by toSafePath().
 - The CPU flip is process-wide and permanent until restart, so live chunks and later batch jobs run --no-gpu directly with no per-chunk retry storm.
+- Root cause AUG-140: a CPU-build job spawned during the CUDA download finished under the cuda policy, printed no ggml_cuda_init banner, and markGpuUnusable() put the process on CPU while gpuEngine stayed cuda.
+- The CUDA build prints the ggml_cuda_init banner even with --no-prints; the CPU build never prints it (verified on RTX 4060 with whisper-cli 1.8.4).
+- runWhisper() snapshots config.whisperBinPath and gpuState.epoch() at spawn; isNativeGpuBinary() plus an unchanged epoch gate every markGpuConfirmed()/markGpuUnusable() for that job (outcomeApplies in runWithGpuFallback).
+- Electron main never sets WHISPER_GPU_ENGINE from the installer file; it sets WHISPER_GPU_ENGINE_DEFAULT so the in-app switch stays available.
 - The startup probe runs `whisper-cli --help` once on Vulkan builds; it catches the cannot-load case only, and the first real job is the second half of the probe because device-level Vulkan failures surface at model load.
 - Verified: with the Vulkan loader present but no usable device (VK_LOADER_DRIVERS_DISABLE=*), whisper-cli itself falls back to CPU, exits 0 and prints no ggml_vulkan banner, so no retry is needed for a no-GPU machine — only the banner check.
 - Verified: with an unloadable vulkan-1.dll next to the binaries, --help, GPU and --no-gpu runs all die at process load (0xC000012F), so --no-gpu cannot rescue a missing Vulkan runtime — that is why the loader is bundled (AUG-117); for any fallback around a native binary, check the import table / a broken-DLL simulation before designing the retry.

@@ -1,3 +1,5 @@
+import path from 'node:path';
+
 import { config } from '../config.js';
 
 /// Backend reported by /api/health and the startup log (AUG-116).
@@ -122,15 +124,35 @@ export function describeExit(exit: WhisperExit): string {
 /// Process-wide GPU mode. Starts from the policy, and once a Vulkan failure is classified it stays on CPU for
 /// the lifetime of the process, so live chunks and later batch jobs never retry per call.
 export class GpuState {
-  private gpuEnabled: boolean;
-  private confirmed: boolean;
+  public policy: GpuPolicy;
+  private gpuEnabled = false;
+  private confirmed = false;
   private reason: string | null = null;
+  private generation = 0;
 
-  constructor(public readonly policy: GpuPolicy) {
+  constructor(policy: GpuPolicy) {
+    this.policy = policy;
+    this.apply(policy);
+  }
+
+  private apply(policy: GpuPolicy): void {
+    this.policy = policy;
     this.gpuEnabled = policy.useGpu;
+    this.reason = null;
     // Metal has no post-start failure, CPU-only has no GPU, and a pinned mode is the user's call: all count as resolved.
     // Only vulkan and cuda need probing.
     this.confirmed = policy.locked || (policy.nativeBackend !== 'vulkan' && policy.nativeBackend !== 'cuda');
+  }
+
+  /// Rebuild for a new engine (POST /api/engine/switch, AUG-136). Bumps the epoch so jobs spawned under the previous policy can no longer confirm or flip this state (AUG-140).
+  reset(policy: GpuPolicy): void {
+    this.apply(policy);
+    this.generation += 1;
+  }
+
+  /// Changes on every reset(); runWhisper() captures it at spawn time.
+  epoch(): number {
+    return this.generation;
   }
 
   useGpu(): boolean {
@@ -190,12 +212,23 @@ export function ranOnCpuWithoutVulkanDevice(state: GpuState, stderr: string): bo
   return state.useGpu() && state.policy.nativeBackend === 'vulkan' && !countVulkanDevices(stderr);
 }
 
+/// True when `binPath` is the binary the policy's native GPU backend lives in. Under a cuda policy the server may
+/// still be spawning the CPU build (CUDA variant downloading, or a job spawned before the engine switch); such a run
+/// prints no ggml_cuda_init banner and proves nothing about the GPU, so it must neither confirm nor flip the state (AUG-140).
+export function isNativeGpuBinary(state: GpuState, binPath: string, cudaBinPath: string | null = config.whisperCudaBinPath): boolean {
+  if (state.policy.nativeBackend !== 'cuda') return true;
+  if (!cudaBinPath) return true;
+  return path.resolve(binPath) === path.resolve(cudaBinPath);
+}
+
 export interface GpuFallbackOptions {
   /// Extracts the whisper-cli exit info from a thrown error; null = not a whisper-cli exit (never retried).
   exitOf: (err: unknown) => WhisperExit | null;
   log: (message: string) => void;
   /// Short job label for the log line.
   label: string;
+  /// Whether this run may change the process GPU state (default: always). runWhisper passes false for runs that used the CPU build under a cuda policy or that outlived a gpuState.reset() (AUG-140).
+  outcomeApplies?: () => boolean;
 }
 
 /// Runs `attempt(useGpu)` with the current mode. When the GPU attempt fails with a GPU-class error and the
@@ -207,12 +240,13 @@ export async function runWithGpuFallback<T>(
   opts: GpuFallbackOptions,
 ): Promise<T> {
   const useGpu = state.useGpu();
+  const applies = () => opts.outcomeApplies?.() ?? true;
   try {
     const result = await attempt(useGpu);
-    if (useGpu) state.markGpuConfirmed();
+    if (useGpu && applies()) state.markGpuConfirmed();
     return result;
   } catch (err) {
-    if (!useGpu || !state.canFallBack()) throw err;
+    if (!useGpu || !state.canFallBack() || !applies()) throw err;
     const exit = opts.exitOf(err);
     if (!exit || classifyWhisperFailure(exit) !== 'gpu') throw err;
     const reason = describeExit(exit);

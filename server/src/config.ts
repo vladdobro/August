@@ -158,11 +158,13 @@ function readPersistedGpuEngine(): GpuEngine {
     const prefsPath = path.join(dataDir, 'user-preferences.json');
     const raw = fs.readFileSync(prefsPath, 'utf-8');
     const prefs = JSON.parse(raw);
-    if (prefs.gpuEngine === 'cuda') return 'cuda';
+    if (prefs.gpuEngine === 'cuda' || prefs.gpuEngine === 'cpu') return prefs.gpuEngine;
   } catch {
     // file doesn't exist or is invalid
   }
-  return 'cpu';
+  // No in-app choice yet: the installer's choice is the default. Electron main passes %APPDATA%/August/gpu-engine
+  // as WHISPER_GPU_ENGINE_DEFAULT; unlike WHISPER_GPU_ENGINE it does not pin the engine (AUG-140).
+  return parseGpuEngine(process.env.WHISPER_GPU_ENGINE_DEFAULT);
 }
 
 /// Post-recording decoding parameters (AUG-125), ported from SplitVox: greedy decoding (beam search was 1.6-3.4x
@@ -212,7 +214,7 @@ export interface AppConfig {
   // WHISPER_USE_GPU override (AUG-116): true/false pins the mode, null = platform default (Metal on Apple Silicon,
   // Vulkan on Windows x64, --no-gpu elsewhere) with automatic CPU fallback. Effective mode: services/gpuBackend.ts.
   whisperGpuOverride: boolean | null;
-  // GPU engine chosen at install time (AUG-130): WHISPER_GPU_ENGINE=cpu|cuda.
+  // Active whisper engine (AUG-130/136/140): WHISPER_GPU_ENGINE env (pinned) → gpuEngine in user-preferences.json → WHISPER_GPU_ENGINE_DEFAULT (installer choice) → 'cpu'.
   whisperGpuEngine: GpuEngine;
   // Where the CUDA binary should live (set by Electron main, or derived from WHISPER_BIN_ROOT in dev).
   // whisperBinPath may temporarily point to the CPU variant while CUDA downloads.

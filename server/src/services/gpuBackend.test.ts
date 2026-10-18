@@ -6,6 +6,7 @@ import {
   describeExit,
   formatExitCode,
   GpuState,
+  isNativeGpuBinary,
   ranOnCpuWithoutVulkanDevice,
   resolveGpuPolicy,
   runWithGpuFallback,
@@ -357,5 +358,70 @@ describe('runWithGpuFallback', () => {
     const result = await runWithGpuFallback(state, attempt, { exitOf, log, label: 'job' });
     expect(result).toBe('ok');
     expect(state.backend()).toBe('cuda');
+  });
+});
+
+describe('GpuState.reset (AUG-140)', () => {
+  test('bumps the epoch and returns a cuda policy to unknown', () => {
+    const state = new GpuState(resolveGpuPolicy({ platform: 'win32', arch: 'x64', override: null }));
+    expect(state.epoch()).toBe(0);
+    expect(state.backend()).toBe('cpu');
+    state.reset(resolveGpuPolicy({ platform: 'win32', arch: 'x64', override: null, gpuEngine: 'cuda' }));
+    expect(state.epoch()).toBe(1);
+    expect(state.backend()).toBe('unknown');
+    expect(state.useGpu()).toBe(true);
+    expect(state.canFallBack()).toBe(true);
+  });
+
+  test('clears a previous fallback reason and lands on cpu for a cpu policy', () => {
+    const state = new GpuState(resolveGpuPolicy({ platform: 'win32', arch: 'x64', override: null, gpuEngine: 'cuda' }));
+    state.markGpuUnusable('old failure');
+    state.reset(resolveGpuPolicy({ platform: 'win32', arch: 'x64', override: null }));
+    expect(state.backend()).toBe('cpu');
+    expect(state.fallbackReason()).toBeNull();
+    expect(state.epoch()).toBe(1);
+  });
+});
+
+describe('isNativeGpuBinary (AUG-140)', () => {
+  const cuda = () => new GpuState(resolveGpuPolicy({ platform: 'win32', arch: 'x64', override: null, gpuEngine: 'cuda' }));
+
+  test('cpu build under a cuda policy is not the native binary', () => {
+    expect(isNativeGpuBinary(cuda(), 'C:\\app\\whisper\\bin\\win-x64\\whisper-cli.exe', 'C:\\app\\whisper\\bin\\win-x64-cuda\\whisper-cli.exe')).toBe(false);
+  });
+
+  test('cuda build path matches after normalisation', () => {
+    expect(isNativeGpuBinary(cuda(), 'C:\\app\\whisper\\bin\\win-x64-cuda\\..\\win-x64-cuda\\whisper-cli.exe', 'C:\\app\\whisper\\bin\\win-x64-cuda\\whisper-cli.exe')).toBe(true);
+  });
+
+  test('unknown cuda path (null) and non-cuda policies always apply', () => {
+    expect(isNativeGpuBinary(cuda(), 'C:\\anything\\whisper-cli.exe', null)).toBe(true);
+    const metal = new GpuState(resolveGpuPolicy({ platform: 'darwin', arch: 'arm64', override: null }));
+    expect(isNativeGpuBinary(metal, '/x/whisper-cli', '/y/whisper-cli')).toBe(true);
+  });
+});
+
+describe('runWithGpuFallback outcomeApplies (AUG-140)', () => {
+  test('a run whose outcome does not apply neither confirms nor flips the state', async () => {
+    const state = new GpuState(resolveGpuPolicy({ platform: 'win32', arch: 'x64', override: null, gpuEngine: 'cuda' }));
+    const log = vi.fn();
+    await runWithGpuFallback(state, async () => 'ok', { exitOf, log, label: 'job', outcomeApplies: () => false });
+    expect(state.backend()).toBe('unknown');
+    const attempt = vi.fn(async () => { throw gpuError(); });
+    await expect(runWithGpuFallback(state, attempt, { exitOf, log, label: 'job', outcomeApplies: () => false })).rejects.toThrow('whisper failed');
+    expect(attempt).toHaveBeenCalledTimes(1);
+    expect(state.backend()).toBe('unknown');
+    expect(log).not.toHaveBeenCalled();
+  });
+
+  test('a run that outlives reset() cannot confirm the new state', async () => {
+    const state = new GpuState(resolveGpuPolicy({ platform: 'win32', arch: 'x64', override: null, gpuEngine: 'cuda' }));
+    const epoch = state.epoch();
+    const attempt = async () => {
+      state.reset(resolveGpuPolicy({ platform: 'win32', arch: 'x64', override: null, gpuEngine: 'cuda' }));
+      return 'ok';
+    };
+    await runWithGpuFallback(state, attempt, { exitOf, log: vi.fn(), label: 'job', outcomeApplies: () => state.epoch() === epoch });
+    expect(state.backend()).toBe('unknown');
   });
 });
