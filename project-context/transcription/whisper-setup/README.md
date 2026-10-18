@@ -83,7 +83,8 @@ Explain the setup, binary-distribution, and model-download mechanics behind tran
 - gpuState.reset() must run before probeGpuBackend() is invoked: the probe reads the policy synchronously, and probing under the old CPU policy is a no-op that leaves the backend 'unknown' (AUG-140).
 - probeGpuBackend() marks the state CPU with reason "CUDA whisper-cli is not installed" when the active binary is not the CUDA build under a cuda policy, instead of reporting "no CUDA device" (AUG-140).
 - SetupGuide.tsx polls /api/health every 2s while gpuBackend === 'unknown' to resolve the race between the async GPU probe and the UI refresh.
-- ffmpeg sources: Windows uses BtbN's LGPL static build from a permanent autobuild tag; macOS arm64/x64 use Martin Riedl's GPL static release builds, chosen because both publish per-arch static binaries with stable URLs.
+- ffmpeg sources: Windows uses BtbN's LGPL static build pinned to a month-end autobuild tag; macOS arm64/x64 use Martin Riedl's GPL static release builds, chosen because both publish per-arch static binaries with stable URLs.
+- BtbN deletes daily autobuild releases after about two weeks and keeps only the last build of each month, so the Windows ffmpeg pin must point at a month-end tag; a mid-month pin broke the v0.0.34 release build with HTTP 404.
 - Shared zip extraction: extractZip() tries tar (bsdtar on Windows 10+/macOS) and falls back to PowerShell Expand-Archive on Windows; whisper-cli and ffmpeg archives share it.
 - Windows extraction calls System32 tar.exe (bsdtar) by absolute path because Git Bash puts GNU tar first on PATH and GNU tar rejects drive-letter paths as remote hosts.
 - ffmpeg resolution: resolveFfmpegPaths() in config.ts is a pure function (inputs injected) producing config.ffmpegPath, config.ffprobePath and config.ffmpegSource ('env' | 'bundled' | 'path').

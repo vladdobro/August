@@ -48,8 +48,8 @@ This folder is git-ignored (see `.gitignore`) — `npm run setup` (re)creates it
 
 `npm run setup` also downloads a static `ffmpeg` + `ffprobe` build for your platform into the same
 `whisper/bin/<platform>/` folder, verifying each archive's SHA256 against the value pinned in
-`server/src/scripts/setup.ts` (`FFMPEG_BUILDS`). Sources: BtbN's LGPL Windows build from a permanent
-autobuild tag, and Martin Riedl's per-architecture macOS release builds (GPL). The step is skipped when
+`server/src/scripts/setup.ts` (`FFMPEG_BUILDS`). Sources: BtbN's LGPL Windows build from a month-end
+autobuild tag (BtbN prunes daily builds after ~2 weeks), and Martin Riedl's per-architecture macOS release builds (GPL). The step is skipped when
 both binaries already exist.
 
 At runtime the server resolves the executables once, in `server/src/config.ts` (`config.ffmpegPath`,

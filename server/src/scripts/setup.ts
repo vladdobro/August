@@ -41,7 +41,8 @@ const PORTABLE_CMAKE = {
   binRelPath: path.join('cmake-4.4.3-macos-universal', 'CMake.app', 'Contents', 'bin', 'cmake'),
 } as const;
 
-// Pinned static ffmpeg builds (AUG-115). Windows: BtbN's LGPL static build from a permanent autobuild tag
+// Pinned static ffmpeg builds (AUG-115). Windows: BtbN's LGPL static build from a month-end autobuild tag (BtbN
+// deletes daily autobuilds after ~2 weeks and keeps only the last build of each month, so never pin a mid-month tag)
 // (github.com/BtbN/FFmpeg-Builds, LGPL v3, sources in that repo). macOS: Martin Riedl's per-architecture
 // static release builds (ffmpeg.martin-riedl.de, GPL v3 — built with --enable-gpl --enable-version3; source
 // links on the site). Every SHA256 was computed from the downloaded archive; the macOS values also match the
@@ -58,11 +59,11 @@ interface FfmpegArchive {
 const FFMPEG_BUILDS: Record<WhisperPlatformDir, FfmpegArchive[]> = {
   'win-x64': [
     {
-      url: 'https://github.com/BtbN/FFmpeg-Builds/releases/download/autobuild-2026-10-04-20-51/ffmpeg-n9.0.2-22-g46d8f462ee-win64-lgpl-9.0.zip',
-      sha256: 'f09755a07c2f1e9fcc83171604d08023534870693da53cf4c6ecac08b95080b9',
+      url: 'https://github.com/BtbN/FFmpeg-Builds/releases/download/autobuild-2026-09-30-13-08/ffmpeg-n9.0.2-17-g2a571b6068-win64-lgpl-9.0.zip',
+      sha256: '6b264b9e6019103f601d98c292bd332fd87acf1c5e941ddff4fb71760fe63432',
       entries: [
-        { archivePath: path.join('ffmpeg-n9.0.2-22-g46d8f462ee-win64-lgpl-9.0', 'bin', 'ffmpeg.exe'), target: 'ffmpeg' },
-        { archivePath: path.join('ffmpeg-n9.0.2-22-g46d8f462ee-win64-lgpl-9.0', 'bin', 'ffprobe.exe'), target: 'ffprobe' },
+        { archivePath: path.join('ffmpeg-n9.0.2-17-g2a571b6068-win64-lgpl-9.0', 'bin', 'ffmpeg.exe'), target: 'ffmpeg' },
+        { archivePath: path.join('ffmpeg-n9.0.2-17-g2a571b6068-win64-lgpl-9.0', 'bin', 'ffprobe.exe'), target: 'ffprobe' },
       ],
     },
   ],
