@@ -1,26 +1,43 @@
-; Custom NSIS installer pages for August (AUG-119, AUG-130).
+; Custom NSIS installer pages for August (AUG-119, AUG-130, AUG-141).
 ; Adds a model-storage directory chooser and a GPU engine chooser as installer pages.
-; Uses customWelcomePage (not customHeader) because electron-builder calls
-; customHeader AFTER MUI_LANGUAGE, which forbids MUI_PAGE_* macros.
+; Uses customPageAfterChangeDir (not customHeader, which electron-builder expands AFTER MUI_LANGUAGE where
+; MUI_PAGE_* macros are forbidden). The pages come after the install-mode page on purpose: choosing
+; "all users" relaunches the installer elevated and that process restarts the page flow, so anything
+; shown before the install-mode page would be asked twice (AUG-141).
+; Updates (electron-updater runs the installer with --updated, usually also /S) skip both pages and keep
+; the choices from the first install: customInit re-reads model-dir / gpu-engine before customInstall persists them.
 
 !include nsDialogs.nsh
+!include FileFunc.nsh
 
 !ifndef BUILD_UNINSTALLER
   Var /GLOBAL ModelDir
   Var /GLOBAL GpuEngine
 !endif
 
-; --- Page 1: model storage directory ---
-!macro customWelcomePage
-  !define MUI_PAGE_HEADER_TEXT "Welcome to August Setup"
+; Both pages are shown after electron-builder's install-mode and install-folder pages.
+!macro customPageAfterChangeDir
+  ; electron-builder leaves "MUI_PAGE_CUSTOMFUNCTION_PRE instFilesPre" pending for its INSTFILES page.
+  ; Take it off so our directory page does not consume it, and put it back once our pages are declared.
+  !ifdef MUI_PAGE_CUSTOMFUNCTION_PRE
+    !undef MUI_PAGE_CUSTOMFUNCTION_PRE
+  !endif
+
+  ; --- Page 1: model storage directory ---
+  !define MUI_PAGE_HEADER_TEXT "August Setup"
   !define MUI_PAGE_HEADER_SUBTEXT "Choose where to store the AI speech model"
   !define MUI_DIRECTORYPAGE_TEXT_TOP "August uses a speech recognition model (~900 MB) that will be$\r$\ndownloaded on first launch. Choose a folder with at least 1 GB of free space."
   !define MUI_DIRECTORYPAGE_TEXT_DESTINATION "Model storage folder"
   !define MUI_DIRECTORYPAGE_VARIABLE $ModelDir
+  !insertmacro skipPageIfUpdated
   !insertmacro MUI_PAGE_DIRECTORY
 
   ; --- Page 2: GPU engine selection ---
   Page custom augGpuPageCreate augGpuPageLeave
+
+  !ifdef allowToChangeInstallationDirectory
+    !define MUI_PAGE_CUSTOMFUNCTION_PRE instFilesPre
+  !endif
 !macroend
 
 ; An "all users" install switches the shell context to "all", which turns $APPDATA into
@@ -34,6 +51,25 @@
   ${endif}
   StrCpy $ModelDir "$APPDATA\August\whisper\models"
   StrCpy $GpuEngine "cpu"
+  ; Keep the choices of a previous install (updates skip the pages, so these are what customInstall persists).
+  ClearErrors
+  FileOpen $0 "$APPDATA\August\model-dir" r
+  ${ifNot} ${Errors}
+    FileRead $0 $1
+    FileClose $0
+    ${if} $1 != ""
+      StrCpy $ModelDir $1
+    ${endIf}
+  ${endIf}
+  ClearErrors
+  FileOpen $0 "$APPDATA\August\gpu-engine" r
+  ${ifNot} ${Errors}
+    FileRead $0 $1
+    FileClose $0
+    ${if} $1 == "cuda"
+      StrCpy $GpuEngine "cuda"
+    ${endIf}
+  ${endIf}
   ${if} $installMode == "all"
     SetShellVarContext all
   ${endif}
@@ -41,6 +77,14 @@
 
 !ifndef BUILD_UNINSTALLER
 Function augGpuPageCreate
+  ; Updates keep the engine chosen at first install (see customInit). electron-builder's ${isUpdated}
+  ; needs the StdUtils plugin, which is not loaded yet where this file is included, so test --updated directly.
+  ${GetParameters} $R0
+  ClearErrors
+  ${GetOptions} $R0 "--updated" $R1
+  ${ifNot} ${Errors}
+    Abort
+  ${endIf}
   nsDialogs::Create 1018
   Pop $0
   ${if} $0 == error

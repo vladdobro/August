@@ -17,6 +17,12 @@
 - Global record hotkey default CommandOrControl+Alt+R, persisted in <userData>/desktop-settings.json, configurable in Settings → Desktop.
 - Native notifications fire on transcribing → completed/failed transitions detected by the main process polling GET /api/sessions every 5 seconds, and on recording start/stop while the window is hidden.
 - Auto-update uses electron-updater against GitHub Releases (vladdobro/August); Windows nsis and macOS zip targets update, msi and dmg do not.
+- The tray update item mirrors updater state: Check for Updates… → Checking… → Downloading (N%) → "Restart to Update to x.y.z" (AUG-141).
+- A manual tray check always notifies the outcome (up to date, downloading, error); background checks notify only when a download is ready.
+- "Restart to Update" calls quitAndInstall(silent, forceRun) so the NSIS installer relaunches August; quitting instead installs silently without relaunch.
+- A per-machine ("all users") Windows install triggers a UAC prompt during every silent update; that prompt is the installer elevating, not a hang.
+- NSIS updates (--updated) skip the model-dir and GPU-engine pages and keep the first-install choices from %APPDATA%/August/.
+- Custom NSIS pages must use the customPageAfterChangeDir hook, after the install-mode page: choosing "all users" relaunches the installer elevated and re-shows every page before it.
 - Right-click on a sidebar session calls window.august.revealSession(id) over august:reveal-session; main reveals the folder via shell.showItemInFolder (AUG-124).
 - Key files: electron/src/main.ts, electron/src/preload.cts, electron/src/tray.ts, electron/src/hotkey.ts, electron/src/sessionWatcher.ts, electron/src/updater.ts, electron/electron-builder.yml, server/src/app.ts, client/src/desktop.d.ts.
 
@@ -67,6 +73,12 @@ A desktop shell exists so non-technical users get a one-click install with no te
 - startEmbeddedServer() logs WHISPER_MODEL_PATH and AUGUST_DATA_DIR at startup for path resolution debugging.
 - electron/build/ is force-included in git (.gitignore negation) because electron-builder needs icon.png and tray PNGs at build time; regenerate with npm run electron:icons, never hand-edit.
 - App and tray icons use square corners by design (brand rule: no border radius).
+- The updater starts checking only after the tray exists (updater.start() in main.ts) so the first "checking" state reaches the menu.
+- updater.ts routes electron-updater's logger to console.log/warn/error with a [updater] prefix; log.ts mirrors console.info too, because electron-updater logs at info level and those lines were missing from main.log before AUG-141.
+- A failed update check never clears a 'ready' (downloaded) state; the error state is transient and the tray shows it as idle.
+- electron-updater runs the Windows installer as `<pending>.exe --updated /S` from %LOCALAPPDATA%/august-updater/pending; Cyrillic user paths work there.
+- electron-builder's ${isUpdated} test needs the StdUtils plugin dir, which may be declared after the custom installer.nsh include; top-level functions in installer.nsh must test --updated with FileFunc ${GetParameters}/${GetOptions} instead.
+- Differential download may fail with "sha512 checksum mismatch" when the installed build came from a local installer; electron-updater falls back to a full download, which is not a bug.
 
 ## Key implementation details
 
@@ -113,10 +125,10 @@ A desktop shell exists so non-technical users get a one-click install with no te
 
 - electron/src/main.ts — main-process entry: window creation, server bootstrap, lifecycle wiring.
 - electron/src/preload.cts — implements the window.august bridge exposed to the renderer.
-- electron/src/tray.ts — tray icon creation and idle/recording/transcribing state updates.
+- electron/src/tray.ts — tray icon creation, idle/recording/transcribing state updates and the update menu item driven by UpdateState.
 - electron/src/hotkey.ts — global record hotkey registration, validation and persistence.
 - electron/src/sessionWatcher.ts — polls GET /api/sessions to detect state transitions for notifications.
-- electron/src/updater.ts — electron-updater wiring against GitHub Releases.
+- electron/src/updater.ts — electron-updater wiring against GitHub Releases; exposes UpdateState, checkNow/installNow/start controls and the update notifications (AUG-141).
 - electron/src/settings.ts — reads/writes <userData>/desktop-settings.json.
 - electron/src/log.ts — writes <userData>/logs/main.log.
 - electron/scripts/make-icons.mjs — regenerates electron/build/ icons; the only supported way to update them.

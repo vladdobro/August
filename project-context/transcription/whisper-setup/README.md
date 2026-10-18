@@ -59,6 +59,9 @@ Explain the setup, binary-distribution, and model-download mechanics behind tran
 - cudaDownloader.ts (ensureWhisperCuda): downloads and extracts the CUDA variant on first server start when the active engine is cuda, following the modelDownloader.ts pattern; idempotent, never throws.
 - CUDA device banner: countCudaDevices() in gpuBackend.ts parses 'ggml_cuda_init: found N CUDA devices' from stderr; null/0 means no NVIDIA GPU and whisper-cli runs on CPU.
 - GPU engine selection: the NSIS installer (installer.nsh) shows a radio page for CPU vs GPU-NVIDIA; the choice persists in %APPDATA%/August/gpu-engine, read by Electron main.ts into WHISPER_GPU_ENGINE_DEFAULT (a non-pinning default, AUG-140).
+- The installer pages (model dir, GPU engine) are declared in customPageAfterChangeDir so they come after the "all users / current user" page; that page's elevation restarts the wizard, and pages before it get asked twice (AUG-141).
+- customPageAfterChangeDir must !undef the pending MUI_PAGE_CUSTOMFUNCTION_PRE (electron-builder's instFilesPre) before its MUI_PAGE_DIRECTORY and re-define it after, or INSTFILES loses that callback.
+- Installer updates (--updated, from electron-updater) skip the GPU and model-dir pages; customInit re-reads %APPDATA%/August/gpu-engine and model-dir so customInstall re-persists the first-install choices instead of defaults (AUG-141).
 - GpuEngine type ('cpu' | 'cuda') in config.ts: parseGpuEngine() reads WHISPER_GPU_ENGINE; resolveGpuPolicy() uses it so Windows returns nativeBackend 'cuda' only when the CUDA engine is selected.
 - readPersistedGpuEngine() in config.ts: WHISPER_GPU_ENGINE env first (overrides everything), then an explicit gpuEngine ('cpu' | 'cuda') in user-preferences.json, then WHISPER_GPU_ENGINE_DEFAULT, else 'cpu'.
 - defaultWhisperBinPath() in config.ts: when gpuEngine is 'cuda' on Windows, resolves to whisper/bin/win-x64-cuda/ instead of win-x64/.
@@ -180,7 +183,7 @@ Explain the setup, binary-distribution, and model-download mechanics behind tran
 
 - server/src/scripts/setup.ts — per-platform whisper-cli installer (setupVadModel() for the Silero VAD model, download for Windows, cmake build for macOS with a portable CMake fallback), legacy migration, pinned FFMPEG_BUILDS table and setupFfmpeg(), pinned VULKAN_RUNTIME and setupVulkanLoader() (Windows), ffmpeg pre-flight.
 - server/src/services/cudaDownloader.ts — ensureWhisperCuda(), CUDA variant download state machine, on-demand extraction of 9 DLLs + exe from the zip (AUG-130).
-- electron/build/installer.nsh — NSIS installer pages for model directory chooser (AUG-119) and GPU engine radio selection (AUG-130); persists choices to %APPDATA%/August/.
+- electron/build/installer.nsh — NSIS installer pages for model directory chooser (AUG-119) and GPU engine radio selection (AUG-130); persists choices to %APPDATA%/August/ and preserves them across updates (AUG-141).
 - server/src/services/modelDownloader.ts — ensureWhisperModel(), model status state machine, checksum verification.
 - server/src/services/download.ts — shared streaming download and SHA256 helper (downloadToFile, isOfflineError) used by setup and the model downloader.
 - server/src/routes/setup.ts — GET /api/setup/status and the SSE /api/setup/download-progress stream.

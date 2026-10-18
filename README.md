@@ -148,9 +148,14 @@ disabled only so recording keeps working while the window sits in the tray.
 ### Auto-update
 
 The desktop app uses `electron-updater` against GitHub Releases (`vladdobro/August`). It checks for
-updates on launch and every 4 hours, downloads silently, and installs the next time the app quits. This
-requires the NSIS build on Windows (the MSI build does not support auto-update) and a signed build on
-macOS.
+updates on launch and every 4 hours and downloads them silently. The tray menu mirrors the updater:
+**Check for Updates…** reports the outcome with a notification (up to date, downloading, or the error),
+shows download progress, and turns into **Restart to Update to x.y.z** once the download is done — that
+installs silently and relaunches August. If you quit instead, the update installs on quit without
+relaunching. On Windows the installer skips its setup pages during an update and keeps the model folder
+and GPU engine chosen at first install; an "all users" install asks for administrator permission (UAC)
+before updating. Auto-update requires the NSIS build on Windows (the MSI build does not support
+auto-update) and a signed build on macOS.
 
 ### Code signing & release
 

@@ -415,16 +415,20 @@ async function main(): Promise<void> {
 
   mainWindow = createWindow(appUrl);
 
-  const checkForUpdates = app.isPackaged ? setupAutoUpdater(showWindow) : null;
+  const updater = app.isPackaged
+    ? setupAutoUpdater({ onShowWindow: showWindow, onState: (update) => tray?.update({ update }) })
+    : null;
   tray = new AppTray(path.join(appRoot, 'electron', 'build', 'tray'), {
     showWindow,
     toggleRecording: requestToggleRecording,
-    checkForUpdates,
+    updater,
     quit: () => {
       isQuitting = true;
       app.quit();
     },
   });
+  // Start checking only once the tray exists, so the very first "checking" state is visible in the menu.
+  updater?.start();
 
   const initialHotkey = settings.get().recordHotkey;
   const hotkey = applyRecordHotkey(initialHotkey, requestToggleRecording);

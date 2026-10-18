@@ -1,15 +1,17 @@
 import path from 'node:path';
 import { app, Menu, nativeImage, Tray } from 'electron';
+import type { UpdateState, UpdaterControls } from './updater.js';
 
 export interface TrayState {
   recording: boolean;
   transcribing: number;
+  update: UpdateState;
 }
 
 export interface TrayActions {
   showWindow(): void;
   toggleRecording(): void;
-  checkForUpdates: (() => void) | null;
+  updater: UpdaterControls | null;
   quit(): void;
 }
 
@@ -19,7 +21,7 @@ type Variant = 'idle' | 'recording' | 'transcribing';
 /// hides here instead of closing, so this is the only always-visible surface of the app.
 export class AppTray {
   private readonly tray: Tray;
-  private state: TrayState = { recording: false, transcribing: 0 };
+  private state: TrayState = { recording: false, transcribing: 0, update: { phase: 'idle' } };
 
   constructor(private readonly iconDir: string, private readonly actions: TrayActions) {
     this.tray = new Tray(this.iconFor(this.state));
@@ -56,6 +58,21 @@ export class AppTray {
     return nativeImage.createFromPath(path.join(this.iconDir, `tray-${variant}.png`));
   }
 
+  /// One menu item mirrors the updater: it is disabled while busy and becomes "Restart to Update" once downloaded.
+  private updateItem(updater: UpdaterControls): Electron.MenuItemConstructorOptions {
+    const u = this.state.update;
+    switch (u.phase) {
+      case 'checking':
+        return { label: 'Checking for updates…', enabled: false };
+      case 'downloading':
+        return { label: `Downloading update ${u.version} (${u.percent}%)…`, enabled: false };
+      case 'ready':
+        return { label: `Restart to Update to ${u.version}`, click: () => updater.installNow() };
+      default:
+        return { label: 'Check for Updates…', click: () => updater.checkNow() };
+    }
+  }
+
   private render(): void {
     this.tray.setImage(this.iconFor(this.state));
     this.tray.setToolTip(`August — ${this.statusText()}`);
@@ -66,9 +83,7 @@ export class AppTray {
       { label: `Status: ${this.statusText()}`, enabled: false },
       { type: 'separator' },
     ];
-    if (this.actions.checkForUpdates) {
-      template.push({ label: 'Check for Updates…', click: () => this.actions.checkForUpdates?.() });
-    }
+    if (this.actions.updater) template.push(this.updateItem(this.actions.updater));
     template.push({ label: `Quit August ${app.getVersion()}`, click: () => this.actions.quit() });
     this.tray.setContextMenu(Menu.buildFromTemplate(template));
   }

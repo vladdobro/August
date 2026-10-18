@@ -5,6 +5,7 @@ const MAX_LOG_BYTES = 5 * 1024 * 1024;
 
 /// Mirrors console output into <userData>/logs/main.log so packaged builds (no terminal) still leave a
 /// trace of shell and embedded-server activity. Rotates once at 5 MB.
+/// console.info is included because electron-updater logs at info level (AUG-141).
 export function installFileLogger(logDir: string): void {
   fs.mkdirSync(logDir, { recursive: true });
   const logFile = path.join(logDir, 'main.log');
@@ -19,7 +20,7 @@ export function installFileLogger(logDir: string): void {
     if (typeof a === 'string') return a;
     try { return JSON.stringify(a); } catch { return String(a); }
   };
-  for (const level of ['log', 'warn', 'error'] as const) {
+  for (const level of ['log', 'info', 'warn', 'error'] as const) {
     const original = console[level].bind(console);
     console[level] = (...args: unknown[]) => {
       original(...args);

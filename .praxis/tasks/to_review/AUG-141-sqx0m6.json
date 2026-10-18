@@ -1,0 +1,20 @@
+{
+  "id": "AUG-141-sqx0m6",
+  "assignee": "storm.json",
+  "priority": "high",
+  "status": "to_review",
+  "title": "[AUG-141] Fix auto-update: tray \"Check for Updates\" silent + quit-install hangs on NSIS wizard",
+  "why_we_need_this": "Текущий auto-update полностью сломан на Windows:\n1. Нажатие \"Check for Updates\" в трее не даёт никакой обратной связи — пользователь не знает, проверяется ли обновление, есть ли оно, скачано ли.\n2. При закрытии приложения Windows показывает NSIS-диалог \"установить 0.0.33?\", но нажатие \"Да\" ничего не делает — установка не начинается.\nПользователи не могут обновиться через встроенный механизм, только через ручное скачивание.",
+  "acceptance_criteria": "## Brainstorm: корневые причины и план fix\n\n### Находки из кода\n\n**@electron/src/updater.ts** — слушает только `update-downloaded`. Отсутствуют:\n- `checking-for-update` → UI: \"Проверяем...\"\n- `update-available` → UI: \"Доступна v${version}, скачиваем...\"  \n- `update-not-available` → UI: \"Вы на последней версии\"\n- `error` → есть `console.warn`, но пользователь не видит ничего\n\n**@electron/src/tray.ts:70** — `checkForUpdates` вызывает `check()`, который молча делает `autoUpdater.checkForUpdates()` без какого-либо feedback в меню или нотификации.\n\n**@electron/electron-builder.yml:87** — `nsis.oneClick: false` + **@electron/build/installer.nsh** содержит 2 кастомные wizard-страницы (model dir, GPU engine). Когда `autoInstallOnAppQuit` запускает инсталлер с `/S` (silent), эти страницы вероятно блокируют выполнение.\n\n### Гипотезы для проверки\n\n1. **Silent-install vs oneClick:false** — electron-updater передаёт `/S` при autoInstall, но assisted NSIS с кастомными страницами может не поддерживать silent mode корректно. Нужно проверить какие именно флаги передаёт electron-updater и как installer.nsh обрабатывает `${Silent}`.\n2. **Elevation / UAC** — NSIS `perMachine: false`, но если пользователь установил в Program Files, потребуется elevation, которое может не сработать из child-process electron-updater.\n3. **Non-ASCII путь** — у пользователя username \"Влад\" → temp-путь с кириллицей. `toSafePath` может не покрывать путь к скачанному .exe обновления.\n4. **Процесс не завершается** — `will-quit` убивает сервер, watcher, tray, hotkey. Но если electron-updater запускает инсталлер до `will-quit`, а `will-quit` убивает процесс, инсталлер может потерять родительский процесс.\n5. **Повторный checkForUpdates** — если обновление уже скачано, повторный `checkForUpdates()` может не триггерить `update-downloaded` заново.\n\n### План fix\n\n**Часть A — UI feedback при проверке обновлений:**\n- [ ] Добавить обработчики `checking-for-update`, `update-available`, `update-not-available` в `updater.ts`\n- [ ] Передавать callback в `setupAutoUpdater` для обновления состояния в tray или показа notification\n- [ ] При ручном вызове из tray — показывать \"Checking...\" → результат; при фоновой проверке — только `update-downloaded`\n- [ ] Добавить состояние \"Update ready — restart to install\" в tray menu (заменить \"Check for Updates\" на \"Restart to Update\")\n\n**Часть B — fix установки при quit:**\n- [ ] Проверить логи electron-updater при quit — какие аргументы передаются NSIS exe\n- [ ] Тестировать: `installer.nsh` кастомные страницы в `${Silent}` mode — пропускаются ли они\n- [ ] Если не пропускаются — добавить `${ifNot} ${Silent}` guard вокруг `customWelcomePage` страниц\n- [ ] Проверить non-ASCII temp path для скачанного .exe\n- [ ] Рассмотреть `quitAndInstall()` вместо `autoInstallOnAppQuit` для явного контроля\n- [ ] Тестировать на Windows с кириллическим username",
+  "important_constraints": "",
+  "labels": [
+    "bug",
+    "electron",
+    "windows",
+    "auto-update"
+  ],
+  "on_hold_reason": "",
+  "contextRouterIncluded": true,
+  "created_at": 1792329034624,
+  "column_entered_at": 1792349179935
+}
