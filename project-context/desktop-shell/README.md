@@ -92,7 +92,7 @@ A desktop shell exists so non-technical users get a one-click install with no te
 - The release workflow exports CSC_LINK and Apple credentials only when the secrets are non-empty; an empty CSC_LINK makes electron-builder abort with "not a file".
 - The release workflow creates the GitHub release with gh before any build job; electron-builder itself creates duplicate releases when its dmg and zip publishers race on a fresh tag.
 - Release build jobs run with max-parallel 1 so platform uploads never overlap.
-- electron-builder never replaces existing GitHub release assets; a rerun of the same tag uploads nothing, so fixes need a version bump and a new tag (or manual asset deletion).
+- electron-builder 26 replaces existing GitHub release assets on a rerun of the same tag ("overwrite published file"); the earlier belief that it never overwrites was wrong, re-pushing the tag is enough to re-release.
 - The default GITHUB_TOKEN is read-only; the release workflow declares permissions contents: write so electron-builder can create the release.
 - The packaged app must exclude server/node_modules/.bin: its symlinks point into excluded dev packages and a dangling symlink aborts the macOS build.
 - Release runs via .github/workflows/release.yml on v* tags with --publish always.
