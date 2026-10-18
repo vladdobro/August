@@ -24,6 +24,12 @@ jobs:
           if [ "$GITHUB_REF_TYPE" = "tag" ]; then TAG="$GITHUB_REF_NAME"; else TAG="v$(tr -d '[:space:]' < version)"; fi
           if gh release view "$TAG" --repo "$GITHUB_REPOSITORY" >/dev/null 2>&1; then
             echo "Release $TAG already exists."
+            # Deleting a tag turns its published release into a draft, and a draft is invisible to
+            # electron-updater and to anyone without write access. Re-pushing the tag lands here, so publish it.
+            if [ "$(gh release view "$TAG" --repo "$GITHUB_REPOSITORY" --json isDraft --jq .isDraft)" = "true" ]; then
+              gh release edit "$TAG" --repo "$GITHUB_REPOSITORY" --draft=false
+              echo "Release $TAG was a draft; published it."
+            fi
           else
             gh release create "$TAG" --repo "$GITHUB_REPOSITORY" --title "$TAG" --generate-notes
             echo "Created release $TAG."

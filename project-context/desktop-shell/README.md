@@ -119,7 +119,11 @@ A desktop shell exists so non-technical users get a one-click install with no te
 - Step 3 (same build job, Windows matrix entry): runs the same pipeline with --win on windows-latest.
 - electron-builder's github publisher uploads DMG, ZIP and latest-mac.yml into the pre-created release using GH_TOKEN.
 - The version tag and the root `version` file must match; bump `version` (and commit the synced package.json) before tagging.
-- To re-release the same version: manually delete the release assets on GitHub, then re-run the workflow (electron-builder will not overwrite existing assets).
+- To re-release the same version: re-push the tag (delete the remote tag, push it again); electron-builder 26 replaces existing assets (log line "overwrite published file"), so no manual asset deletion is needed.
+- Deleting a release's git tag turns the published release into a draft; drafts are invisible to electron-updater, to the public API and to accounts without write access, so the create-release job publishes a drafted release when it finds one (v0.0.34 incident).
+- gh on the dev machine has two accounts: vladdobro (owner, needed for gh release edit/delete and seeing drafts) and vladdobroc (pull-only); switch with gh auth switch --user vladdobro before touching releases, pushes go over SSH as vladdobro regardless.
+- gh run rerun and workflow_dispatch need admin rights; re-pushing the tag is the way to rerun the workflow without them.
+- Never delete a release while its workflow run is in flight: the running electron-builder jobs keep uploading into the deleted/drafted release.
 
 ## Key files
 
