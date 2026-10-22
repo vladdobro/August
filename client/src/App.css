@@ -151,8 +151,8 @@ body {
   color: var(--sidebar-text);
   display: flex;
   flex-direction: column;
-  overflow: hidden;
   position: relative;
+  z-index: 1;
   transition: background-color 180ms ease;
 }
 
