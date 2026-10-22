@@ -1,6 +1,7 @@
 import React, { useMemo, useState, useRef, useEffect } from 'react';
 import type { SessionMetadata } from '../types';
 import PraxisModal from './PraxisModal';
+import type { PraxisProject } from '../services/preferences';
 
 interface TranscriptViewProps {
   session: SessionMetadata;
@@ -8,6 +9,9 @@ interface TranscriptViewProps {
   onRetranscribe?: (language?: string, boost?: boolean) => Promise<void>;
   onCancel?: () => Promise<void>;
   ffmpegAvailable?: boolean;
+  praxisProjects?: PraxisProject[];
+  praxisDefaultPromptCustom?: boolean;
+  onRename?: (title: string) => Promise<void>;
 }
 
 interface ParsedLine {
@@ -266,7 +270,7 @@ const ChronoRing: React.FC<{ session: SessionMetadata }> = ({ session }) => {
   );
 };
 
-const TranscriptView: React.FC<TranscriptViewProps> = ({ session, transcript, onRetranscribe, onCancel, ffmpegAvailable = false }) => {
+const TranscriptView: React.FC<TranscriptViewProps> = ({ session, transcript, onRetranscribe, onCancel, ffmpegAvailable = false, praxisProjects, praxisDefaultPromptCustom, onRename }) => {
   const [feedbackText, setFeedbackText] = useState<string | null>(null);
   const [dropdownOpen, setDropdownOpen] = useState(false);
   const [retrying, setRetrying] = useState(false);
@@ -625,6 +629,9 @@ const TranscriptView: React.FC<TranscriptViewProps> = ({ session, transcript, on
         <PraxisModal
           sessionId={session.id}
           sessionTitle={session.title}
+          projects={praxisProjects ?? []}
+          defaultPromptCustom={praxisDefaultPromptCustom}
+          onRenameSession={onRename}
           onClose={() => setShowPraxisModal(false)}
         />
       )}

@@ -2,6 +2,13 @@ import type { CaptureCapabilities, SystemAudioSource } from '../types';
 
 const API_BASE = '/api';
 
+export interface PraxisProject {
+  path: string;
+  name: string;
+  isDefault: boolean;
+  prompt?: string;
+}
+
 export interface UserPreferences {
   language?: string;
   micDeviceId?: string;
@@ -12,6 +19,8 @@ export interface UserPreferences {
   audioBoost?: boolean;
   retranscriptionLanguage?: string | null;
   praxisProjectPath?: string | null;
+  praxisProjects?: PraxisProject[];
+  praxisDefaultPrompt?: string | null;
   sidebarCollapsed?: boolean;
   sessionSortOrder?: 'newest' | 'oldest' | 'alphabetical';
   skipStopConfirmation?: boolean;
@@ -31,6 +40,8 @@ export const DEFAULT_PREFERENCES: Required<UserPreferences> = {
   audioBoost: false,
   retranscriptionLanguage: null,
   praxisProjectPath: null,
+  praxisProjects: [],
+  praxisDefaultPrompt: null,
   sidebarCollapsed: false,
   sessionSortOrder: 'newest',
   skipStopConfirmation: false,

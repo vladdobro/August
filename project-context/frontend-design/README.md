@@ -10,7 +10,8 @@
 - Sidebar header shows the clickable August logo left of the title; clicking it creates a new session.
 - FileUpload uses a circuit-node radial layout with SVG connection lines and positioned circular control nodes.
 - TranscriptView header uses a circuit diagram with info node and action nodes (Copy, Export, Retranscribe).
-- Export dropdown includes "Send to Praxis" option that opens a modal for entering a target Praxis project path.
+- Export dropdown includes "Send to Praxis", which opens a modal with project chips (a dropdown above 5 projects), an always-visible path input and a prompt note.
+- Settings modal uses a tab strip (General, Audio, Transcription, Projects) in the terminal font with an accent bottom border on the active tab.
 - During recording, the center node turns red with SVG pulse rings and 12 radial frequency bars from AnalyserNode data.
 - ThemeToggle renders as a circuit node inside FileUpload; it renders as a fixed button only when TranscriptView is active.
 - Chronometer Ring (Tomb Amber palette) replaces the shimmer bar during transcription with an animated SVG countdown and phase transitions.
@@ -542,11 +543,41 @@ Clickable whisper/models/ path opens the native file manager via POST /api/setup
 
 ### Praxis Modal
 
-PraxisModal (.praxis-backdrop + .praxis-modal) opens from the "Send to Praxis" export menu item in TranscriptView. Includes an "Open" browse button that opens the OS native folder picker for selecting the project path.
+PraxisModal (.praxis-backdrop + .praxis-modal) opens from the "Send to Praxis" export menu item in TranscriptView.
+With 1 to 5 registered projects the Project field is a row of chips (.praxis-chips, .praxis-chip, .praxis-chip--on): name plus "default" or the folder name, then an "Other…" chip.
+With more than 5 registered projects the Project field falls back to the SettingsDropdown, which ends with an "Other…" entry.
+The Project path input is always visible; choosing a chip fills it, and typing into it or using Open switches the selection to Other.
+The Open button launches the OS native folder picker; the path input uses --font-terminal.
+Initial selection: the last-used path from localStorage if it matches a registered project, else Other with that path, else the default project, else the first project, else Other.
+localStorage "august-praxis-project-path" stores the last-used path after a successful export, registered or manual.
+A note under the path shows which prompt will be used: "Prompt: <name> · custom", or "Prompt: default · built-in" or "default · custom".
+The default-prompt note reads the defaultPromptCustom prop, passed from App through TranscriptView as praxisDefaultPromptCustom.
+Enter on a chip or inside the open dropdown does not send the task; the dropdown toggles instead.
 The modal reuses the same backdrop pattern as ModelDownloadModal: fixed overlay with blur, modePickerFadeIn animation.
-Project path input uses --font-terminal and persists the last-used path in localStorage under "august-praxis-project-path".
+The task-name field shows the note "Also becomes the session name".
+After a successful export, if the task name differs from the session title, the modal calls onRenameSession, which updates the sessions state optimistically and then PATCHes the session title.
+The sidebar and TranscriptView title update without a reload; a failed rename shows "Task created, but the session could not be renamed." on the success screen.
 Success state shows a checkmark icon with the created task ID in a code-style badge (.praxis-task-id).
 The "Send to Praxis" export menu item is accent-colored (.export-menu-item--praxis) to distinguish it from download actions.
+
+### Settings Tabs and Projects Tab (master-detail)
+
+The Settings modal tab strip uses .settings-tabs with .settings-tab buttons; the active tab gets .settings-tab--active with an accent bottom border.
+Tab labels use var(--font-terminal) and 0 border-radius.
+The Settings modal width is min(600px, 100%), wider than the 440-460px standard modal.
+The Projects tab (PraxisProjectsPage.tsx) is master-detail: a 210px listbox on the left and an editor on the right, each scrolling independently.
+The Settings card gets settings-card--projects (height 85vh) and settings-body--projects (no padding, no outer scroll) on the Projects tab.
+The list pins "Default settings" first, then one item per project with name, path and Default / prompt / "!" badges; "+ Add project" sits under the list.
+Items, buttons and inputs on the Projects tab keep 0 border-radius and CSS variables only.
+Default, prompt and missing badges follow the brutalist rules and the color priority schema.
+The editor header shows a "Saved" label (.praxis-saved) for 1.5 s after each autosave on blur; it has no transition under prefers-reduced-motion.
+Variable chips (.praxis-vars, .praxis-var-chip) use a dashed accent border and insert {sessionName}, {date} or {duration} at the textarea cursor.
+Variable chips use onMouseDown preventDefault so the textarea keeps focus; the prompt textarea fills the remaining editor height.
+Prompt editor styling uses the .praxis-md* classes; the "custom · use default" link uses .praxis-link.
+Inline editor actions use .praxis-btn-inline; the primary one (Add project) uses .praxis-btn-inline--primary.
+ArrowUp/ArrowDown on the focused list move the selection; Escape in an editor input returns focus to the list without closing the modal.
+At widths of 560px and below the list stacks above the editor.
+The former .praxis-project-card, .praxis-project-add and .praxis-hint rules are removed; .praxis-project-badge* and .praxis-project-path remain.
 
 ## Invariants
 
@@ -592,5 +623,7 @@ Status badge colors (uploading, transcribing, completed, failed) must remain dis
 - client/src/components/FileUpload.tsx — Circuit-node radial layout for recording and upload controls
 - client/src/components/SessionList.tsx — Sidebar with V3 Bracketed session items, hex grid SVG, orbital-circle filter chips, August logo New Session button
 - client/src/components/RecordingModePicker.tsx — Radial expanding mode picker (DEFAULT / LIVE inner ring, LOCAL / GROQ outer right-side sub-arcs) rendered inside circuit-diagram with SVG connection lines
-- client/src/components/PraxisModal.tsx — Modal for selecting a target Praxis project path (via browse or manual input) and creating a task from a session transcript.
+- client/src/components/PraxisModal.tsx — Modal with project chips (SettingsDropdown above 5 projects), an always-visible path input with browse, a prompt note, task creation from a session transcript, and session rename sync.
+- client/src/components/SettingsDropdown.tsx — shared angular dropdown with optional per-option sublabel and placeholder, used by SettingsModal and PraxisModal.
+- client/src/components/PraxisProjectsPage.tsx — Settings Projects tab: master-detail layout with a project list, default-prompt and per-project editors, and a New project mode.
 - client/src/components/SetupGuide.tsx — Diagnostics page with circuit-node layout, W40K CRT aesthetic, adaptive GPU/model reveal logic

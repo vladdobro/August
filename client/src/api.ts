@@ -188,13 +188,19 @@ export async function validatePraxisProject(projectPath: string): Promise<{ vali
   return handleJsonResponse<{ valid: boolean; projectPath: string }>(res);
 }
 
-export async function sendToPraxis(sessionId: string, projectPath: string, taskName?: string): Promise<{ ok: boolean; taskId: string; taskPath: string; projectTag: string | null }> {
+export async function sendToPraxis(sessionId: string, projectPath: string, taskName?: string): Promise<{ ok: boolean; taskId: string; taskPath: string; projectTag: string | null; promptSource?: 'project' | 'default' | 'built-in' }> {
   const res = await fetch(`${API_BASE}/praxis/send`, {
     method: 'POST',
     headers: { 'Content-Type': 'application/json' },
     body: JSON.stringify({ sessionId, projectPath, ...(taskName && { taskName }) }),
   });
-  return handleJsonResponse<{ ok: boolean; taskId: string; taskPath: string; projectTag: string | null }>(res);
+  return handleJsonResponse<{ ok: boolean; taskId: string; taskPath: string; projectTag: string | null; promptSource?: 'project' | 'default' | 'built-in' }>(res);
+}
+
+export async function fetchPraxisDefaultPrompt(): Promise<{ prompt: string; variables: string[] }> {
+  const res = await fetch(`${API_BASE}/praxis/default-prompt`);
+  if (!res.ok) throw new Error('Failed to load default prompt');
+  return res.json();
 }
 
 export async function browsePraxisFolder(): Promise<{ path: string | null }> {

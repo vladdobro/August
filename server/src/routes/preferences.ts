@@ -1,23 +1,14 @@
 import fs from 'node:fs/promises';
-import path from 'node:path';
 import { Router } from 'express';
-import { PREFS_PATH } from '../services/preferencesStore.js';
+import {
+  PREFS_PATH,
+  readPreferencesMigrated,
+  writePreferences,
+  sanitizePraxisProjects,
+  migratePraxisProjects,
+} from '../services/preferencesStore.js';
 
 const router = Router();
-
-async function readPrefs(): Promise<Record<string, unknown>> {
-  try {
-    const raw = await fs.readFile(PREFS_PATH, 'utf-8');
-    return JSON.parse(raw);
-  } catch {
-    return {};
-  }
-}
-
-async function writePrefs(prefs: Record<string, unknown>): Promise<void> {
-  await fs.mkdir(path.dirname(PREFS_PATH), { recursive: true });
-  await fs.writeFile(PREFS_PATH, JSON.stringify(prefs, null, 2), 'utf-8');
-}
 
 const ALLOWED_KEYS = new Set([
   'language',
@@ -29,6 +20,8 @@ const ALLOWED_KEYS = new Set([
   'audioBoost',
   'retranscriptionLanguage',
   'praxisProjectPath',
+  'praxisProjects',
+  'praxisDefaultPrompt',
   'sidebarCollapsed',
   'sessionSortOrder',
   'skipStopConfirmation',
@@ -38,7 +31,7 @@ const ALLOWED_KEYS = new Set([
 
 // GET /api/preferences
 router.get('/', async (_req, res) => {
-  const prefs = await readPrefs();
+  const prefs = await readPreferencesMigrated();
   res.json(prefs);
 });
 
@@ -57,9 +50,16 @@ router.patch('/', async (req, res) => {
     }
   }
 
-  const current = await readPrefs();
-  const merged = { ...current, ...patch };
-  await writePrefs(merged);
+  if ('praxisProjects' in patch) {
+    patch.praxisProjects = sanitizePraxisProjects(patch.praxisProjects);
+  }
+  if ('praxisDefaultPrompt' in patch) {
+    patch.praxisDefaultPrompt = typeof patch.praxisDefaultPrompt === 'string' ? patch.praxisDefaultPrompt : null;
+  }
+
+  const current = await readPreferencesMigrated();
+  const merged = migratePraxisProjects({ ...current, ...patch });
+  await writePreferences(merged);
   res.json(merged);
 });
 

@@ -2,7 +2,14 @@
 
 ## TL;DR
 - User preferences persist as a flat JSON file at server/data/user-preferences.json with GET/PATCH/DELETE REST endpoints.
-- All 14 preference fields are optional; the client applies defaults when absent from the server response.
+- All 16 preference fields are optional; the client applies defaults when absent from the server response.
+- praxisProjects (array of path, name, isDefault, optional prompt) and praxisDefaultPrompt (string or null) hold the multi-project Praxis setup (AUG-142).
+- The legacy praxisProjectPath key stays in ALLOWED_KEYS for backward compatibility only; it is folded into praxisProjects and removed.
+- migratePraxisProjects() in preferencesStore.ts turns a legacy praxisProjectPath into the first project, named after the folder basename, default if none is default.
+- readPreferencesMigrated() runs the migration on every GET and PATCH of /api/preferences and on each Praxis export, writing the file only when something changed.
+- The Praxis migration therefore happens at app start, before the Settings modal is ever opened.
+- sanitizePraxisProjects() runs on every PATCH: it drops entries without a path, trims values, dedupes by resolved path case-insensitively, and keeps at most one default.
+- Removing the default Praxis project promotes the first remaining project to default.
 - systemAudioSource ('auto' | 'browser' | 'system', default 'auto') chooses HOW system audio is captured; the systemAudio boolean stays the on/off switch.
 - systemAudio defaults to true in DEFAULT_PREFERENCES; FileUpload's initial toggle reads that same constant so Settings and the record screen never disagree when the key is unsaved.
 - The System (direct) option is disabled when systemCapture is false or selfTest is 'failed'; it stays enabled on 'silent'.
@@ -11,6 +18,10 @@
 - Under System Audio Source the modal prints at most one plain-language line: direct capture unavailable, or a Windows test-before-a-call warning.
 - FileUpload auto-saves language, mic, and system audio preferences on change via PATCH /api/preferences.
 - The Settings modal displays and edits all preferences, accessible from the sidebar hamburger menu.
+- The Settings modal has four tabs: General (Interface, Confirmations, Desktop), Audio (Recording), Transcription, and Projects.
+- The old Integration section with a single Praxis path is gone; Praxis projects are managed on the Projects tab.
+- The Projects tab is a master-detail page (list left, editor right) that autosaves every edit on blur; there is no Add form or project cards.
+- Settings modal width is min(600px, 100%).
 - Theme toggle remains in localStorage and is explicitly excluded from the preferences system.
 - migrateLegacyPreferences() in server/src/services/preferencesStore.ts moves a legacy server/src/data/user-preferences.json to server/data/ once on server start.
 - Runtime preferences must never live under server/src or be tracked in git; the path comes from config.dataDir.
@@ -27,11 +38,31 @@ Eliminate repeated manual re-configuration every app session. Before this system
 
 - Preferences file: server/data/user-preferences.json — a flat JSON object, created on first PATCH, deleted on reset. The path is derived from config.dataDir (server/src/config.ts), the same root as sessions, uploads, captures, and perf-stats.json.
 - Legacy migration: before AUG-109 the file lived at server/src/data/user-preferences.json and was tracked in git. On every server start, migrateLegacyPreferences() (server/src/services/preferencesStore.ts) moves that file to server/data/ once, removes the old copy, and logs the move. It never overwrites an existing server/data/ file.
-- Schema: 14 optional fields (language, micDeviceId, systemAudio, systemAudioSource, recordingMode, liveEngine, audioBoost, retranscriptionLanguage, praxisProjectPath, sidebarCollapsed, sessionSortOrder, skipStopConfirmation, skipClearConfirmation, gpuEngine).
+- Schema: 16 optional fields (language, micDeviceId, systemAudio, systemAudioSource, recordingMode, liveEngine, audioBoost, retranscriptionLanguage, praxisProjectPath (legacy), praxisProjects, praxisDefaultPrompt, sidebarCollapsed, sessionSortOrder, skipStopConfirmation, skipClearConfirmation, gpuEngine).
+- readPreferences and writePreferences live in server/src/services/preferencesStore.ts; the route has no private file helpers.
 - Server allowlist: ALLOWED_KEYS set in the route filters unknown keys from PATCH requests.
 - Auto-save: when the user changes language, mic, or system audio in FileUpload, a PATCH request fires immediately.
 - Load on startup: App.tsx calls GET /api/preferences on mount and distributes values as props.
 - Settings modal: full CRUD UI for all preferences, opened from the sidebar menu gear icon.
+- Projects tab (client/src/components/PraxisProjectsPage.tsx) is master-detail: a 210px listbox on the left, an editor on the right, each scrolling independently.
+- The Settings card gets settings-card--projects (85vh) and settings-body--projects (no padding, no outer scroll) while the Projects tab is open.
+- The list pins "Default settings" first (badge "custom" when praxisDefaultPrompt is set), then one item per project; "+ Add project" under the list opens new mode.
+- A project list item shows the name, Default / prompt / "!" (missing .praxis/) badges and the path.
+- Initial selection on the Projects tab is the default project, else "Default settings".
+- The "Default settings" editor has variable chips, a full-height textarea, Reset to built-in (sets praxisDefaultPrompt to null) and a Built-in/Custom status.
+- The project editor has Name, an editable Path with Browse, a "Use as default project" checkbox (disabled when already default), a Reachable/Missing badge and Remove project.
+- The project editor Prompt label carries a "custom · use default" link that drops the per-project prompt; the textarea is full height with variable chips.
+- The Missing badge appears when POST /api/praxis/validate finds no .praxis/ directory at the project path.
+- Editing a project path validates it on blur via POST /api/praxis/validate and replaces the entry, keeping name, isDefault and prompt.
+- A project path is saved even when .praxis/ is missing (the Missing badge shows it); a path already used by another project is refused with an inline error.
+- New project mode takes an optional Name and a Path typed or chosen with Browse; Cancel returns to the previous selection.
+- Add project in new mode validates first, refuses a missing .praxis/ or a duplicate path, and selects the new project on success.
+- All Projects tab edits autosave on blur via PATCH /api/preferences; a "Saved" label flashes in the editor header for 1.5 s after every save.
+- Variable chips {sessionName}, {date}, {duration} insert the token at the textarea cursor; chips use onMouseDown preventDefault so the textarea keeps focus.
+- ArrowUp/ArrowDown on the focused list move the selection through "Default settings" and the projects.
+- Escape in any editor input or textarea returns focus to the list without closing the modal (stopPropagation).
+- At widths of 560px and below the project list stacks above the editor.
+- SettingsDropdown (client/src/components/SettingsDropdown.tsx) is the shared dropdown for SettingsModal and PraxisModal, with an optional per-option sublabel and a placeholder prop.
 - System audio source: Settings > Recording shows a "System Audio Source" dropdown (Auto / Browser (screen picker) / System (direct)) directly under the System Audio toggle.
 - Capture hint line: when isSystemCaptureUsable() is false the modal prints "System (direct) is not available on this computer — recordings use the browser screen picker." (neutral).
 - Windows warning: when capabilities.platform is 'win32' and the source resolves to 'system' (regardless of the System Audio toggle), the modal prints a yellow warning to make a short test recording and check the other side before an important call.
@@ -51,7 +82,7 @@ Eliminate repeated manual re-configuration every app session. Before this system
 ## Invariants
 
 - All preference fields are optional — the app works identically to before if the file is missing or empty.
-- The server never validates field values beyond key membership in ALLOWED_KEYS.
+- The server never validates field values beyond key membership in ALLOWED_KEYS, except that praxisProjects is always normalized by sanitizePraxisProjects().
 - Theme toggle stays in localStorage — it is not part of the preferences system.
 - The preferences file is gitignored (server/data/user-preferences.json; the legacy server/src/data/ path is also ignored as a safety net for old checkouts). Running the app must never dirty the git working tree.
 - The legacy migration is idempotent and never overwrites a file already present at server/data/user-preferences.json.
@@ -64,9 +95,12 @@ Eliminate repeated manual re-configuration every app session. Before this system
 ## Key Files
 
 - server/src/routes/preferences.ts — GET/PATCH/DELETE /api/preferences endpoints.
-- server/src/services/preferencesStore.ts — PREFS_PATH / LEGACY_PREFS_PATH constants and the one-time migrateLegacyPreferences() startup migration.
+- server/src/services/preferencesStore.ts — PREFS_PATH / LEGACY_PREFS_PATH constants, migrateLegacyPreferences() startup migration, readPreferences/writePreferences, migratePraxisProjects(), readPreferencesMigrated(), sanitizePraxisProjects().
+- server/src/services/preferencesStore.test.ts — tests for the Praxis project migration and sanitizing.
 - client/src/services/preferences.ts — UserPreferences interface, DEFAULT_PREFERENCES, API wrappers.
-- client/src/components/SettingsModal.tsx — Settings modal UI component.
+- client/src/components/SettingsModal.tsx — Settings modal UI component with the General, Audio, Transcription and Projects tabs.
+- client/src/components/PraxisProjectsPage.tsx — Projects tab: master-detail list and editor for the default prompt, projects, paths and per-project prompts.
+- client/src/components/SettingsDropdown.tsx — shared dropdown with optional sublabel and placeholder, used by SettingsModal and PraxisModal.
 - client/src/components/FileUpload.tsx — auto-save integration and mic notice.
 - client/src/App.tsx — preferences state management and prop distribution.
 
@@ -75,6 +109,8 @@ Eliminate repeated manual re-configuration every app session. Before this system
 - Do not add preferences to a database — the file-based approach is intentional for the local-first MVP.
 - Do not migrate the theme toggle to this system — it must remain in localStorage per explicit design decision.
 - New preference fields require adding the key to ALLOWED_KEYS in server/src/routes/preferences.ts and to the UserPreferences interface in client/src/services/preferences.ts.
+- Any write of praxisProjects must go through sanitizePraxisProjects(); never persist the array unsanitized.
+- Never write praxisProjectPath from new code; it is read-only legacy input for migratePraxisProjects().
 - The Settings modal follows the Necron/brutalist design system (0 border-radius, theme tokens, monospace terminal font).
 - Do not put capability detection in the client — the server probe (GET /api/capture/capabilities) is the only source of truth for whether direct system capture works.
 - Never resolve the preferences path relative to import.meta.dirname or any src/ directory — always go through config.dataDir so runtime data stays out of the source tree and out of git.

@@ -206,10 +206,12 @@ const App: React.FC = () => {
   };
 
   const handleRename = async (id: string, title: string) => {
+    setSessions(prev => prev.map(s => (s.id === id ? { ...s, title } : s)));
     try {
       await renameSession(id, title);
       await refreshSessions();
     } catch (err) {
+      await refreshSessions();
       setLoadError((err as Error).message || 'Failed to rename session');
     }
   };
@@ -309,7 +311,7 @@ const App: React.FC = () => {
           )}
 
           {!needsSetup && selectedSession && (
-            <TranscriptView session={selectedSession} transcript={transcript} onRetranscribe={handleRetranscribe} onCancel={handleCancel} ffmpegAvailable={ffmpegAvailable} />
+            <TranscriptView session={selectedSession} transcript={transcript} onRetranscribe={handleRetranscribe} onCancel={handleCancel} ffmpegAvailable={ffmpegAvailable} praxisProjects={preferences.praxisProjects ?? []} praxisDefaultPromptCustom={Boolean(preferences.praxisDefaultPrompt?.trim())} onRename={(title) => handleRename(selectedSession.id, title)} />
           )}
 
           {(showFileUpload || isRecording) && (

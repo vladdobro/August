@@ -11,6 +11,7 @@
 - Agentation widget is mounted in App.tsx for dev mode only, gated by import.meta.env.DEV.
 - The server loads the repo-root .env from config.ts before building config.
 - Praxis integration: POST /api/praxis/send creates a task directly in a target PraxisOS project's .praxis/tasks/new/ directory from a session transcript. POST /api/praxis/browse opens the OS native folder picker dialog so users can select the project path visually.
+- Multi-project Praxis (AUG-142): registered projects live in the praxisProjects preference and the export prompt resolves project, then default, then built-in.
 - User preferences persist in server/data/user-preferences.json via GET/PATCH/DELETE /api/preferences endpoints.
 - Settings modal is accessible from the sidebar menu; preferences auto-save on control changes in FileUpload.
 - App.tsx uses a single unified render — no early returns that unmount the layout; FileUpload stays mounted (hidden) during active recording to preserve MediaRecorder state.
@@ -141,10 +142,17 @@ Give any agent working on the codebase a map of the client/server split, how a s
 - Sessions can be renamed via PATCH /api/sessions/:id with a JSON body { title }; the client triggers this by double-clicking the session title in the sidebar.
 - Dev/prod static serving: when NODE_ENV !== 'production' (dev mode), server/src/index.ts redirects browser requests to the Vite dev server at http://127.0.0.1:5173 instead of serving stale client/dist files; in production, express.static serves client/dist normally.
 - Praxis integration writes task files directly to the target project's .praxis/tasks/new/ directory — no dependency on a running Praxis MCP server.
+- Each Praxis export first calls readPreferencesMigrated(), so a legacy praxisProjectPath is folded into praxisProjects before the prompt is resolved.
 - Task ID allocation mirrors the Praxis Python logic: reads .praxis/config/task_counter, scans .praxis/tasks/*/ for the filesystem max, increments, and writes the counter back.
 - Task tag prefix is read from .praxis/config/general.yaml (taskTitleTag field); composite ID format is TAG-NUMBER-SUFFIX (e.g., POS-42-a7x3mq).
 - POST /api/praxis/validate checks whether a directory contains .praxis/ before attempting task creation.
-- The acceptance criteria template embedded in the export is a structured instruction set with 4 sections: pre-processing (participant identification, role prediction, reasoning, classification, dedup scan, context search), deliverables (summary, action items, commitments CMT-NNN, route updates), quality rules (self-containment, traceability, nothing-silently-skipped, halt on ambiguity), and output format (recap summary, extracted items, processing log).
+- Prompt resolution on POST /api/praxis/send: the project prompt (matched by resolved path, case-insensitive), then praxisDefaultPrompt, then BUILT_IN_PROMPT; blank strings count as unset.
+- The send response includes promptSource with value 'project', 'default' or 'built-in'.
+- The built-in acceptance criteria template is BUILT_IN_PROMPT in server/src/services/praxisIntegration.ts.
+- GET /api/praxis/default-prompt returns BUILT_IN_PROMPT plus the supported template variable names.
+- Template variables {sessionName}, {date} (export date, YYYY-MM-DD) and {duration} (session length such as 1h 5m) are substituted server-side.
+- Unknown {tokens} in a prompt are left as-is, never stripped or rejected.
+- The built-in acceptance criteria template embedded in the export is a structured instruction set with 4 sections: pre-processing (participant identification, role prediction, reasoning, classification, dedup scan, context search), deliverables (summary, action items, commitments CMT-NNN, route updates), quality rules (self-containment, traceability, nothing-silently-skipped, halt on ambiguity), and output format (recap summary, extracted items, processing log).
 - Pre-processing requires identifying [Them] from transcript context and predicting professional roles for each participant before any extraction begins.
 - Task creation from transcripts only generates tasks for items the sender personally committed to — vague discussion points route to context updates instead.
 - The template enforces merge-don't-replace for route updates — new information merges into existing records, never overwrites them.
@@ -160,10 +168,11 @@ Give any agent working on the codebase a map of the client/server split, how a s
 - client/src/App.tsx — client app shell and top-level routing/state.
 - client/src/vite-env.d.ts — Vite client type declarations (import.meta.env).
 - server/src/config.ts — platform binary resolution, model constants, AUGUST_DATA_DIR data-root override, .env loading, resolveAudioteePath (AUG-118).
-- server/src/services/praxisIntegration.ts — Praxis task creation: counter management, ID allocation, atomic file write to target project.
-- server/src/routes/praxis.ts — POST /api/praxis/validate and POST /api/praxis/send endpoints.
+- server/src/services/praxisIntegration.ts — Praxis task creation: counter management, ID allocation, atomic file write, BUILT_IN_PROMPT, prompt resolution and template variable substitution.
+- server/src/services/praxisIntegration.test.ts — tests for prompt resolution, template variables and duration formatting.
+- server/src/routes/praxis.ts — POST /api/praxis/validate, POST /api/praxis/send, POST /api/praxis/browse and GET /api/praxis/default-prompt endpoints.
 - server/src/routes/preferences.ts — GET/PATCH/DELETE /api/preferences for user preferences persistence.
-- server/src/services/preferencesStore.ts — preferences file path from config.dataDir and the one-time legacy migration run at server start.
+- server/src/services/preferencesStore.ts — preferences file path from config.dataDir, readPreferences/writePreferences, the one-time legacy migration at server start, and the Praxis project migration and sanitizing.
 - server/src/services/systemCapture.ts — capability probe (avfoundation, audiotee, WASAPI helper, dshow), resolveWindowsMethod preference order, ffmpeg capture lifecycle, self-test, sidecar PID files, orphan cleanup.
 - server/src/services/wasapiHelper.ts — compile-on-demand of the WASAPI helper with csc.exe (sha256-gated), --probe runner and parseWasapiProbe.
 - server/tools/wasapi-loopback/WasapiLoopback.cs — single-file C# 5 WASAPI loopback helper (raw COM interop, silence fill, PCM to stdout, --probe JSON).

@@ -1,0 +1,19 @@
+{
+  "id": "AUG-142-l5ohy6",
+  "assignee": "storm.json",
+  "priority": "medium",
+  "status": "to_review",
+  "title": "[AUG-142] Multi-project Praxis: Projects page in Settings, per-project prompts, export dropdown, session name sync",
+  "why_we_need_this": "Сейчас при экспорте в Praxis нужно каждый раз руками менять путь к проекту, если работаешь с несколькими проектами — это friction на каждом экспорте. Кроме того, название сессии, заданное при экспорте, не применяется к самой сессии в August, что путает.",
+  "acceptance_criteria": "## Страница Projects в Settings\n\n- [ ] В Settings появляется отдельный пункт меню \"Projects\" (наравне с General, Audio и т.д.)\n- [ ] Projects показывает список зарегистрированных Praxis-проектов (карточки или таблица)\n- [ ] Каждый проект: отображаемое имя, путь, badge \"Default\" если выбран по умолчанию\n- [ ] Кнопки: добавить проект (browse + ручной ввод), удалить, назначить default\n\n## Per-project prompt (промпт экспорта)\n\n- [ ] У каждого проекта есть настраиваемый prompt — текст, который используется при формировании задачи из транскрипта\n- [ ] Существует Default prompt (текущий встроенный) — применяется, если у проекта не задан свой\n- [ ] Default prompt редактируется на странице Projects (отдельная секция сверху или \"Default Settings\")\n- [ ] При экспорте используется prompt проекта, а если не задан — Default\n- [ ] Prompt доступен для редактирования inline на карточке проекта или по клику \"Edit prompt\"\n\n## Export dropdown\n\n- [ ] PraxisModal показывает dropdown со всеми зарегистрированными проектами вместо текстового поля\n- [ ] Dropdown показывает отображаемое имя + путь (мелким шрифтом или tooltip)\n- [ ] Остаётся возможность ввести произвольный путь (вариант \"Other...\" или editable combo)\n- [ ] Выбранный проект запоминается как last-used\n\n## Синхронизация имени сессии\n\n- [ ] Если при экспорте пользователь задаёт/меняет название сессии, оно применяется к сессии в August (session.name / displayName обновляется)\n- [ ] Изменённое имя отображается в sidebar и TranscriptView без перезагрузки\n\n## Хранение\n\n- [ ] Список проектов + их промпты хранится в user-preferences.json (поле praxisProjects: Array<{path, name, isDefault, prompt?}>)\n- [ ] Default prompt хранится отдельно (praxisDefaultPrompt) \n- [ ] Обратная совместимость: старый praxisProjectPath мигрирует в новый формат при первом открытии Settings\n- [ ] localStorage \"august-praxis-project-path\" по-прежнему хранит last-used",
+  "important_constraints": "## Контекст\n\nТекущее состояние:\n- PraxisModal (`@client/src/components/PraxisModal.tsx`) — модалка экспорта, путь хранится в localStorage \"august-praxis-project-path\"\n- Preferences содержат `praxisProjectPath` (одно значение) — `@server/src/services/praxisIntegration.ts`\n- User-preferences schema: 14 полей, включая praxisProjectPath — `@server/data/user-preferences.json`\n- Экспорт идёт через POST /api/praxis/send → прямая запись в .praxis/tasks/new/\n\n## Архитектурные решения для обсуждения (brainstorm)\n\n1. Projects как страница Settings — отдельный роут `/settings/projects` или таб внутри существующего Settings? Нужен ли sidebar с навигацией в Settings?\n2. Формат хранения промптов — prompt inline в объекте проекта или отдельный файл на диске (для длинных промптов)?\n3. UX dropdown — react-select / headless UI / нативный select? Fuzzy search при 10+ проектах?\n4. Session name sync — через PATCH /api/sessions/:id или отдельный endpoint?\n5. Валидация пути — проверять ли наличие .praxis/ при добавлении? Warning если проект недоступен?\n6. Prompt template variables — поддерживать ли переменные в промпте ({sessionName}, {date}, {participants})?",
+  "labels": [
+    "brainstorm",
+    "UX",
+    "praxis-integration"
+  ],
+  "on_hold_reason": "",
+  "contextRouterIncluded": true,
+  "created_at": 1792676867562,
+  "column_entered_at": 1792680158167
+}

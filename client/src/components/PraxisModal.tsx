@@ -1,5 +1,7 @@
 import React, { useState, useEffect, useRef } from 'react';
 import { sendToPraxis, validatePraxisProject, browsePraxisFolder } from '../api';
+import type { PraxisProject } from '../services/preferences';
+import SettingsDropdown from './SettingsDropdown';
 
 const AugustLogo: React.FC = () => (
   <svg
@@ -62,13 +64,25 @@ const CheckCircleLogo: React.FC = () => (
 interface PraxisModalProps {
   sessionId: string;
   sessionTitle: string;
+  projects: PraxisProject[];
+  defaultPromptCustom?: boolean;
   onClose: () => void;
+  onRenameSession?: (title: string) => Promise<void>;
 }
 
 const STORAGE_KEY = 'august-praxis-project-path';
+const OTHER = '__other__';
+const CHIP_LIMIT = 5;
 
-const PraxisModal: React.FC<PraxisModalProps> = ({ sessionId, sessionTitle, onClose }) => {
+const shortPath = (p: string): string => p.replace(/[\\/]+$/, '').split(/[\\/]/).pop() || p;
+
+const samePath = (a: string, b: string): boolean =>
+  a.trim().replace(/[\\/]+$/, '').toLowerCase() === b.trim().replace(/[\\/]+$/, '').toLowerCase();
+
+const PraxisModal: React.FC<PraxisModalProps> = ({ sessionId, sessionTitle, projects, defaultPromptCustom, onClose, onRenameSession }) => {
   const [projectPath, setProjectPath] = useState('');
+  const [selected, setSelected] = useState<string>(OTHER);
+  const [renameNote, setRenameNote] = useState<string | null>(null);
   const [taskName, setTaskName] = useState(sessionTitle);
   const [browsing, setBrowsing] = useState(false);
   const [sending, setSending] = useState(false);
@@ -79,14 +93,40 @@ const PraxisModal: React.FC<PraxisModalProps> = ({ sessionId, sessionTitle, onCl
   const backdropRef = useRef<HTMLDivElement>(null);
 
   useEffect(() => {
+    let saved = '';
     try {
-      const saved = localStorage.getItem(STORAGE_KEY);
-      if (saved) setProjectPath(saved);
+      saved = (localStorage.getItem(STORAGE_KEY) ?? '').trim();
     } catch {
       // localStorage unavailable
     }
+    const match = saved ? projects.find((p) => samePath(p.path, saved)) : undefined;
+    const defaultProject = projects.find((p) => p.isDefault);
+    if (match) {
+      setSelected(match.path);
+    } else if (saved) {
+      setSelected(OTHER);
+      setProjectPath(saved);
+    } else if (defaultProject) {
+      setSelected(defaultProject.path);
+    } else if (projects[0]) {
+      setSelected(projects[0].path);
+    } else {
+      setSelected(OTHER);
+      setProjectPath('');
+    }
     inputRef.current?.focus();
+    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
+
+  const useChips = projects.length > 0 && projects.length <= CHIP_LIMIT;
+  const sel = projects.find((p) => p.path === selected);
+  const defaultLabel = `default · ${defaultPromptCustom ? 'custom' : 'built-in'}`;
+  const promptHint = sel?.prompt ? `Prompt: ${sel.name} · custom` : `Prompt: ${defaultLabel}`;
+
+  const options = [
+    ...projects.map((p) => ({ value: p.path, label: p.name + (p.isDefault ? '  ·  default' : ''), sublabel: p.path })),
+    { value: OTHER, label: 'Other…', sublabel: 'Enter a path manually' },
+  ];
 
   const handleBackdropClick = (e: React.MouseEvent) => {
     if (e.target === backdropRef.current) onClose();
@@ -96,7 +136,10 @@ const PraxisModal: React.FC<PraxisModalProps> = ({ sessionId, sessionTitle, onCl
     setBrowsing(true);
     try {
       const result = await browsePraxisFolder();
-      if (result.path) setProjectPath(result.path);
+      if (result.path) {
+        setProjectPath(result.path);
+        setSelected(OTHER);
+      }
     } catch {
       // dialog cancelled or error
     } finally {
@@ -105,9 +148,9 @@ const PraxisModal: React.FC<PraxisModalProps> = ({ sessionId, sessionTitle, onCl
   };
 
   const handleSend = async () => {
-    const trimmed = projectPath.trim();
+    const trimmed = selected === OTHER ? projectPath.trim() : selected;
     if (!trimmed) {
-      setError('Please enter a project path');
+      setError('Please choose a project or enter a path');
       return;
     }
 
@@ -137,6 +180,14 @@ const PraxisModal: React.FC<PraxisModalProps> = ({ sessionId, sessionTitle, onCl
       } catch {
         // localStorage unavailable
       }
+      const nextTitle = taskName.trim();
+      if (onRenameSession && nextTitle && nextTitle !== sessionTitle) {
+        try {
+          await onRenameSession(nextTitle);
+        } catch {
+          setRenameNote('Task created, but the session could not be renamed.');
+        }
+      }
       setSuccess({ taskId: result.taskId, projectTag: result.projectTag });
     } catch (err) {
       setError((err as Error).message || 'Failed to create task');
@@ -146,6 +197,8 @@ const PraxisModal: React.FC<PraxisModalProps> = ({ sessionId, sessionTitle, onCl
   };
 
   const handleKeyDown = (e: React.KeyboardEvent) => {
+    if (e.key === 'Enter' && (e.target as HTMLElement).closest('.settings-dropdown')) return;
+    if (e.key === 'Enter' && (e.target as HTMLElement).closest('.praxis-chips')) return;
     if (e.key === 'Enter' && !sending && !validating && !success) {
       handleSend();
     }
@@ -180,16 +233,58 @@ const PraxisModal: React.FC<PraxisModalProps> = ({ sessionId, sessionTitle, onCl
                 placeholder="Process meeting: My Session"
                 disabled={sending || validating}
               />
+              {onRenameSession && <span className="praxis-field-note">Also becomes the session name</span>}
             </label>
 
+            <label className="praxis-label">
+              Project
+              {useChips ? (
+                <div className="praxis-chips" role="radiogroup" aria-label="Project">
+                  {projects.map((p) => (
+                    <button
+                      key={p.path}
+                      type="button"
+                      role="radio"
+                      aria-checked={selected === p.path}
+                      className={`praxis-chip${selected === p.path ? ' praxis-chip--on' : ''}`}
+                      title={p.path}
+                      disabled={sending || validating}
+                      onClick={() => { setSelected(p.path); setError(null); }}
+                    >
+                      <span className="praxis-chip-name">{p.name}</span>
+                      <span className="praxis-chip-sub">{p.isDefault ? 'default' : shortPath(p.path)}</span>
+                    </button>
+                  ))}
+                  <button
+                    type="button"
+                    role="radio"
+                    aria-checked={selected === OTHER}
+                    className={`praxis-chip${selected === OTHER ? ' praxis-chip--on' : ''}`}
+                    onClick={() => setSelected(OTHER)}
+                    disabled={sending || validating}
+                  >
+                    <span className="praxis-chip-name">Other…</span>
+                    <span className="praxis-chip-sub">any folder</span>
+                  </button>
+                </div>
+              ) : (
+                <SettingsDropdown
+                  className="praxis-project-select"
+                  value={selected}
+                  options={options}
+                  onChange={setSelected}
+                  placeholder="Choose a project"
+                />
+              )}
+            </label>
             <label className="praxis-label">
               Project path
               <div className="praxis-input-row">
                 <input
                   type="text"
                   className="praxis-input"
-                  value={projectPath}
-                  onChange={(e) => setProjectPath(e.target.value)}
+                  value={selected === OTHER ? projectPath : selected}
+                  onChange={(e) => { setProjectPath(e.target.value); setSelected(OTHER); }}
                   placeholder="D:\path\to\project"
                   disabled={sending || validating}
                 />
@@ -202,6 +297,7 @@ const PraxisModal: React.FC<PraxisModalProps> = ({ sessionId, sessionTitle, onCl
                   {browsing ? '...' : 'Open'}
                 </button>
               </div>
+              <span className="praxis-field-note">{promptHint}</span>
             </label>
 
             {error && <p className="praxis-error">{error}</p>}
@@ -225,6 +321,7 @@ const PraxisModal: React.FC<PraxisModalProps> = ({ sessionId, sessionTitle, onCl
               </div>
               <p>Task created successfully</p>
               <span className="praxis-task-id">{success.taskId}</span>
+              {renameNote && <p className="praxis-error">{renameNote}</p>}
             </div>
             <div className="praxis-actions">
               <button type="button" className="praxis-btn praxis-btn--send" onClick={onClose}>
