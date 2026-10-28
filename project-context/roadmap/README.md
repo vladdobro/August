@@ -60,3 +60,4 @@ Items not yet assigned to a phase.
 - [ ] Team/workspace support for multiple managers sharing meetings and content.
 - [x] Notifications when transcription completes — native desktop notifications in the Electron shell (AUG-114); video/photo pending.
 - [ ] Usage analytics dashboard for managers.
+- [ ] Compact Mode on recording — the Electron window shrinks to a dock strip (Live) or a timer square (Default) and restores on stop; brainstorm and mockups done in AUG-155, implementation not started.
