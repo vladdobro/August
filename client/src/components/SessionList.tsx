@@ -20,7 +20,7 @@ interface SessionListProps {
   isTranscribing: boolean;
 }
 
-const ALL_STATUSES: SessionStatus[] = ['uploading', 'preparing', 'transcribing', 'failed', 'completed'];
+const ALL_STATUSES: SessionStatus[] = ['uploading', 'preparing', 'transcribing', 'failed'];
 
 const CHIP_LAYOUT = [
   { cx: 16, cy: 28, size: 48 },
