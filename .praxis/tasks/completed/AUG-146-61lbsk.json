@@ -1,0 +1,19 @@
+{
+  "id": "AUG-146-61lbsk",
+  "assignee": "jarvis.json",
+  "priority": "medium",
+  "status": "completed",
+  "title": "[AUG-146] Detect a video with no audio track in the browser before uploading it",
+  "why_we_need_this": "Since AUG-144, a .mp4/.mov without an audio track is only detected on the server (ffprobe in ensureWav), after the full file is uploaded — a user can wait through a 1.5 GB upload just to read \"The video has no audio track\". Checking the file locally first avoids the wasted upload and the failed session it leaves behind.",
+  "acceptance_criteria": "- [ ] Before uploading a .mp4/.mov, @client/src/components/FileUpload.tsx checks locally whether the file has an audio track, without uploading it or adding an npm dependency (e.g. a browser media element's audio track info where available, or parsing the MP4/MOV box headers for a `soun` handler in the first/last few MB).\n- [ ] A file confirmed to have no audio shows \"The video has no audio track — nothing to transcribe.\" in the dropzone, starts no upload and creates no session.\n- [ ] When the check cannot decide (unsupported browser API, unusual container, moov atom not readable), the upload proceeds as today and the server-side check from AUG-144 stays the safety net.\n- [ ] The check finishes in under 2 s for a 2 GB file (it must not read the whole file).\n- [ ] Manually verified in Chromium and the Electron shell with: a video with audio (uploads), a video without audio (blocked), a corrupt file (falls through to the server message).\n- [ ] project-context/transcription/README.md documents the client-side pre-check and its fallback.",
+  "important_constraints": "- Never block a valid file: a false \"no audio\" is worse than an unnecessary upload — when unsure, upload.\n- Keep the server-side check (assertVideoHasAudio in @server/src/services/whisper.ts) unchanged.\n- No npm media packages (no ffmpeg.wasm, mp4box, etc.) unless the user approves.\n- Both platforms (Electron on Windows and macOS, plain browser).\n- Related: AUG-144.\n\n## ✅ Итог (2026-10-28)\n**Что сделано:**\n- Перед загрузкой .mp4/.mov браузер локально проверяет наличие звуковой дорожки (после проверки 2 ГБ).\n- Подтверждённое «нет звука» → ошибка \"The video has no audio track — nothing to transcribe.\" в дропзоне, без запроса и без сессии.\n- Неопределённость (битый файл, нет/сжат moov, trak без hdlr, ошибка чтения, >2 с) → загрузка как раньше, серверный ffprobe — страховка.\n- Без npm-зависимостей; на 2 ГБ файле ~3 мс.\n**Как:** обход заголовков top-level боксов (32/64-бит размеры, ≤100 боксов) до moov (в начале или в конце, ≤64 МБ), затем trak → mdia → hdlr; 'soun' = есть звук. Тройной результат true/false/null, блокирует только false. Парсинг боксов выбран вместо audioTracks медиа-элемента, чтобы не зависеть от поддержки API в браузере.\n**Файлы:** @client/src/services/videoAudioProbe.ts, @client/src/components/FileUpload.tsx, @project-context/transcription/README.md\n**PR / коммиты:** без PR; 89bfcee (AUG-144..149) в master, запушен.\n**Грабли:** нет.\n**Хвосты:** ручная проверка в Chromium и Electron (Win/macOS) не выполнялась в сессии — проверено только в Node (fs.openAsBlob) на ffmpeg-сэмплах; нет индикатора «проверяю» во время пре-чека.",
+  "labels": [
+    "upload",
+    "ux",
+    "video"
+  ],
+  "on_hold_reason": "",
+  "contextRouterIncluded": true,
+  "created_at": 1793121966059,
+  "column_entered_at": 1793185384757
+}

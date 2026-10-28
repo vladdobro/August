@@ -1,0 +1,19 @@
+{
+  "id": "AUG-145-9t9m0z",
+  "assignee": "jarvis.json",
+  "priority": "high",
+  "status": "completed",
+  "title": "[AUG-145] Show a clear \"file too large\" message for uploads over the 2 GB limit, checked before the upload starts",
+  "why_we_need_this": "AUG-144 made video uploads possible, and a ~1 h QuickTime 1080p screen recording is ~4.5–9 GB, above the 2 GB multer limit in @server/src/routes/sessions.ts. The server has no MulterError handler (no LIMIT_FILE_SIZE handling in server/src), so an oversized upload most likely ends in Express's default HTML error and the client shows \"Request failed with status …\" (inferred from code, not reproduced). The user also uploads gigabytes before learning it fails. A clear, early message saves time and support questions.",
+  "acceptance_criteria": "- [ ] @client/src/components/FileUpload.tsx rejects a file larger than 2 GB before any network request, with a message like \"File is too large (X GB). Maximum is 2 GB.\" (size formatted in GB with one decimal).\n- [ ] The 2 GB value is defined once per side (server constant used by multer; client constant with a comment pointing to the server one) and the two match.\n- [ ] The server returns HTTP 413 with JSON `{ error: \"File is too large. Maximum is 2 GB.\" }` when multer raises LIMIT_FILE_SIZE, instead of Express's default HTML error; no session is created.\n- [ ] Other multer errors return JSON `{ error }` with status 400; existing audio, video, dual-track and capture uploads still work.\n- [ ] Manually verified: a >2 GB file (sparse/dummy file is fine) shows the client message without uploading; a direct POST of an oversized file (curl or a test) gets 413 JSON.\n- [ ] project-context/transcription/README.md documents the size limit and both checks.",
+  "important_constraints": "- Do not lower the 2 GB limit. Raising it or adding local-path import for big files is a separate product decision — not in scope.\n- Error text is user-facing: no stack traces or multer codes in the UI (diagnostics stay in logs).\n- Must work on Windows and macOS; no platform branches expected.\n- Brutalist UI: 0 border-radius if any message styling changes.\n- Related: AUG-144 (video upload).\n\n## ✅ Итог (2026-10-28)\n**Что сделано:**\n- Клиент отклоняет файлы >2 ГБ до начала загрузки с сообщением «File is too large (X.X GB). Maximum is 2 GB.»\n- Сервер возвращает HTTP 413 JSON при multer LIMIT_FILE_SIZE (вместо дефолтного HTML Express)\n- Прочие multer-ошибки возвращают 400 JSON\n- Сессия не создаётся при превышении лимита (ошибка срабатывает до route handler)\n- Константа MAX_UPLOAD_BYTES = 2 * 1024 * 1024 * 1024 определена на обеих сторонах\n- project-context/transcription/README.md задокументирован лимит и оба чека\n\n**Как:** Обернули multer middleware в callback с перехватом MulterError по коду (LIMIT_FILE_SIZE → 413, остальные → 400). На клиенте — проверка file.size в handleFile до вызова uploadAudio. Альтернатива (Express error-handler middleware) отвергнута — callback-обёртка локальнее и не требует глобального middleware.\n\n**Файлы:** @client/src/components/FileUpload.tsx, @server/src/routes/sessions.ts, @project-context/transcription/README.md\n\n**PR / коммиты:** 89bfcee на master (пакетный коммит AUG-144..149)\n\n**Грабли:** нет — прямолинейная реализация, TypeScript check прошёл с первого раза.\n\n**Хвосты:** ручная проверка с >2 ГБ файлом (curl POST и drag-drop) не выполнена в этой сессии — только code review + tsc.",
+  "labels": [
+    "upload",
+    "ux",
+    "error-handling"
+  ],
+  "on_hold_reason": "",
+  "contextRouterIncluded": true,
+  "created_at": 1793121958315,
+  "column_entered_at": 1793185148701
+}

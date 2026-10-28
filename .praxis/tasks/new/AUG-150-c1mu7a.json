@@ -1,0 +1,19 @@
+{
+  "id": "AUG-150-c1mu7a",
+  "assignee": "jarvis.json",
+  "priority": "medium",
+  "status": "new",
+  "title": "[AUG-150] Add an \"Archive\" tab to Settings: disk usage per session, storage paths, and selective/bulk deletion of session files",
+  "why_we_need_this": "Every session keeps its source audio (audio.webm / .m4a / .mp4 — uploads, direct links, YouTube via yt-dlp) and a derived audio.wav (~115 MB per hour) forever; nothing is cleaned up automatically. The only cleanup today is deleting a whole session from the sidebar, which also destroys the transcript. Users cannot see how much disk August takes, where the files are, or free space while keeping transcripts. After AUG-148/149 (links and YouTube) the amount of downloaded audio grows quickly, so the data dir silently grows to gigabytes.",
+  "acceptance_criteria": "- [ ] Settings modal (@client/src/components/SettingsModal.tsx) has a new \"Archive\" tab next to General / Audio / Transcription / Projects.\n- [ ] The tab shows the absolute path of the sessions data dir and the total disk size of all sessions.\n- [ ] The tab lists every session with: title, date, source (recording / upload / link / YouTube), total size, and a per-file breakdown (source audio, audio.wav, transcript/other).\n- [ ] Each row can open its folder via the existing revealSession desktop bridge (hidden in the browser build).\n- [ ] Per session the user can \"Delete audio only\" (removes audio.* incl. audio.wav, keeps transcript.json and session.json) or \"Delete session\" (whole folder, same as the sidebar delete).\n- [ ] Multi-select checkboxes + \"Select all\" allow bulk \"Delete audio only\" and bulk \"Delete session\"; the action shows how much space will be freed and requires confirmation in-app (no native alert/confirm dialogs).\n- [ ] A session without audio still opens its transcript; \"Transcribe again\" for it is disabled or shows a clear message that the audio was deleted (and for link/YouTube sessions offers re-download from sourceUrl, or states it is not available).\n- [ ] Sessions that are recording / uploading / preparing / transcribing cannot be deleted or stripped from the Archive tab.\n- [ ] Sizes are computed server-side by a new endpoint (e.g. GET /api/sessions/storage) and audio deletion by a new endpoint (e.g. DELETE /api/sessions/:id/audio); both work on Windows and macOS data dirs, using path.join.\n- [ ] After deletion the list and totals refresh without a page reload; the sidebar reflects deleted sessions.\n- [ ] Optional setting (default off): \"Delete audio.wav after successful transcription\" — the source audio is kept so retranscribe can rebuild the WAV.",
+  "important_constraints": "- Cross-platform: Windows (data in <install dir>/data, 8.3 short paths via toSafePath) and macOS (~/Library/Application Support/August/data); no hardcoded separators.\n- Angular brutalist design: 0 border-radius on all new elements; color priority schema (red only for destructive actions).\n- No diagnostics in the user UI beyond sizes and paths.\n- Deletion must never follow paths outside the sessions dir (validate session id).\n- Reuse existing sessionManager deletion for whole-session delete; do not change the sidebar delete/undo behaviour.\n- Retranscribe currently relies on audio.* in the session dir (ensureWav reuses audio.wav; yt-dlp/direct-link sessions keep sourceUrl) — the \"audio deleted\" state must be handled explicitly, not by a crash.",
+  "labels": [
+    "storage",
+    "settings",
+    "ux"
+  ],
+  "on_hold_reason": "",
+  "contextRouterIncluded": true,
+  "created_at": 1793185670832,
+  "column_entered_at": 1793185670832
+}
