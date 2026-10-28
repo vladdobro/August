@@ -58,3 +58,4 @@ Thumbs.db
 .mcp.json
 .praxis/analytics
 /package-lock.json
+.praxis/graph.json

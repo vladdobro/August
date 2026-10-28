@@ -1,5 +1,5 @@
 import React, { useCallback, useEffect, useRef, useState } from 'react';
-import { uploadAudio, uploadDualAudio, uploadDualAudioWithCapture, startServerCapture, stopServerCapture, type UploadProgress } from '../api';
+import { uploadAudio, uploadDualAudio, uploadDualAudioWithCapture, startServerCapture, stopServerCapture, transcribeFromUrl, type UploadProgress } from '../api';
 import type { CaptureCapabilities, ServerCapture, TranscriptionLanguage } from '../types';
 import { useTheme } from '../theme';
 import RecordingModePicker, { type RecordingMode } from './RecordingModePicker';
@@ -9,8 +9,12 @@ import LiveTranscriptPanel, { type LiveLine, type LiveStatus } from './LiveTrans
 import { LiveTranscriptionClient, type LiveEngine } from '../services/liveTranscriptionClient';
 import { saveRecordingProgress, getRecoveredRecording, clearRecoveredRecording, type RecoveredRecording } from '../services/recordingRecovery';
 import { DEFAULT_PREFERENCES, resolveSystemAudioSource, type UserPreferences } from '../services/preferences';
+import { isVideoFile, probeVideoHasAudio, NO_AUDIO_MESSAGE } from '../services/videoAudioProbe';
 
-const ACCEPTED_EXTENSIONS = ['.wav', '.mp3', '.ogg', '.flac', '.m4a'];
+// Mirrors UPLOAD_EXTENSIONS in server/src/services/mediaFormats.ts (video: audio track extracted server-side, AUG-144).
+const ACCEPTED_EXTENSIONS = ['.wav', '.mp3', '.ogg', '.flac', '.m4a', '.mp4', '.mov'];
+// Must match the multer fileSize limit in server/src/routes/sessions.ts
+const MAX_UPLOAD_BYTES = 2 * 1024 * 1024 * 1024;
 const AUDIO_BARS_COUNT = 12;
 const BAR_BASE_HEIGHT = [14, 8, 12, 6, 15, 10, 7, 13, 6, 11, 9, 14];
 
@@ -52,6 +56,8 @@ const FileUpload: React.FC<FileUploadProps> = ({ onUploaded, onRecordingChange, 
   const [isUploading, setIsUploading] = useState(false);
   const [isRecording, setIsRecording] = useState(false);
   const [error, setError] = useState<string | null>(null);
+  const [linkUrl, setLinkUrl] = useState('');
+  const [isLinkSubmitting, setIsLinkSubmitting] = useState(false);
   const [uploadProgress, setUploadProgress] = useState<UploadProgress | null>(null);
   const [audioDevices, setAudioDevices] = useState<MediaDeviceInfo[]>([]);
   const [selectedMicId, setSelectedMicId] = useState<string>('');
@@ -100,6 +106,16 @@ const FileUpload: React.FC<FileUploadProps> = ({ onUploaded, onRecordingChange, 
         setError(`Unsupported file type. Accepted: ${ACCEPTED_EXTENSIONS.join(', ')}`);
         return;
       }
+      if (file.size > MAX_UPLOAD_BYTES) {
+        const sizeGB = (file.size / (1024 * 1024 * 1024)).toFixed(1);
+        setError(`File is too large (${sizeGB} GB). Maximum is 2 GB.`);
+        return;
+      }
+      // Local pre-check (AUG-146): block only a confirmed audio-less video; null (undecided) uploads as before.
+      if (isVideoFile(file) && (await probeVideoHasAudio(file)) === false) {
+        setError(NO_AUDIO_MESSAGE);
+        return;
+      }
       setIsUploading(true);
       setUploadProgress(null);
       try {
@@ -114,6 +130,32 @@ const FileUpload: React.FC<FileUploadProps> = ({ onUploaded, onRecordingChange, 
     },
     [language, onUploaded],
   );
+
+  const handleLinkSubmit = useCallback(async () => {
+    const trimmed = linkUrl.trim();
+    if (!trimmed) return;
+    setError(null);
+    try {
+      new URL(trimmed);
+    } catch {
+      setError('Invalid URL');
+      return;
+    }
+    if (!trimmed.startsWith('http://') && !trimmed.startsWith('https://')) {
+      setError('Only http and https links are supported');
+      return;
+    }
+    setIsLinkSubmitting(true);
+    try {
+      await transcribeFromUrl(trimmed, language);
+      setLinkUrl('');
+      onUploaded();
+    } catch (err) {
+      setError((err as Error).message || 'Failed to start transcription from link');
+    } finally {
+      setIsLinkSubmitting(false);
+    }
+  }, [linkUrl, language, onUploaded]);
 
   const onDrop = useCallback(
     (e: React.DragEvent<HTMLDivElement>) => {
@@ -935,12 +977,35 @@ const FileUpload: React.FC<FileUploadProps> = ({ onUploaded, onRecordingChange, 
           </div>
         ) : (
           <>
-            <p className="dropzone-title">Drag &amp; drop an audio file here</p>
+            <p className="dropzone-title">Drag &amp; drop an audio or video file here</p>
             <p className="dropzone-subtitle">or click to browse</p>
             <p className="dropzone-formats">{ACCEPTED_EXTENSIONS.join(', ')}</p>
           </>
         )}
         <input ref={fileInputRef} type="file" accept={ACCEPTED_EXTENSIONS.join(',')} onChange={onFileInputChange} hidden />
+      </div>
+
+      <div className="circuit-link-section">
+        <span className="circuit-link-label">or paste a link — media file, YouTube or Vimeo</span>
+        <div className="circuit-link-row">
+          <input
+            type="url"
+            className="circuit-link-input"
+            placeholder="https://youtube.com/watch?v=… or https://example.com/recording.mp4"
+            value={linkUrl}
+            onChange={(e) => setLinkUrl(e.target.value)}
+            onKeyDown={(e) => { if (e.key === 'Enter') void handleLinkSubmit(); }}
+            disabled={isUploading || isRecording || isLinkSubmitting}
+          />
+          <button
+            type="button"
+            className="circuit-link-btn"
+            onClick={() => void handleLinkSubmit()}
+            disabled={isUploading || isRecording || isLinkSubmitting || !linkUrl.trim()}
+          >
+            {isLinkSubmitting ? '...' : 'Transcribe'}
+          </button>
+        </div>
       </div>
 
       {error && <div className="upload-error">{error}</div>}

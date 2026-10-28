@@ -36,6 +36,7 @@ that embeds the same server and adds a tray icon, a global hotkey, and native no
 
 - Node.js 22+ (development uses Node 24)
 - ffmpeg is **bundled**: `npm run setup` downloads a pinned static ffmpeg + ffprobe into `whisper/bin/<platform>/`. An ffmpeg on `PATH` (`winget install ffmpeg` / `brew install ffmpeg`) still works as a fallback, and `FFMPEG_PATH` overrides both.
+- yt-dlp is **bundled** for YouTube/Vimeo/Dailymotion links: `npm run setup` downloads a pinned, SHA256-verified yt-dlp into `whisper/bin/<platform>/`. A `yt-dlp` on `PATH` (`winget install yt-dlp` / `brew install yt-dlp`) works as a fallback and `YTDLP_PATH` overrides both. Video sites change often — bump `YTDLP_VERSION` in `server/src/scripts/setup.ts` and re-run setup to update. Audio is downloaded and transcribed locally only. Downloading from video sites may conflict with their terms of service (e.g. YouTube's) — use it for content you have the right to download.
 - macOS only: Xcode Command Line Tools, needed to build `whisper-cli` from source
 
 See [`whisper/README.md`](whisper/README.md) for how `whisper-cli` is fetched/built per platform and how
@@ -117,9 +118,9 @@ Inside that folder:
 - `desktop-settings.json` — desktop-only settings (currently just the record hotkey)
 - `logs/main.log` — mirrored console output from the main process (rotates at 5 MB)
 
-This is implemented by four environment variables the Electron shell sets automatically before starting
-the embedded server: `AUGUST_DATA_DIR`, `WHISPER_MODEL_PATH`, `WHISPER_BIN_PATH`, and `FFMPEG_PATH` (the
-bundled ffmpeg). None of them need to be set for the web app.
+This is implemented by five environment variables the Electron shell sets automatically before starting
+the embedded server: `AUGUST_DATA_DIR`, `WHISPER_MODEL_PATH`, `WHISPER_BIN_PATH`, `FFMPEG_PATH` (the
+bundled ffmpeg), and `YTDLP_PATH` (the bundled yt-dlp). None of them need to be set for the web app.
 
 ### Desktop features
 
@@ -210,6 +211,8 @@ loaded, and exits — useful in CI to catch a broken packaged build quickly.
 | `PORT` | server | HTTP port (default `3001`) |
 | `WHISPER_BIN_PATH` | server | Override path to `whisper-cli` |
 | `WHISPER_MODEL_PATH` | server | Override path to the whisper model file |
+| `YTDLP_PATH` | server | Override path to `yt-dlp` (video-site links) |
+| `YTDLP_MAX_DURATION_HOURS` | server | Longest video-site video accepted before download (default `4`) |
 | `AUGUST_DATA_DIR` | server | Writable data root; set automatically by the Electron shell |
 | `GROQ_API_KEY` | server | Enables Groq-backed live transcription (optional) |
 | `AUGUST_PORT` | electron | Fixed port for the embedded server (default: OS-assigned) |

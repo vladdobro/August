@@ -284,7 +284,7 @@ const App: React.FC = () => {
           onKeysAndTokens={() => setShowGroqKeyModal(true)}
           onSettings={() => setShowSettings(true)}
           gpuBackend={healthStatus?.gpuBackend}
-          isTranscribing={sessions.some(s => s.status === 'transcribing')}
+          isTranscribing={sessions.some(s => s.status === 'transcribing' || s.status === 'preparing')}
         />
 
         <main className="main-content">
@@ -356,7 +356,7 @@ const App: React.FC = () => {
           nvidiaGpu={healthStatus?.nvidiaGpu}
           cudaStatus={healthStatus?.cudaStatus}
           onHealthRefresh={() => checkHealth().then(setHealthStatus).catch(() => {})}
-          isTranscribing={sessions.some(s => s.status === 'transcribing')}
+          isTranscribing={sessions.some(s => s.status === 'transcribing' || s.status === 'preparing')}
         />
       )}
       {shouldEnableAgentation && <Agentation endpoint={agentationEndpoint} />}

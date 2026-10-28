@@ -103,6 +103,43 @@ export function resolveAudioteePath(input: {
   return { path: 'audiotee', source: 'path' };
 }
 
+export function ytDlpBinName(): string {
+  return process.platform === 'win32' ? 'yt-dlp.exe' : 'yt-dlp';
+}
+
+export type YtDlpSource = 'env' | 'bundled' | 'path';
+
+export interface YtDlpPaths {
+  path: string;
+  source: YtDlpSource;
+}
+
+/// Resolves the yt-dlp executable used for YouTube/platform links (AUG-149). Precedence:
+///  1. YTDLP_PATH env — an explicit yt-dlp executable.
+///  2. Bundled build — yt-dlp next to whisper-cli (whisper/bin/<platform>/ in the repo, resources/whisper/bin/<platform>/
+///     when packaged), downloaded by `npm run setup`.
+///  3. PATH fallback — bare `yt-dlp`, so dev machines with `winget install yt-dlp` / `brew install yt-dlp` keep working.
+/// Pure: every input is injected so the precedence is unit-testable without touching the file system.
+export function resolveYtDlpPath(input: {
+  envPath: string | undefined;
+  bundledDirs: string[];
+  exists: (p: string) => boolean;
+}): YtDlpPaths {
+  const envPath = input.envPath?.trim();
+  if (envPath) return { path: path.resolve(envPath), source: 'env' };
+  for (const dir of input.bundledDirs) {
+    const candidate = path.join(dir, ytDlpBinName());
+    if (input.exists(candidate)) return { path: candidate, source: 'bundled' };
+  }
+  return { path: ytDlpBinName(), source: 'path' };
+}
+
+/// YTDLP_MAX_DURATION_HOURS (AUG-149): longest platform video accepted before download. Unset/invalid → 4 h.
+export function parseMaxDurationHours(raw: string | undefined): number {
+  const value = Number(raw?.trim());
+  return Number.isFinite(value) && value > 0 ? value : 4;
+}
+
 /// WHISPER_USE_GPU=0|1 (also true/false, on/off, yes/no) pins the whisper GPU mode and disables the runtime
 /// probe + automatic CPU fallback (AUG-116). Unset, blank or unrecognised → null → platform default with fallback.
 export function parseGpuOverride(raw: string | undefined): boolean | null {
@@ -211,6 +248,11 @@ export interface AppConfig {
   audioteeSampleFormat: string | null;
   // audiotee Core Audio tap helper (AUG-118): AUDIOTEE_PATH env → bundled next to whisper-cli → PATH.
   audioteePath: string;
+  // yt-dlp for platform links (AUG-149): YTDLP_PATH env → bundled next to whisper-cli → PATH.
+  ytDlpPath: string;
+  ytDlpSource: YtDlpSource;
+  // Longest platform video accepted before downloading (YTDLP_MAX_DURATION_HOURS, default 4 h), in seconds.
+  ytDlpMaxDurationSec: number;
   // WHISPER_USE_GPU override (AUG-116): true/false pins the mode, null = platform default (Metal on Apple Silicon,
   // Vulkan on Windows x64, --no-gpu elsewhere) with automatic CPU fallback. Effective mode: services/gpuBackend.ts.
   whisperGpuOverride: boolean | null;
@@ -238,6 +280,14 @@ const audioteePaths = resolveAudioteePath({
   exists: (filePath) => fs.existsSync(filePath),
 });
 
+// With the CUDA engine both whisper dirs are win-x64-cuda, but setup puts yt-dlp only in the CPU platform dir — search it too.
+const cpuPlatformBinDir = path.join(WHISPER_BIN_ROOT, whisperPlatformDir() ?? `${process.platform}-${process.arch}`);
+const ytDlpPaths = resolveYtDlpPath({
+  envPath: process.env.YTDLP_PATH,
+  bundledDirs: [...new Set([path.dirname(whisperBinPath), path.dirname(defaultWhisperBinPath()), cpuPlatformBinDir])],
+  exists: (filePath) => fs.existsSync(filePath),
+});
+
 export const config: AppConfig = {
   port: Number(process.env.PORT) || 3001,
   whisperBinPath,
@@ -256,6 +306,9 @@ export const config: AppConfig = {
   wasapiHelperSourcePath: path.resolve(serverRoot, 'tools', 'wasapi-loopback', 'WasapiLoopback.cs'),
   audioteeSampleFormat: process.env.AUDIOTEE_SAMPLE_FORMAT?.trim() || null,
   audioteePath: audioteePaths.path,
+  ytDlpPath: ytDlpPaths.path,
+  ytDlpSource: ytDlpPaths.source,
+  ytDlpMaxDurationSec: parseMaxDurationHours(process.env.YTDLP_MAX_DURATION_HOURS) * 3600,
   whisperGpuOverride: parseGpuOverride(process.env.WHISPER_USE_GPU),
   whisperGpuEngine: readPersistedGpuEngine(),
   whisperCudaBinPath: process.env.WHISPER_CUDA_BIN_PATH?.trim()

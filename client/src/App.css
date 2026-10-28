@@ -44,6 +44,7 @@
   --shell-shadow: 0 24px 70px rgba(45, 58, 51, 0.08);
 
   --status-uploading: #d49a00;
+  --status-preparing: #d49a00;
   --status-transcribing: var(--necron-400);
   --status-completed: var(--necron-500);
   --status-failed: #d44040;
@@ -94,6 +95,7 @@
   --shell-shadow: 0 28px 80px rgba(0, 0, 0, 0.52);
 
   --status-uploading: #d4a020;
+  --status-preparing: #d4a020;
   --status-transcribing: #00c876;
   --status-completed: #2dd690;
   --status-failed: #e05555;
@@ -410,6 +412,12 @@ body {
   border-color: rgba(212, 154, 0, 0.5);
   box-shadow: 0 0 12px rgba(212, 154, 0, 0.2);
 }
+.session-filter-chip--preparing.active {
+  background: rgba(212, 154, 0, 0.15);
+  color: var(--status-preparing);
+  border-color: rgba(212, 154, 0, 0.5);
+  box-shadow: 0 0 12px rgba(212, 154, 0, 0.2);
+}
 
 .session-filter-chip--transcribing.active {
   background: rgba(10, 123, 80, 0.15);
@@ -574,6 +582,10 @@ body {
 .status-uploading {
   background: rgba(212, 154, 0, 0.15);
   color: var(--status-uploading);
+}
+.status-preparing {
+  background: rgba(212, 154, 0, 0.15);
+  color: var(--status-preparing);
 }
 
 .status-transcribing {
@@ -2257,6 +2269,83 @@ body {
   cursor: default;
 }
 
+.circuit-link-section {
+  width: 100%;
+  max-width: 480px;
+  margin-top: 16px;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 8px;
+}
+
+.circuit-link-label {
+  font-family: var(--font-terminal);
+  font-size: 11px;
+  color: var(--text-muted);
+  text-transform: uppercase;
+  letter-spacing: 1px;
+}
+
+.circuit-link-row {
+  width: 100%;
+  display: flex;
+  gap: 8px;
+}
+
+.circuit-link-input {
+  flex: 1;
+  min-width: 0;
+  padding: 10px 14px;
+  font-family: var(--font-terminal);
+  font-size: 13px;
+  color: var(--text-primary);
+  background: var(--input-bg, rgba(0, 10, 6, 0.3));
+  border: 1px solid rgba(0, 200, 118, 0.25);
+  border-radius: 0;
+  outline: none;
+  transition: border-color 0.18s ease;
+}
+
+.circuit-link-input::placeholder {
+  color: var(--text-muted);
+  opacity: 0.5;
+}
+
+.circuit-link-input:focus {
+  border-color: var(--accent);
+}
+
+.circuit-link-input:disabled {
+  opacity: 0.5;
+  cursor: not-allowed;
+}
+
+.circuit-link-btn {
+  padding: 10px 20px;
+  font-family: var(--font-terminal);
+  font-size: 12px;
+  font-weight: 600;
+  color: var(--necron-950);
+  background: var(--accent);
+  border: 1px solid var(--accent);
+  border-radius: 0;
+  cursor: pointer;
+  text-transform: uppercase;
+  letter-spacing: 1px;
+  white-space: nowrap;
+  transition: background 0.18s ease, opacity 0.18s ease;
+}
+
+.circuit-link-btn:hover:not(:disabled) {
+  background: var(--accent-hover);
+}
+
+.circuit-link-btn:disabled {
+  opacity: 0.4;
+  cursor: not-allowed;
+}
+
 /* ========== Transcript Circuit Header ========== */
 .transcript-circuit-header {
   display: flex;
@@ -2791,6 +2880,16 @@ body {
   box-shadow: 0 0 36px rgba(0, 200, 118, 0.25), inset 0 0 28px rgba(0, 200, 118, 0.05);
 }
 
+:root[data-theme='dark'] .circuit-link-input {
+  background: rgba(0, 10, 6, 0.5);
+  border-color: rgba(0, 200, 118, 0.2);
+  color: var(--text-primary);
+}
+
+:root[data-theme='dark'] .circuit-link-input:focus {
+  border-color: var(--accent);
+}
+
 :root[data-theme='dark'] .circuit-recording .circuit-node--center {
   background: radial-gradient(circle, #3d1010, #040806);
   border-color: #e05555;
@@ -2976,6 +3075,10 @@ body {
   border-radius: 0;
   background: linear-gradient(90deg, var(--accent), var(--accent-hover));
   animation: transcription-shimmer 1.8s ease-in-out infinite;
+}
+
+.transcription-progress-fill--download {
+  transition: width 0.5s ease;
 }
 
 @keyframes transcription-shimmer {

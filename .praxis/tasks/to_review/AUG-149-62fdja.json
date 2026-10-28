@@ -1,0 +1,18 @@
+{
+  "id": "AUG-149-62fdja",
+  "assignee": "jarvis.json",
+  "priority": "medium",
+  "status": "to_review",
+  "title": "[AUG-149] Transcribe audio from YouTube and other video platform links via yt-dlp",
+  "why_we_need_this": "Users naturally paste YouTube/Vimeo/etc. links expecting transcription, but the current from-url endpoint only handles direct media file URLs. Platform links return HTML pages and are correctly rejected with \"not a direct media file.\" Integrating yt-dlp as an audio extraction backend would let users paste a YouTube link and get a local whisper transcription without manually downloading the video first — a significant UX improvement for the most common \"paste a link\" use case.",
+  "acceptance_criteria": "- [ ] Detect YouTube (and supported platform) URLs in the from-url flow before the direct-download path\n- [ ] yt-dlp CLI binary is bundled for Windows x64 and macOS arm64/x64 in Electron packaging (extraResources), with a fallback to PATH-installed yt-dlp in dev mode\n- [ ] Extract audio-only stream via yt-dlp (-x --audio-format wav or best audio → ffmpeg convert) into the session directory as audio.{ext}\n- [ ] Session lifecycle: uploading status with sourceUrl set, download progress reported to the client (yt-dlp progress parsing), cancel support via process kill\n- [ ] After extraction completes, the session enters the standard whisper pipeline (preparing → transcribing → completed)\n- [ ] Session title is set from the video title (yt-dlp --get-title or JSON metadata)\n- [ ] Error handling: yt-dlp not found → clear message with install hint; video unavailable/private/age-restricted → user-friendly error; network failure → retry suggestion\n- [ ] Duration/size guard: reject videos longer than a configurable max (e.g. 4 hours) before downloading to prevent accidental huge downloads\n- [ ] Retranscribe reuses the already-extracted audio file, no re-download\n- [ ] Works on both Windows and macOS\n- [ ] yt-dlp binary auto-download in npm run setup (similar to whisper-cli and ffmpeg setup)",
+  "important_constraints": "- yt-dlp is a ~20 MB external binary — must be bundled per platform, not an npm dependency\n- yt-dlp requires periodic updates because YouTube changes internal APIs; consider a self-update mechanism or version pinning with a clear update path\n- Downloading YouTube content may violate YouTube ToS — this is a user's local tool, but document the legal caveat\n- Transcription must stay local whisper only — never send audio or URL to a third-party transcription API (project invariant)\n- The existing direct-download path (AUG-148) must remain unchanged; yt-dlp is an additional path, not a replacement\n- Platform detection should be extensible (YouTube today, potentially other platforms yt-dlp supports later)\n- yt-dlp may need ffmpeg for audio extraction/conversion — verify it uses the bundled ffmpeg or bundle its own\n- Cross-platform: yt-dlp binary names differ (yt-dlp.exe on Windows, yt-dlp on macOS); use the same pattern as whisper-cli binary resolution\n- Child process tracking: register yt-dlp processes in the same Map as whisper/ffmpeg for proper cancel and orphan recovery",
+  "labels": [
+    "feature",
+    "integration"
+  ],
+  "on_hold_reason": "",
+  "contextRouterIncluded": true,
+  "created_at": 1793142738378,
+  "column_entered_at": 1793149376494
+}

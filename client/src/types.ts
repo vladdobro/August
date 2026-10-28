@@ -1,6 +1,6 @@
 export type TranscriptionLanguage = 'auto' | 'en' | 'ru';
 
-export type SessionStatus = 'uploading' | 'transcribing' | 'completed' | 'failed';
+export type SessionStatus = 'uploading' | 'preparing' | 'transcribing' | 'completed' | 'failed';
 
 export interface SessionMetadata {
   id: string;
@@ -20,6 +20,8 @@ export interface SessionMetadata {
   trackDurations?: { mic: number; system: number };
   // Dual-track only (AUG-125): non-blocking notice when one track is much shorter than the other.
   trackWarning?: string;
+  sourceUrl?: string;
+  downloadProgress?: number;
 }
 
 export interface HealthStatus {

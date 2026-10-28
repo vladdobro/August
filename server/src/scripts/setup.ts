@@ -2,6 +2,7 @@
 // whisper-cli binary for the current platform into whisper/bin/<platform>/,
 // and downloads a pinned, SHA256-verified static ffmpeg + ffprobe build into
 // the same folder (AUG-115) so the app never depends on a PATH install.
+// It also downloads a pinned, SHA256-verified yt-dlp (AUG-149) into the same folder for YouTube/video-site links.
 // On Windows it also bundles the Khronos Vulkan loader (vulkan-1.dll, AUG-117) next to whisper-cli,
 // because the release build imports it statically and cannot start without it.
 // On macOS it also builds audiotee (Core Audio tap helper, AUG-118) from a pinned source commit with
@@ -28,6 +29,7 @@ import {
   whisperPlatformDir,
   whisperBinName,
   ffmpegBinName,
+  ytDlpBinName,
   type WhisperPlatformDir,
 } from '../config.js';
 import { downloadToFile, isOfflineError } from '../services/download.js';
@@ -116,6 +118,17 @@ const AUDIOTEE = {
   url: 'https://github.com/makeusabrew/audiotee/archive/56ac954369a09318e46b88a6eec33c2d2b0d32a3.tar.gz',
   srcDirName: 'audiotee-56ac954369a09318e46b88a6eec33c2d2b0d32a3',
 } as const;
+
+// yt-dlp for YouTube/video-site links (AUG-149): single-file release binaries, SHA256 from the release's SHA2-256SUMS.
+// Video sites change their internals often, so yt-dlp needs regular updates: bump YTDLP_VERSION and both sha256
+// values together, then re-run `npm run setup` — it replaces a bundled binary whose --version differs.
+export const YTDLP_VERSION = '2026.10.26';
+const YTDLP_BUILDS: Record<WhisperPlatformDir, { asset: string; sha256: string }> = {
+  'win-x64': { asset: 'yt-dlp.exe', sha256: 'f5389d3698ecde4ef06f4e6b1ce0294fe9ac1396228c8990b8d3416d6d177a7d' },
+  // yt-dlp_macos is a universal2 build, so both mac arches share it.
+  'darwin-arm64': { asset: 'yt-dlp_macos', sha256: '0f922c15ccc0b83eefa1c8bc9104e434318c4bf16e408e1ee93b7745a6efe0aa' },
+  'darwin-x64': { asset: 'yt-dlp_macos', sha256: '0f922c15ccc0b83eefa1c8bc9104e434318c4bf16e408e1ee93b7745a6efe0aa' },
+};
 
 function run(cmd: string, args: string[], failMessage: string): void {
   const result = spawnSync(cmd, args, { stdio: 'inherit' });
@@ -367,6 +380,45 @@ async function setupFfmpeg(platformDir: WhisperPlatformDir, targetDir: string): 
   return true;
 }
 
+/// Downloads the pinned yt-dlp into targetDir (next to whisper-cli) as yt-dlp(.exe) (AUG-149). Replaces an existing
+/// binary whose --version differs from YTDLP_VERSION. Non-fatal: a failure only disables video-site links, so it is
+/// logged as a warning and setup continues.
+async function setupYtDlp(platformDir: WhisperPlatformDir, targetDir: string): Promise<void> {
+  const target = path.join(targetDir, ytDlpBinName());
+  if (await fileExists(target)) {
+    const probe = spawnSync(target, ['--version'], { encoding: 'utf8', timeout: 60_000 });
+    const installed = (probe.stdout ?? '').trim();
+    if (installed === YTDLP_VERSION) {
+      console.log(`✔ yt-dlp ${YTDLP_VERSION} already present at ${target} — skipping.`);
+      return;
+    }
+    console.log(`Updating yt-dlp ${installed || '(unknown version)'} → ${YTDLP_VERSION}...`);
+  }
+
+  try {
+    const build = YTDLP_BUILDS[platformDir];
+    const url = `https://github.com/yt-dlp/yt-dlp/releases/download/${YTDLP_VERSION}/${build.asset}`;
+    await fs.mkdir(targetDir, { recursive: true });
+    const partPath = `${target}.part`;
+    const lastStep = { value: -1 };
+    const { sha256 } = await downloadToFile(url, partPath, {
+      onProgress: logProgressPercent('yt-dlp download', lastStep),
+    });
+    if (sha256 !== build.sha256) {
+      await fs.unlink(partPath).catch(() => {});
+      throw new Error(`yt-dlp checksum mismatch (expected ${build.sha256}, got ${sha256})`);
+    }
+    await fs.rm(target, { force: true });
+    await fs.rename(partPath, target);
+    if (process.platform !== 'win32') await fs.chmod(target, 0o755);
+    console.log(`✔ yt-dlp ${YTDLP_VERSION} ready at ${target}`);
+  } catch (err) {
+    await fs.unlink(`${target}.part`).catch(() => {});
+    const message = err instanceof Error ? err.message : String(err);
+    console.warn(`⚠ yt-dlp setup failed (${message}) — YouTube and other video-site links will not work until \`npm run setup\` succeeds; direct file links are unaffected.`);
+  }
+}
+
 /// macOS only: builds audiotee (Core Audio tap helper, AUG-118) from a pinned source commit into targetDir
 /// (next to whisper-cli), using SwiftPM. Non-fatal — a build failure (or a missing Swift toolchain) is logged
 /// as a warning and setup continues, since System (direct) capture falls back to BlackHole or the browser
@@ -517,6 +569,7 @@ async function main(): Promise<void> {
   if (await setupFfmpeg(platformDir, targetDir)) {
     usedBuildDir = true;
   }
+  await setupYtDlp(platformDir, targetDir);
   if (await setupAudiotee(targetDir)) {
     usedBuildDir = true;
   }

@@ -158,6 +158,15 @@ export async function cancelTranscription(id: string): Promise<SessionMetadata> 
   return handleJsonResponse<SessionMetadata>(res);
 }
 
+export async function transcribeFromUrl(url: string, language: TranscriptionLanguage | string): Promise<SessionMetadata> {
+  const res = await fetch(`${API_BASE}/sessions/from-url`, {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({ url, language }),
+  });
+  return handleJsonResponse<SessionMetadata>(res);
+}
+
 export async function checkHealth(): Promise<HealthStatus> {
   const res = await fetch(`${API_BASE}/health`);
   return handleJsonResponse<HealthStatus>(res);

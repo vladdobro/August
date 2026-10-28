@@ -18,7 +18,7 @@ interface SessionListProps {
   isTranscribing: boolean;
 }
 
-const ALL_STATUSES: SessionStatus[] = ['uploading', 'transcribing', 'failed', 'completed'];
+const ALL_STATUSES: SessionStatus[] = ['uploading', 'preparing', 'transcribing', 'failed', 'completed'];
 
 const CHIP_LAYOUT = [
   { cx: 16, cy: 28, size: 48 },
@@ -31,6 +31,8 @@ function statusLabel(status: SessionStatus): string {
   switch (status) {
     case 'uploading':
       return 'Uploading';
+    case 'preparing':
+      return 'Preparing';
     case 'transcribing':
       return 'Transcribing';
     case 'completed':
@@ -45,6 +47,7 @@ function statusLabel(status: SessionStatus): string {
 function chipLabel(status: SessionStatus): string {
   switch (status) {
     case 'uploading': return 'UPL';
+    case 'preparing': return 'PREP';
     case 'transcribing': return 'TRC';
     case 'completed': return 'DONE';
     case 'failed': return 'ERR';
@@ -526,7 +529,7 @@ const SessionList: React.FC<SessionListProps> = ({
               )}
               <div className="session-item-meta">
                 <span className={`status-badge status-${session.status}`}>
-                  {(session.status === 'transcribing' || session.status === 'uploading') && (
+                  {(session.status === 'transcribing' || session.status === 'uploading' || session.status === 'preparing') && (
                     <span className="status-spinner" />
                   )}
                   {statusLabel(session.status)}

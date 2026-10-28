@@ -1,6 +1,6 @@
 import fs from 'node:fs/promises';
 import path from 'node:path';
-import { Router } from 'express';
+import { Router, type Response } from 'express';
 import multer from 'multer';
 
 import { config } from '../config.js';
@@ -10,16 +10,30 @@ import { mergeSingleStream, mergeDualStream, renderTranscript, alignDualSegments
 import { recordCompletion, getEstimatedDuration } from '../services/performanceTracker.js';
 import { getModelStatus } from '../services/modelDownloader.js';
 import { consumeCapture, hasCapture, CaptureError } from '../services/systemCapture.js';
+import { downloadFromUrl, UrlDownloadError } from '../services/urlDownloader.js';
+import { isPlatformUrl, probePlatformVideo, downloadPlatformAudio, YtDlpError, YTDLP_MISSING_MESSAGE, INFO_JSON_NAME } from '../services/ytDlp.js';
 import type { TranscriptionLanguage } from '../types.js';
 
 const router = Router();
 
+const MAX_UPLOAD_BYTES = 2 * 1024 * 1024 * 1024; // 2 GB
+
 const upload = multer({
   dest: config.uploadsDir,
-  limits: { fileSize: 2 * 1024 * 1024 * 1024 }, // 2GB ceiling for long recordings
+  limits: { fileSize: MAX_UPLOAD_BYTES },
 });
 
 const ALLOWED_LANGUAGES: TranscriptionLanguage[] = ['auto', 'en', 'ru'];
+
+const activeDownloads = new Map<string, AbortController>();
+
+export function cancelDownload(sessionId: string): boolean {
+  const controller = activeDownloads.get(sessionId);
+  if (!controller) return false;
+  controller.abort();
+  activeDownloads.delete(sessionId);
+  return true;
+}
 
 function normalizeLanguage(value: unknown): TranscriptionLanguage {
   if (typeof value === 'string' && (ALLOWED_LANGUAGES as string[]).includes(value)) {
@@ -58,7 +72,8 @@ async function runTranscription(sessionId: string, audioPath: string, language: 
   try {
     let inputPath: string;
     if (boost) {
-      boostedPath = await boostAudio(audioPath);
+      // boost reads the extracted WAV so a video source never reaches the loudnorm chain (AUG-144)
+      boostedPath = await boostAudio(await ensureWav(audioPath));
       inputPath = boostedPath;
     } else {
       inputPath = await ensureWav(audioPath);
@@ -161,6 +176,26 @@ async function runDualTranscription(
   }
 }
 
+async function prepareAndTranscribe(sessionId: string, audioPath: string, language: TranscriptionLanguage, boost = false) {
+  try {
+    const wavPath = await ensureWav(audioPath, sessionId);
+    const audioDur = await getAudioDuration(wavPath);
+    const estDur = audioDur > 0 ? await getEstimatedDuration(audioDur, false) : 0;
+    await sessionManager.updateSession(sessionId, {
+      status: 'transcribing',
+      transcriptionStartedAt: new Date().toISOString(),
+      duration: audioDur > 0 ? audioDur : undefined,
+      ...(estDur > 0 ? { estimatedDuration: estDur } : {}),
+    });
+    void runTranscription(sessionId, audioPath, language, boost);
+  } catch (err) {
+    const current = await sessionManager.getSession(sessionId);
+    if (current?.status === 'failed') return;
+    const message = err instanceof WhisperError ? err.message : (err as Error)?.message || 'Failed to prepare audio';
+    await sessionManager.updateSession(sessionId, { status: 'failed', error: message });
+  }
+}
+
 async function findAudioFiles(sessionDir: string): Promise<{ mic: string | null; system: string | null; single: string | null }> {
   const entries = await fs.readdir(sessionDir);
   let mic: string | null = null;
@@ -245,10 +280,28 @@ router.patch('/:id', async (req, res) => {
 });
 
 // POST /api/sessions/upload
-router.post('/upload', upload.fields([
+const uploadFields = upload.fields([
   { name: 'audio', maxCount: 1 },
   { name: 'systemAudio', maxCount: 1 },
-]), async (req, res) => {
+]);
+
+router.post('/upload', (req, res, next) => {
+  uploadFields(req, res, (err: unknown) => {
+    if (err) {
+      if (err instanceof multer.MulterError) {
+        if (err.code === 'LIMIT_FILE_SIZE') {
+          res.status(413).json({ error: 'File is too large. Maximum is 2 GB.' });
+          return;
+        }
+        res.status(400).json({ error: err.message });
+        return;
+      }
+      next(err);
+      return;
+    }
+    next();
+  });
+}, async (req, res) => {
   const files = req.files as { [fieldname: string]: Express.Multer.File[] } | undefined;
   const micFile = files?.['audio']?.[0];
   if (!micFile) {
@@ -345,22 +398,30 @@ router.post('/upload', upload.fields([
       void runDualTranscription(session.id, micDest, sysDest, language, false, systemOffsetMs);
       res.status(201).json(inProgress ?? session);
     } else {
-      const ext = path.extname(micFile.originalname) || '.wav';
+      const ext = path.extname(micFile.originalname).toLowerCase() || '.wav';
       const destPath = path.join(sessionDir, `audio${ext}`);
       await fs.copyFile(micFile.path, destPath);
       await fs.unlink(micFile.path).catch(() => {});
 
-      const wavPath = await ensureWav(destPath);
-      const audioDur = await getAudioDuration(wavPath);
-      const estDur = audioDur > 0 ? await getEstimatedDuration(audioDur, false) : 0;
-      const inProgress = await sessionManager.updateSession(session.id, {
-        status: 'transcribing',
-        transcriptionStartedAt: new Date().toISOString(),
-        duration: audioDur > 0 ? audioDur : undefined,
-        ...(estDur > 0 ? { estimatedDuration: estDur } : {}),
-      });
-      void runTranscription(session.id, destPath, language);
-      res.status(201).json(inProgress ?? session);
+      const needsConversion = ext !== '.wav';
+      if (needsConversion) {
+        const preparing = await sessionManager.updateSession(session.id, {
+          status: 'preparing',
+        });
+        res.status(201).json(preparing ?? session);
+        void prepareAndTranscribe(session.id, destPath, language);
+      } else {
+        const audioDur = await getAudioDuration(destPath);
+        const estDur = audioDur > 0 ? await getEstimatedDuration(audioDur, false) : 0;
+        const inProgress = await sessionManager.updateSession(session.id, {
+          status: 'transcribing',
+          transcriptionStartedAt: new Date().toISOString(),
+          duration: audioDur > 0 ? audioDur : undefined,
+          ...(estDur > 0 ? { estimatedDuration: estDur } : {}),
+        });
+        void runTranscription(session.id, destPath, language);
+        res.status(201).json(inProgress ?? session);
+      }
     }
   } catch (err) {
     if (createdSessionId) {
@@ -374,6 +435,219 @@ router.post('/upload', upload.fields([
   }
 });
 
+function formatHours(sec: number): string {
+  return sec < 3600 ? `${Math.ceil(sec / 60)} min` : `${Number((sec / 3600).toFixed(1))} h`;
+}
+
+/// Platform-link flow (AUG-149): metadata probe (title, duration guard, live check) → yt-dlp audio download with progress
+/// → the standard preparing → transcribing pipeline. The session sits in "uploading" with sourceUrl set while yt-dlp runs;
+/// yt-dlp children live in the shared process map, so cancel kills them and orphan recovery sees them.
+async function startPlatformDownload(res: Response, url: string, language: TranscriptionLanguage): Promise<void> {
+  if (config.ytDlpSource !== 'path' && !(await fileExists(config.ytDlpPath))) {
+    res.status(400).json({ error: YTDLP_MISSING_MESSAGE });
+    return;
+  }
+
+  let title = 'Video link';
+  try {
+    title = `Video from ${new URL(url).hostname.replace(/^www\./, '')}`;
+  } catch {
+    // keep default title
+  }
+
+  let createdSessionId: string | null = null;
+  try {
+    const session = await sessionManager.createSession(title, language);
+    createdSessionId = session.id;
+    const updated = await sessionManager.updateSession(session.id, {
+      sourceUrl: url,
+      downloadProgress: 0,
+    });
+
+    // Respond immediately
+    res.status(201).json(updated ?? session);
+
+    const sessionDir = sessionManager.sessionAudioDir(session.id);
+    const controller = new AbortController();
+    activeDownloads.set(session.id, controller);
+
+    // Progress writes are chained, not fired in parallel: updateSession is read-modify-write on session.json, and a short
+    // video finishes within milliseconds, so overlapping writes left the status update reading a truncated file.
+    let progressWrites: Promise<unknown> = Promise.resolve();
+
+    void (async () => {
+      try {
+        const info = await probePlatformVideo(url, { destDir: sessionDir, sessionKey: session.id, signal: controller.signal });
+        if (info.isLive) {
+          throw new YtDlpError('Live streams and upcoming premieres cannot be transcribed — try again after the stream has ended.');
+        }
+        if (info.durationSec !== null && info.durationSec > config.ytDlpMaxDurationSec) {
+          throw new YtDlpError(`This video is ${formatHours(info.durationSec)} long — the limit is ${formatHours(config.ytDlpMaxDurationSec)}.`);
+        }
+        if (info.title) await sessionManager.updateSession(session.id, { title: info.title });
+
+        const result = await downloadPlatformAudio(info.infoJsonPath, {
+          destDir: sessionDir,
+          sessionKey: session.id,
+          signal: controller.signal,
+          onProgress: (percent) => {
+            progressWrites = progressWrites
+              .then(() => sessionManager.updateSession(session.id, { downloadProgress: percent }))
+              .catch(() => {});
+          },
+        });
+
+        activeDownloads.delete(session.id);
+        await progressWrites;
+        if (controller.signal.aborted) return;
+
+        await sessionManager.updateSession(session.id, { status: 'preparing', downloadProgress: undefined });
+        void prepareAndTranscribe(session.id, result.filePath, language);
+      } catch (err) {
+        activeDownloads.delete(session.id);
+        await progressWrites;
+        await fs.unlink(path.join(sessionDir, INFO_JSON_NAME)).catch(() => {});
+        const current = await sessionManager.getSession(session.id);
+        if (current?.status === 'failed') return;
+        const message = err instanceof YtDlpError
+          ? err.message
+          : (err as Error)?.message || 'Download failed';
+        await sessionManager.updateSession(session.id, {
+          status: 'failed',
+          error: message,
+          downloadProgress: undefined,
+        });
+      }
+    })();
+  } catch (err) {
+    if (createdSessionId) {
+      await sessionManager.updateSession(createdSessionId, {
+        status: 'failed',
+        error: (err as Error)?.message || 'Failed to start download',
+      }).catch(() => {});
+    }
+    if (!res.headersSent) {
+      const message = err instanceof YtDlpError ? err.message : (err as Error)?.message || 'Failed to start download';
+      res.status(400).json({ error: message });
+    }
+  }
+}
+
+// POST /api/sessions/from-url
+router.post('/from-url', async (req, res) => {
+  const { url, language: rawLang } = req.body as { url?: string; language?: string };
+
+  if (!url || typeof url !== 'string' || !url.trim()) {
+    res.status(400).json({ error: 'URL is required' });
+    return;
+  }
+
+  const language = normalizeLanguage(rawLang);
+
+  // Video-site links (YouTube, Vimeo, …) go through yt-dlp (AUG-149); everything else keeps the direct-download path (AUG-148).
+  if (isPlatformUrl(url)) {
+    await startPlatformDownload(res, url.trim(), language);
+    return;
+  }
+
+  // Derive a title from the URL path
+  let title = 'Link download';
+  try {
+    const parsed = new URL(url);
+    const lastSegment = parsed.pathname.split('/').pop() || '';
+    const decoded = decodeURIComponent(lastSegment).trim();
+    if (decoded && decoded !== '/') title = decoded;
+  } catch {
+    // keep default title
+  }
+
+  let createdSessionId: string | null = null;
+  try {
+    const session = await sessionManager.createSession(title, language);
+    createdSessionId = session.id;
+    const updated = await sessionManager.updateSession(session.id, {
+      sourceUrl: url,
+      downloadProgress: 0,
+    });
+
+    // Respond immediately
+    res.status(201).json(updated ?? session);
+
+    // Background: download then transcribe
+    const sessionDir = sessionManager.sessionAudioDir(session.id);
+    const controller = new AbortController();
+    activeDownloads.set(session.id, controller);
+
+    // Chained like the platform path: overlapping read-modify-write updates of session.json can truncate it.
+    let progressWrites: Promise<unknown> = Promise.resolve();
+
+    void (async () => {
+      try {
+        const result = await downloadFromUrl(url, {
+          destDir: sessionDir,
+          signal: controller.signal,
+          onProgress: (percent) => {
+            progressWrites = progressWrites
+              .then(() => sessionManager.updateSession(session.id, { downloadProgress: percent }))
+              .catch(() => {});
+          },
+        });
+
+        activeDownloads.delete(session.id);
+        await progressWrites;
+
+        // Update title from Content-Disposition filename if better
+        if (result.fileName && result.fileName !== title) {
+          await sessionManager.updateSession(session.id, { title: result.fileName });
+        }
+
+        // Clear download progress and start transcription
+        await sessionManager.updateSession(session.id, { downloadProgress: undefined });
+
+        const needsConversion = result.extension !== '.wav';
+        if (needsConversion) {
+          await sessionManager.updateSession(session.id, { status: 'preparing' });
+          void prepareAndTranscribe(session.id, result.filePath, language);
+        } else {
+          const audioDur = await getAudioDuration(result.filePath);
+          const estDur = audioDur > 0 ? await getEstimatedDuration(audioDur, false) : 0;
+          await sessionManager.updateSession(session.id, {
+            status: 'transcribing',
+            transcriptionStartedAt: new Date().toISOString(),
+            duration: audioDur > 0 ? audioDur : undefined,
+            ...(estDur > 0 ? { estimatedDuration: estDur } : {}),
+          });
+          void runTranscription(session.id, result.filePath, language);
+        }
+      } catch (err) {
+        activeDownloads.delete(session.id);
+        await progressWrites;
+        const current = await sessionManager.getSession(session.id);
+        if (current?.status === 'failed') return;
+        const message = err instanceof UrlDownloadError
+          ? err.message
+          : (err as Error)?.message || 'Download failed';
+        await sessionManager.updateSession(session.id, {
+          status: 'failed',
+          error: message,
+          downloadProgress: undefined,
+        });
+      }
+    })();
+  } catch (err) {
+    if (createdSessionId) {
+      await sessionManager.updateSession(createdSessionId, {
+        status: 'failed',
+        error: (err as Error)?.message || 'Failed to start download',
+      }).catch(() => {});
+    }
+    if (!res.headersSent) {
+      const message = err instanceof UrlDownloadError ? err.message : (err as Error)?.message || 'Failed to start download';
+      res.status(400).json({ error: message });
+    }
+  }
+});
+
 // POST /api/sessions/:id/cancel
 router.post('/:id/cancel', async (req, res) => {
   const session = await sessionManager.getSession(req.params.id);
@@ -381,10 +655,11 @@ router.post('/:id/cancel', async (req, res) => {
     res.status(404).json({ error: 'Session not found' });
     return;
   }
-  if (session.status !== 'transcribing') {
-    res.status(400).json({ error: 'Session is not currently transcribing' });
+  if (session.status !== 'transcribing' && session.status !== 'preparing' && session.status !== 'uploading') {
+    res.status(400).json({ error: 'Session is not currently transcribing or downloading' });
     return;
   }
+  cancelDownload(req.params.id);
   cancelTranscription(req.params.id);
   const updated = await sessionManager.updateSession(req.params.id, {
     status: 'failed',
@@ -457,18 +732,28 @@ router.post('/:id/retranscribe', async (req, res) => {
     void runDualTranscription(req.params.id, audioFiles.mic, audioFiles.system, language, !!boost, systemOffsetMs);
     res.json(updated ?? session);
   } else if (audioFiles.single) {
-    const wavPath = await ensureWav(audioFiles.single);
-    const audioDur = await getAudioDuration(wavPath);
-    const estDur = audioDur > 0 ? await getEstimatedDuration(audioDur, false) : 0;
-    const updated = await sessionManager.updateSession(req.params.id, {
-      status: 'transcribing',
-      error: undefined,
-      transcriptionStartedAt: new Date().toISOString(),
-      duration: audioDur > 0 ? audioDur : undefined,
-      ...(estDur > 0 ? { estimatedDuration: estDur } : {}),
-    });
-    void runTranscription(req.params.id, audioFiles.single, language, !!boost);
-    res.json(updated ?? session);
+    const singleExt = path.extname(audioFiles.single).toLowerCase();
+    const needsConversion = singleExt !== '.wav';
+    if (needsConversion) {
+      const updated = await sessionManager.updateSession(req.params.id, {
+        status: 'preparing',
+        error: undefined,
+      });
+      res.json(updated ?? session);
+      void prepareAndTranscribe(req.params.id, audioFiles.single, language, !!boost);
+    } else {
+      const audioDur = await getAudioDuration(audioFiles.single);
+      const estDur = audioDur > 0 ? await getEstimatedDuration(audioDur, false) : 0;
+      const updated = await sessionManager.updateSession(req.params.id, {
+        status: 'transcribing',
+        error: undefined,
+        transcriptionStartedAt: new Date().toISOString(),
+        duration: audioDur > 0 ? audioDur : undefined,
+        ...(estDur > 0 ? { estimatedDuration: estDur } : {}),
+      });
+      void runTranscription(req.params.id, audioFiles.single, language, !!boost);
+      res.json(updated ?? session);
+    }
   } else {
     res.status(400).json({ error: 'Audio file no longer exists for this session' });
   }
@@ -478,7 +763,7 @@ export async function recoverOrphanedSessions() {
   try {
     const sessions = await sessionManager.listSessions();
     for (const session of sessions) {
-      if (session.status === 'transcribing' && !isTranscribing(session.id)) {
+      if ((session.status === 'transcribing' || session.status === 'preparing' || (session.status === 'uploading' && session.sourceUrl)) && !isTranscribing(session.id) && !activeDownloads.has(session.id)) {
         await sessionManager.updateSession(session.id, {
           status: 'failed',
           error: 'Transcription interrupted (server restart or process crash)',

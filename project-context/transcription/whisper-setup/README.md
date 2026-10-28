@@ -6,6 +6,7 @@
 - whisper.cpp is pinned to version 1.8.4 via WHISPER_CPP_VERSION in server/src/config.ts.
 - npm run setup is idempotent, skipping its download/build step whenever the platform binary already exists.
 - npm run setup also downloads a pinned, SHA256-verified static ffmpeg 9.0.2 + ffprobe into whisper/bin/<platform>/ next to whisper-cli (AUG-115).
+- npm run setup also downloads a pinned, SHA256-verified yt-dlp (YTDLP_VERSION 2026.10.26) into the same folder as yt-dlp(.exe) for video-site links (AUG-149). electron-builder bundles it with the rest of whisper/bin/<platform>/.
 - The server resolves ffmpeg and ffprobe once in config.ts with precedence FFMPEG_PATH env, then bundled binary next to whisper-cli, then PATH.
 - Windows setup downloads a prebuilt release zip; macOS setup builds whisper-cli from source because no prebuilt macOS CLI is released.
 - macOS setup provisions its own cmake automatically, so no manual cmake install is required.
@@ -49,6 +50,7 @@ Explain the setup, binary-distribution, and model-download mechanics behind tran
 - Setup script (server/src/scripts/setup.ts): the idempotent installer behind npm run setup; exits 1 immediately on an unsupported platform.
 - Legacy migration: Windows setup first checks for a pre-multiplatform whisper/bin/whisper-cli.exe and copies it plus its DLLs into win-x64/ instead of re-downloading.
 - Windows install path: downloads whisper-bin-x64.zip from the pinned v1.8.4 GitHub release, extracts via tar (falling back to PowerShell Expand-Archive), then copies whisper-cli.exe and DLLs into whisper/bin/win-x64/.
+- Bundled yt-dlp (AUG-149): setupYtDlp() in setup.ts downloads the release asset from YTDLP_BUILDS: yt-dlp.exe on Windows, and on both mac arches the universal yt-dlp_macos, renamed to yt-dlp. It verifies the SHA256 and replaces an existing binary whose --version differs from YTDLP_VERSION. A failure is a non-fatal warning: only video-site links stop working. To update (video sites break old versions), bump YTDLP_VERSION and both sha256 values together, then re-run setup.
 - Bundled ffmpeg (AUG-115): setupFfmpeg() in setup.ts downloads the archives pinned in FFMPEG_BUILDS (URL + SHA256 per platform, version in FFMPEG_VERSION) and copies ffmpeg + ffprobe into whisper/bin/<platform>/.
 - Bundled Vulkan loader (AUG-117): setupVulkanLoader() in setup.ts (Windows only) downloads LunarG's VulkanRT-X64-1.4.357.0-Components.zip pinned in VULKAN_RUNTIME (url + sha256), and copies x64/vulkan-1.dll plus VulkanRT-License.txt into whisper/bin/win-x64/; idempotent on the DLL's presence.
 - Vulkan device banner: countVulkanDevices() in gpuBackend.ts parses "ggml_vulkan: Found N Vulkan devices" from stderr (printed even with --no-prints and for --help); null/0 means the loader found no driver and whisper-cli is on CPU.

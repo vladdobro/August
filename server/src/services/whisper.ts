@@ -23,6 +23,7 @@ import {
   type GpuBackend,
   type WhisperExit,
 } from './gpuBackend.js';
+import { isVideoContainer, classifyVideoProbe, VIDEO_NO_AUDIO_MESSAGE, VIDEO_UNREADABLE_MESSAGE } from './mediaFormats.js';
 
 export class WhisperError extends Error {
   /// Set only when whisper-cli itself ran and exited abnormally (not for pre-flight or output-file errors).
@@ -108,7 +109,57 @@ export function getActiveTrackingKeys(): string[] {
   return Array.from(activeProcesses.keys());
 }
 
-export async function ensureWav(audioPath: string): Promise<string> {
+/// Registers a child process under a session key in the shared process map, so cancelTranscription kills it and
+/// isTranscribing / orphan recovery see it (AUG-149: yt-dlp). Returns the untrack callback (call once the child exits).
+export function trackChildProcess(key: string, child: ChildProcess): () => void {
+  if (!activeProcesses.has(key)) activeProcesses.set(key, []);
+  activeProcesses.get(key)!.push(child);
+  return () => {
+    const procs = activeProcesses.get(key);
+    if (!procs) return;
+    const idx = procs.indexOf(child);
+    if (idx >= 0) procs.splice(idx, 1);
+    if (procs.length === 0) activeProcesses.delete(key);
+  };
+}
+
+/// Probes the audio streams of a video container before conversion (AUG-144): no audio track or an unreadable file get a
+/// plain-language WhisperError instead of ffmpeg's raw output.
+async function assertVideoHasAudio(videoPath: string, sessionKey?: string): Promise<void> {
+  const result = await new Promise<{ kind: ReturnType<typeof classifyVideoProbe>; error: ExecFileException | null; stderr: string }>((resolve) => {
+    const child = execFile(
+      config.ffprobePath,
+      ['-v', 'error', '-select_streams', 'a', '-show_entries', 'stream=index', '-of', 'csv=p=0', videoPath],
+      { timeout: 30_000 },
+      (error, stdout, stderr) => {
+        if (sessionKey) {
+          const procs = activeProcesses.get(sessionKey);
+          if (procs) {
+            const idx = procs.indexOf(child);
+            if (idx >= 0) procs.splice(idx, 1);
+            if (procs.length === 0) activeProcesses.delete(sessionKey);
+          }
+        }
+        resolve({ kind: classifyVideoProbe(error, String(stdout ?? '')), error, stderr: String(stderr ?? '') });
+      },
+    );
+    if (sessionKey) {
+      if (!activeProcesses.has(sessionKey)) activeProcesses.set(sessionKey, []);
+      activeProcesses.get(sessionKey)!.push(child);
+    }
+  });
+  if (result.kind === 'missing-ffprobe') throw new WhisperError(FFMPEG_MISSING_MESSAGE, result.error);
+  if (result.kind === 'no-audio') throw new WhisperError(VIDEO_NO_AUDIO_MESSAGE);
+  if (result.kind === 'unreadable') {
+    console.warn(`[ensureWav] ffprobe could not read ${path.basename(videoPath)}: ${result.stderr.trim() || result.error?.message}`);
+    throw new WhisperError(VIDEO_UNREADABLE_MESSAGE, result.error);
+  }
+}
+
+/// Converts any non-WAV input to a 16 kHz mono WAV next to it. Video containers (.mp4/.mov, AUG-144) go through the same
+/// path with the video stream dropped (-vn) after an audio-track probe. The source file is never modified or deleted;
+/// the WAV is a derivative beside it.
+export async function ensureWav(audioPath: string, sessionKey?: string): Promise<string> {
   const ext = path.extname(audioPath).toLowerCase();
   if (WAV_EXTENSIONS.has(ext)) return audioPath;
 
@@ -129,22 +180,44 @@ export async function ensureWav(audioPath: string): Promise<string> {
     }
   }
 
-  const baseName = path.basename(audioPath, ext);
+  // ext is lowercased for matching; strip the real extension so `audio.MOV` -> `audio`.
+  const baseName = path.basename(audioPath, path.extname(audioPath));
   const wavPath = path.join(path.dirname(audioPath), `${baseName}.wav`);
   if (await isFreshDerivative(wavPath, audioPath)) return wavPath;
+
+  const video = isVideoContainer(audioPath);
+  if (video) await assertVideoHasAudio(audioPath, sessionKey);
 
   const partialPath = path.join(path.dirname(audioPath), `${baseName}-partial.wav`);
   try {
     await new Promise<void>((resolve, reject) => {
-      execFile(
+      const child = execFile(
         config.ffmpegPath,
-        ['-i', audioPath, '-ar', '16000', '-ac', '1', '-c:a', 'pcm_s16le', '-y', partialPath],
-        { timeout: 120_000 },
+        ['-i', audioPath, ...(video ? ['-vn', '-sn', '-dn'] : []), '-ar', '16000', '-ac', '1', '-c:a', 'pcm_s16le', '-y', partialPath],
+        // demuxing an hour of 1080p video takes longer than an audio decode
+        { timeout: video ? 600_000 : 120_000 },
         (error, _stdout, stderr) => {
-          if (error) reject(ffmpegError(error, stderr, 'ffmpeg conversion failed: '));
+          if (sessionKey) {
+            const procs = activeProcesses.get(sessionKey);
+            if (procs) {
+              const idx = procs.indexOf(child);
+              if (idx >= 0) procs.splice(idx, 1);
+              if (procs.length === 0) activeProcesses.delete(sessionKey);
+            }
+          }
+          if (error && video) {
+            if (error.code !== 'ENOENT') console.warn(`[ensureWav] ffmpeg failed on ${path.basename(audioPath)}: ${String(stderr ?? '').trim()}`);
+            reject(error.code === 'ENOENT'
+              ? ffmpegError(error, stderr, 'ffmpeg conversion failed: ')
+              : new WhisperError(VIDEO_UNREADABLE_MESSAGE, error));
+          } else if (error) reject(ffmpegError(error, stderr, 'ffmpeg conversion failed: '));
           else resolve();
         },
       );
+      if (sessionKey) {
+        if (!activeProcesses.has(sessionKey)) activeProcesses.set(sessionKey, []);
+        activeProcesses.get(sessionKey)!.push(child);
+      }
     });
     await fs.rename(partialPath, wavPath);
   } catch (err) {
@@ -256,10 +329,11 @@ export async function boostAudio(audioPath: string): Promise<string> {
     `loudnorm=I=${AUDIO_BOOST.loudnormI}:TP=${AUDIO_BOOST.loudnormTP}:LRA=${AUDIO_BOOST.loudnormLRA}`,
   ].join(',');
 
-  const [safeInput, safeOutput] = await Promise.all([
-    toSafePath(audioPath),
-    toSafePath(partialPath),
-  ]);
+  // Only the existing input goes through toSafePath: cmd.exe cannot give an 8.3 name for a file that does not exist
+  // yet and returns a mangled path, so ffmpeg would write elsewhere and the rename below fails (AUG-144). ffmpeg
+  // writes non-ASCII output paths natively, as ensureWav already relies on.
+  const safeInput = await toSafePath(audioPath);
+  const safeOutput = partialPath;
 
   try {
     await new Promise<void>((resolve, reject) => {

@@ -1,0 +1,18 @@
+{
+  "id": "AUG-143-q9m7w9",
+  "assignee": "jarvis.json",
+  "priority": "high",
+  "status": "completed",
+  "title": "[AUG-143] Рамка sidebar-menu-dropdown обрезается под фоном рабочей области справа",
+  "why_we_need_this": "Правая граница (border) выпадающего меню (.sidebar-menu-dropdown) визуально залезает под основной фон рабочей области — видно на скриншоте: правый край рамки меню скрыт под тёмным фоном контентной зоны. Это ломает визуальную целостность UI и выглядит как артефакт.",
+  "acceptance_criteria": "- [ ] Выпадающее меню (.sidebar-menu-dropdown) полностью отрисовывается поверх всех элементов, включая фон рабочей области справа\n- [ ] Правая рамка (border) меню видна целиком, не обрезана и не перекрыта\n- [ ] z-index меню выше z-index рабочей области и всех промежуточных контейнеров\n- [ ] Визуально проверено: меню не залезает под соседние элементы ни при каких ширинах окна",
+  "important_constraints": "## ✅ Итог (2026-10-27)\n**Что сделано:**\n- Правая рамка `.sidebar-menu-dropdown` больше не обрезается фоном рабочей области\n- Дропдаун рендерится поверх всех элементов, включая `.main-content`\n- Визуально проверено в браузере и в Electron dev-режиме\n\n**Как:**\n- Убран `overflow: hidden` с `.session-list` — он клиппил абсолютно-позиционированный дропдаун на границе сайдбара. Скроллинг сессий обеспечивается `.session-list-items` (overflow-y: auto), так что родительский overflow: hidden не нужен.\n- Добавлен `z-index: 1` на `.session-list` — создаёт stacking context, чтобы дропдаун (z-index: 1000) рисовался поверх `.main-content` (без z-index, рисуется позже в DOM).\n- Отвергнут вариант с `position: fixed` (потребовал бы JS для вычисления координат) и portal (избыточная сложность).\n\n**Файлы:** @client/src/App.css (`.session-list` rule, lines 145–157)\n\n**PR / коммиты:**\n- `bec2e26` AUG-143: fix sidebar dropdown border clipped by workspace background → master\n- `42cbaa9` Bump version to 0.0.36 → master\n- `7e932f3` Fix version source: update version file to 0.0.36 → master\n- Релиз v0.0.36 опубликован на GitHub (9 ассетов, Windows + macOS)\n\n**Грабли:**\n- Файл `version` в корне — source of truth для electron-builder (через `sync-version.mjs`). При version bump нужно менять `version`, а не только `package.json` — иначе CI откатит версию и ассеты уйдут в старый релиз.\n\n**Хвосты:** нет",
+  "labels": [
+    "bug",
+    "UI"
+  ],
+  "on_hold_reason": "",
+  "contextRouterIncluded": true,
+  "created_at": 1792709986242,
+  "column_entered_at": 1793101481288
+}

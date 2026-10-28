@@ -1,6 +1,6 @@
 ---
 name: context-router-actualizer
-description: Use this skill to actualize context-router.md routes and project-context/ documentation by diving into the project changes and updating behavioral rules, business logic, and architectural constraints.
+description: Use this skill to actualize context-router.md routes and project-context/ documentation from the task's own git diff by updating behavioral rules, business logic, and architectural constraints; small updates are written by the main agent, larger ones by Sonnet writers with per-route plan slices.
 ---
 
 # CONTEXT ROUTER ACTUALIZATION SKILL
@@ -9,32 +9,82 @@ You have been triggered to update the project's documentation because a recent t
 
 Your goal is to ensure the `project-context/` documentation and `context-router.md` accurately reflect the *current* behavioral rules and important technical knowledge of the system.
 
-Follow these steps strictly:
+Follow these steps strictly. The `update_project_context` response already carries the Step 1 scope rule and STOP gate; when you arrive from it, continue at Step 2 with the scope you defined.
 
-## Step 1: Identify the Scope of Change
-Analyze the changes you or the user just made to the codebase:
-1. Did you modify an existing Route (e.g., added a new required field, changed how a module works, discovered an architectural constraint or important system behavior)? -> Proceed to Step 2.
-2. Did you introduce a completely NEW Route (e.g., a new business entity or technical module)? -> Proceed to Step 2, then Step 3.
-3. Did you make a discovery worth preserving — a bug root cause with architectural implications, a technical constraint, or a system behavior that agents must know to avoid mistakes? -> Proceed to Step 2 for the affected route.
-4. Did you only do a trivial refactor, pure style change, or minor bug fix with no architectural implications and no findings worth preserving for future agents? -> STOP. No actualization is needed.
+## Roles
+- Main agent (the agent that did the task): defines the scope, plans every route change, makes every structural decision, runs Steps 1, 2, 4, 5 and 6, and on the fast path also writes the READMEs.
+- Writer subagents (Sonnet): only when the fast path does not apply; one per affected route, all spawned in one message so they run in parallel; each executes only its own plan slice.
+- No Agent or Workflow call happens outside Step 3 (and Step 5 re-dispatch), and none at all on the fast path.
 
-## Step 2: Actualize Route Documentation
-Go to the specific route directory in `project-context/` (e.g., `project-context/[route-name]/` or `project-context/[route-name]/` depending on the project's convention). Create it if it is a new route.
-1. Update or create the sub-router (`README.md`) detailing the NEW business rules, required elements, and constraints for this route.
-2. UPDATE THE TL;DR SECTION: Every route README must start with a `## TL;DR` section immediately after the `#` heading. When updating a route, ensure the TL;DR reflects the current state. If the README lacks a TL;DR, add one. Each TL;DR bullet must be a single declarative sentence of ≤ 25 words containing the key domain terms agents would search for. No compound sentences joining unrelated facts. No prose paragraphs. Cover: the most critical rules, key data structures or storage details, main workflow or constraint, and key implementation files.
-3. FOCUS ON THE "WHY" AND "WHAT MUST BE DONE": Explain the structural rules and architectural decisions.
-4. DO NOT DUPLICATE CODE: Do not paste function signatures, interface definitions, or line-by-line implementations. Code is the map; documentation is the compass.
-5. If the route has child routes with their own sub-routers, traverse and update those as needed. Remember the hierarchical routing principle: the routing system is a recursive tree with no depth limit.
-6. DIRECTORY PATH RULE: Every `Directory Path` in any router or sub-router MUST be relative to the repository root. Never use paths relative to the current file. Example: a child route inside `route-a` must be `Directory Path: project-context/route-a/child-route/`, not `Directory Path: child-route/`.
-7. BM25 SEARCHABILITY CONTRACT: `search_project_context` scores individual lines using BM25 with field boosting (headings > body). Every behavioral rule, invariant, and business constraint must occupy its own dedicated line. Multi-rule sentences and prose paragraphs bury key terms and cause recall failures — agents searching for those terms will not find them. The format of the content IS the retrieval contract.
-8. PRUNE STALE CONTENT: Remove historical detail, resolved issue narratives, and redundant explanations that dilute term frequency for current rules. Every line should earn its place by being either a current behavioral rule or essential architectural context.
+## Step 1: Define the Scope from the Task's Diff and Run the STOP Gate
+1. The scope is this task's own changes, not the whole working tree:
+   - uncommitted changes: `git status --porcelain`, `git diff` and `git diff --cached`;
+   - commits made for this task on the current branch that are not on the default branch: `git log --oneline <default-branch>..HEAD`, then `git diff <default-branch>...HEAD -- <files>`.
+   Find the default branch with `git symbolic-ref --short refs/remotes/origin/HEAD`; when that fails, use `main` (or `master`).
+2. Keep only the files this task touched. Other agents may work in the same tree: exclude their unrelated changes and never document or revert them. When you cannot tell whether a change is yours, leave it out and name it in the Step 6 summary.
+3. List the in-scope files (`git diff --stat -- <files>`) and read the changed code itself. Commit messages are not a scope signal: a commit titled as docs can carry a feature.
+4. Code beats spec: when the task spec or the existing docs disagree with the code, document the code and note the disagreement in one line. A spec requirement the code does not implement is written as "required (not yet implemented at <short sha>)" or left out.
+5. Map each in-scope change to the route(s) it affects with `search_project_context` and `read_context_route`; note candidate new routes.
+6. STOP gate — classify the result:
+   1. An existing route changed (e.g., a new required field, a module works differently, a discovered architectural constraint or important system behavior)? -> Step 2.
+   2. A completely NEW route is needed (a new business entity or technical module)? -> Step 2, then Step 4.
+   3. A discovery worth preserving — a bug root cause with architectural implications, a technical constraint, or a system behavior that agents must know to avoid mistakes? -> Step 2 for the affected route.
+   4. Only a trivial refactor, pure style change, or minor bug fix with no architectural implications and no findings worth preserving for future agents? -> STOP. No actualization is needed.
 
-## Step 3: Evaluate Context Router Impact
+## Step 2: Plan per Route and Choose the Path (main agent)
+Do not call the Agent or Workflow tool in this step. You already hold the diff, the code and the routes; a subagent would have to rediscover them.
+
+Fast path: when at most 2 routes are affected and no route is created, removed or moved, you edit the READMEs yourself in Step 3 and spawn no writer. Why: the plan is already final text, so a writer would only paste it while adding spawn and handoff cost. Otherwise use writers.
+
+Superseded-lines rule (both paths): before adding a fact, find every existing line in the route that states an older or conflicting version of it (search the route for the entity, field, value or behavior). Each such line is rewritten or removed in the same edit. Appending a new fact next to the old one leaves two versions; Yeast found six contradicting lines in one route after append-only writers (YST-149).
+
+Context gaps input: the `update_project_context` response may end with a `CONTEXT GAPS` list — queries for which agents found nothing (empty search, missing route or section, unknown graph entity), recorded locally in `.praxis/analytics/context_gaps.jsonl`. When a listed gap falls inside this task's diff, make the planned route edit answer it (use the gap's own words in the TL;DR or an `Also known as` bullet so the next search hits) and mention the gap in the slice; afterwards resolve it in Settings > Knowledge graph > Context gaps. Gaps outside the diff are not scope for this task.
+
+Every planned edit follows `.agents/skills/context-router-actualizer/FORMAT.md` (Rules 1-15, glossary route, required sections); do not restate its rules here. In particular: keep the TL;DR current, including the `Also known as` bullet (Rules 2 and 11); one canonical name per entity, a `## Components` section and one Rule 14 verb per relationship line (Rules 12-14); traverse and update child routes as needed (Rule 5).
+
+On the fast path, decide the exact edits here, including the superseded lines, and go to Step 3. Write plan slices only for writers.
+
+Plan slice template — one self-contained slice per affected route; a writer must not need to search, explore or choose an approach:
+
+```
+### Slice: <route>
+- Target path: project-context/<route>/README.md
+- Action: create | update
+- Changes (final text, not goals):
+  - Add to <section>: "<new line>"
+  - Replace in <section>: "<old line>" -> "<new line>"
+- Superseded lines (remove or rewrite): "<existing line>" -> remove | "<rewritten line>"; write "none found" only after checking the route
+- Prune: <section or line> (stale content, FORMAT.md Rule 8)
+- Key source files: <repo-relative paths>, plus any short code fact the writer needs (writers do not read code)
+- Components entities (Rule 13): <canonical name> (<kind>): <fact>
+- Format contract: read .agents/skills/context-router-actualizer/FORMAT.md before editing
+- Hands-off: Child Routes declarations, other route files, context-router.md and project-context/glossary/README.md (the main agent owns them in Step 4)
+```
+
+Large plans: when the slices together exceed about 100 lines or there are more than 3 writers, write the plan to one Markdown file outside `project-context/` (the session scratchpad directory, or the OS temp directory when there is none), one `### Slice: <route>` heading per route. Each writer prompt then carries the file path and its slice heading instead of the slice text.
+
+## Step 3: Write the Routes
+Fast path: apply the Step 2 edits yourself, following FORMAT.md, then go to Step 4.
+
+Otherwise spawn one Sonnet writer per affected route, all in a single message so they run in parallel. Each writer receives only its own slice (inline, or the plan file path plus its slice heading).
+
+Writer rules (include them in every writer prompt):
+- Edit only the target README named in the slice; re-read the file right before editing and make targeted edits.
+- Read only FORMAT.md, the target README and, when given, the plan file; do not call `search_project_context`, `read_context_route`, `query_project_graph` or any other search tool, and do not read source code or other routes.
+- Make no structural decisions: no new routes, splits, moves or Child Routes edits.
+- Apply every superseded-line change in the slice. If a named old line is not in the file, or the slice is ambiguous or contradicts the file, stop and return the question to the main agent instead of guessing.
+- Report back the lines added, changed and pruned.
+
+## Step 4: Integrate the Route Tree (main agent)
+1. Update `project-context/glossary/README.md` for every new canonical term or alias (FORMAT.md "Glossary Route").
+2. Declare every new child route in its parent README's Child Routes section, and remove the declaration of a removed or moved route (FORMAT.md Rules 5-6).
+3. Apply cross-route facts that no single writer owned as small edits.
+4. Evaluate the context router impact below.
 
 **Fast-path check — answer before opening any file:**
 Did you create a new `.md` file under `project-context/` that did not exist before this task?
 - **YES (new route created)** → Open `context-router.md` and follow the steps below.
-- **NO (only updated existing route files)** → Skip the rest of Step 3 and proceed directly to Step 4.
+- **NO (only updated existing route files)** → Skip the rest of Step 4 and proceed directly to Step 5.
 
 Open `context-router.md` at the repository root: `{project_root}/context-router.md`.
 > ⚠️ Path warning: `context-router.md` lives at the **repository root**, not inside `project-context/`. The correct path is `{project_root}/context-router.md`. Never attempt `project-context/context-router.md` or any path relative to the context directory — that path does not exist and will produce a "File does not exist" error.
@@ -54,25 +104,31 @@ For UPDATED routes:
 5. Do NOT add or update `Key files:` or `Critical rules:` in context-router.md — those details live exclusively in the route's README.md. context-router.md stays lean: name, description, and Directory Path only.
 6. If new keywords or task types now apply to the route, update the `Route Selection Guide` table.
 
-## Step 4: Format & Constraints Check
-Before finalizing your updates to `context-router.md`, verify:
+## Step 5: Format & Constraints Check (main agent)
+Before finalizing your updates to `context-router.md` and the route READMEs, verify:
 - [ ] There is absolutely NO bold formatting anywhere in the context-router.md file.
 - [ ] The file remains clear, concise, and top-level.
 - [ ] Every route listed has a matching directory with a README.md sub-router on disk.
-- [ ] Every route README.md starts with a `## TL;DR` section (3-4 bullet points) immediately after the `#` heading.
 - [ ] Every route entry in context-router.md contains ONLY a name, a 1-2 sentence description, and a `Directory Path:` pointing to the README.md file. No `Key files:` or `Critical rules:` — those belong exclusively in the route's README.md.
 - [ ] The Route Selection Guide table covers all routes and any new keywords introduced by the changes.
-- [ ] No orphaned files: every non-README.md file or subdirectory inside a route directory is declared as a child route in that route's sub-router (README.md). If an undeclared file or directory is found, either convert it into a proper child route (move into its own directory with a README.md) or remove it. Loose files break the routing contract because agents will never discover them through traversal.
-- [ ] Every `Directory Path` (in context-router.md AND in sub-router README.md files) is relative to the repository root, not relative to the current file.
 - [ ] The AI Agent Quick Start Protocol, Route Selection Guide, terminology section, hierarchical routing principle, and project terminology sections are intact and unmodified (unless the change specifically requires updating them).
-- [ ] The `about` route exists at `project-context/about/README.md` with a current project overview (name, description, target audience, tech stack, value proposition). If missing, create it now — it is mandatory in every project.
-- [ ] The `PRD` route exists at `project-context/PRD/README.md` with the product requirements document (vision, audience, behaviors). If missing, create it using the template at `.agents/skills/context-router-initializer/templates/prd-route-template.md` — it is mandatory in every project.
-- [ ] Do all behavioral rules appear as standalone searchable lines (not embedded in multi-sentence prose)?
-- [ ] Is each TL;DR bullet a single declarative sentence of ≤ 25 words containing key domain terms that agents would query?
-- [ ] Has stale or redundant content been pruned to avoid diluting BM25 term frequency for current rules?
+- [ ] Only this task's diff was documented; other agents' changes were left out (Step 1).
+- [ ] Every planned change from Step 2 landed, including every named superseded line; nothing outside the plan was changed.
+- [ ] No two lines in a changed route state conflicting facts: re-read each changed route and rewrite or remove the older line.
+- [ ] Every changed route README follows FORMAT.md: TL;DR (Rule 2), Directory Paths from the repository root (Rule 6), standalone searchable lines (Rule 7), stale content pruned (Rule 8), no orphaned files (Rule 9).
+- [ ] The mandatory `about` and `PRD` routes exist (FORMAT.md Rule 10); create a missing one now.
+- [ ] Every changed route TL;DR has one sourced `Also known as` bullet (Rule 11).
+- [ ] Each entity has one canonical name across routes; alternative spellings appear only in `Also known as` or the glossary (Rule 12).
+- [ ] Routes naming services, components, technologies, or integrations have a `## Components` section (Rule 13).
+- [ ] Relationships between entities use the Rule 14 verbs, one relationship per line.
+- [ ] `project-context/glossary/README.md` has a line for every new canonical term and alias.
+- [ ] Secret-pattern grep on every changed README returns no prose hits (Rule 15):
+      `grep -nEi 'bearer [a-z0-9]|(secret|password|api-?key)[ ,:"'"'"'=]|AKIA[0-9A-Z]|(^|[^a-z0-9])sk-[a-z0-9]|ghp_|xox[bp]-' <changed README files>`
 
-## Step 5: Completion
-Provide a brief summary to the user outlining which route rules were updated and if any new routes were added to the context router.
+Fix small issues yourself. For a larger issue on the writer path, re-dispatch that route's writer with a concrete correction (exact lines to change), not a goal.
+
+## Step 6: Completion
+Provide a brief summary to the user: the diff scope you documented, the path taken (fast path or N writers), which route rules were updated or created, any change left out because its owner was unclear, and whether new routes were added to the context router.
 
 # Scaling Guidelines
 
@@ -157,27 +213,7 @@ When writing or updating documentation, use these terms consistently:
 # Rules for this file (context-router.md)
 ```
 
-## Route README.md required sections (in order)
-
-```
-# [Route Name] Domain
-
-## TL;DR
-- [Single declarative sentence ≤ 25 words with key domain terms]
-- [One searchable rule per bullet — no compound sentences]
-- [Each bullet independently findable by BM25 keyword search]
-- [Key files: list relevant source files]
-
-[One-sentence domain description]
-
-## Purpose
-## Core Concepts
-## Invariants
-## Route-Specific Constraints
-## Child Routes (optional — only if sub-areas exist)
-```
-
-The TL;DR section is mandatory for every route README. It must appear immediately after the `#` heading, before the one-sentence description. Agents read TL;DR first to decide whether to read the full document. Each bullet must be a single declarative sentence of ≤ 25 words — no compound sentences joining unrelated facts, no prose paragraphs. The format is a retrieval contract: `search_project_context` uses BM25 scoring on individual lines, so each bullet must be independently findable by keyword search.
+Route README required sections and Directory Path examples: see FORMAT.md "Reference Structure".
 
 ## File system structure produced by context-router
 
@@ -193,6 +229,8 @@ project-root/
 |       |   |-- README.md          <- MANDATORY: project overview (name, description, audience, stack)
 |       |-- PRD/
 |       |   |-- README.md          <- MANDATORY: product requirements document (vision, audience, behaviors)
+|       |-- glossary/
+|       |   |-- README.md          <- DEFAULT: alias -> canonical name map (FORMAT.md "Glossary Route")
 |       |-- route-a/
 |       |   |-- README.md          <- Sub-router for Route A
 |       |   |-- child-route-1/
@@ -208,7 +246,7 @@ project-root/
 |
 |-- .agents/
     |-- skills/                    <- AI Skills and Agents route
-        |-- context-router-actualizer/
+        |-- context-router-actualizer/   <- SKILL.md + FORMAT.md (route format contract)
         |-- context-router-initializer/
 ```
 

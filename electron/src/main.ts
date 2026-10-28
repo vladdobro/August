@@ -82,7 +82,7 @@ function ensureToolPaths(): void {
 /// Environment for the embedded server. Packaged Windows builds keep data under the per-user
 /// NSIS install dir; packaged macOS builds keep it under userData/data, since the install
 /// dir is the signed August.app bundle, replaced on every update/reinstall. Both take whisper-cli,
-/// ffmpeg and ffprobe from resources/; unpackaged runs reuse the repo layout (server/data, whisper/bin,
+/// ffmpeg, ffprobe and yt-dlp from resources/; unpackaged runs reuse the repo layout (server/data, whisper/bin,
 /// whisper/models) so `npm run electron:start` shares state with `npm run dev`.
 function configureServerEnv(): void {
   process.env.NODE_ENV = 'production';
@@ -156,6 +156,13 @@ function configureServerEnv(): void {
     const ffmpegName = process.platform === 'win32' ? 'ffmpeg.exe' : 'ffmpeg';
     const bundledFfmpeg = path.join(process.resourcesPath, 'whisper', 'bin', platformDir, ffmpegName);
     if (fs.existsSync(bundledFfmpeg)) process.env.FFMPEG_PATH = bundledFfmpeg;
+  }
+
+  // yt-dlp for video-site links ships next to whisper-cli as well (AUG-149); same explicit override as FFMPEG_PATH.
+  if (platformDir && !process.env.YTDLP_PATH) {
+    const ytDlpName = process.platform === 'win32' ? 'yt-dlp.exe' : 'yt-dlp';
+    const bundledYtDlp = path.join(process.resourcesPath, 'whisper', 'bin', platformDir, ytDlpName);
+    if (fs.existsSync(bundledYtDlp)) process.env.YTDLP_PATH = bundledYtDlp;
   }
 }
 

@@ -509,8 +509,64 @@ const TranscriptView: React.FC<TranscriptViewProps> = ({ session, transcript, on
       <div className="transcript-body">
         {session.status === 'uploading' && (
           <div className="transcript-status-panel">
-            <div className="spinner" />
-            <p>Uploading audio...</p>
+            {session.sourceUrl ? (
+              <>
+                <div className="transcription-progress-wrapper">
+                  <div className="transcription-progress-bar">
+                    <div
+                      className="transcription-progress-fill transcription-progress-fill--download"
+                      style={session.downloadProgress != null && session.downloadProgress > 0
+                        ? { width: `${session.downloadProgress}%`, animation: 'none' }
+                        : undefined}
+                    />
+                  </div>
+                  <p className="transcription-status-text">
+                    Downloading{session.downloadProgress != null && session.downloadProgress > 0
+                      ? ` ${session.downloadProgress}%`
+                      : '...'}
+                  </p>
+                </div>
+                <div className="transcription-controls">
+                  {onCancel && (
+                    <button
+                      type="button"
+                      className="transcription-cancel-btn"
+                      onClick={handleCancel}
+                      disabled={cancelling}
+                    >
+                      {cancelling ? 'Cancelling...' : 'Cancel'}
+                    </button>
+                  )}
+                </div>
+              </>
+            ) : (
+              <>
+                <div className="spinner" />
+                <p>Uploading audio...</p>
+              </>
+            )}
+          </div>
+        )}
+        {session.status === 'preparing' && (
+          <div className="transcript-status-panel">
+            <div className="transcription-progress-wrapper">
+              <div className="transcription-progress-bar">
+                <div className="transcription-progress-fill" />
+              </div>
+              <p className="transcription-status-text">Preparing audio...</p>
+            </div>
+            <div className="transcription-controls">
+              {onCancel && (
+                <button
+                  type="button"
+                  className="transcription-cancel-btn"
+                  onClick={handleCancel}
+                  disabled={cancelling}
+                >
+                  {cancelling ? 'Cancelling...' : 'Cancel'}
+                </button>
+              )}
+            </div>
           </div>
         )}
 

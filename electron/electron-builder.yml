@@ -55,7 +55,7 @@ mac:
   extendInfo:
     NSMicrophoneUsageDescription: August records your microphone for meeting transcription.
     NSAudioCaptureUsageDescription: August captures system audio so the other side of a call is transcribed too.
-  # whisper-cli plus the bundled ffmpeg/ffprobe (AUG-115) and audiotee (AUG-118) that npm run setup placed next to it.
+  # whisper-cli plus the bundled ffmpeg/ffprobe (AUG-115), audiotee (AUG-118) and yt-dlp (AUG-149) that npm run setup placed next to it.
   extraResources:
     - from: whisper/bin/darwin-${arch}
       to: whisper/bin/darwin-${arch}
@@ -74,7 +74,7 @@ win:
     - target: msi
       arch: [x64]
   # Authenticode signing: set CSC_LINK (path/base64 of the .pfx) and CSC_KEY_PASSWORD in the environment.
-  # whisper-cli + its DLLs, the bundled Vulkan loader (vulkan-1.dll + VulkanRT-License.txt, AUG-117) and ffmpeg/ffprobe (AUG-115) — everything npm run setup placed in the folder.
+  # whisper-cli + its DLLs, the bundled Vulkan loader (vulkan-1.dll + VulkanRT-License.txt, AUG-117) ffmpeg/ffprobe (AUG-115) and yt-dlp (AUG-149) — everything npm run setup placed in the folder.
   # The CUDA variant (win-x64-cuda, ~642 MB, AUG-130) downloads on demand at first launch;
   # uncomment the lines below to bundle it for offline installs (~+450 MB installer size).
   extraResources:
