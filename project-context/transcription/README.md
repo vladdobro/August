@@ -34,7 +34,11 @@
 - Video-site links (YouTube, Vimeo, Dailymotion; host list PLATFORM_HOSTS in ytDlp.ts) are detected first in from-url and handled by a bundled yt-dlp: metadata probe → audio-only download → the same preparing → transcribing pipeline (AUG-149).
 - HTML responses from a pasted link are rejected with "This link is not a direct media file — download it and upload the file instead."
 - The 2 GB size cap applies to URL downloads via Content-Length pre-check and streaming byte count; stall timeout is 60 seconds.
-- Also known as: video upload, MP4/MOV transcription, audio extraction from video (AUG-144), client-side no-audio pre-check, video audio track detection (AUG-146), preparing phase, async extraction (AUG-147), URL transcription, paste link, link download, from-url endpoint (AUG-148), YouTube transcription, video-site link, platform URL, yt-dlp (AUG-149).
+- After every batch transcription the server computes confidenceScore (0–100) in server/src/services/confidenceScore.ts from whisper's per-segment signals and stores it with a confidenceDetail breakdown in session.json (AUG-152).
+- Confidence formula: 100 × duration-weighted (1 − no_speech_prob) base (neutral 1.0 on whisper-cli 1.8.4, which does not export it), minus 40 × duration share of segments with avg_logprob < −1.0, minus min(30, 100 × merger drop ratio), minus 30 × coverage shortfall below 50 % of the audio length; an empty transcript scores 0 (AUG-152).
+- avg_logprob is rebuilt in transcribe() as the mean ln(p) of a segment's non-special tokens from --output-json-full; neither whisper-cli 1.8.4 nor upstream whisper.cpp master writes segment-level no_speech_prob / avg_logprob to JSON, so the binary is not patched and the no-speech term stays neutral until a build exports it (AUG-152).
+- With the Settings → Transcription toggle "Delete audio.wav after transcription" on and confidenceScore ≥ the threshold (50–95, default 70), sessionManager.autoDeleteDerivedWavs removes only converted WAVs that have a non-WAV source beside them; source files and server-captured audio-system.wav are never auto-deleted, and ensureWav rebuilds the WAV on retranscription (AUG-152).
+- Also known as: video upload, MP4/MOV transcription, audio extraction from video (AUG-144), client-side no-audio pre-check, video audio track detection (AUG-146), preparing phase, async extraction (AUG-147), URL transcription, paste link, link download, from-url endpoint (AUG-148), YouTube transcription, video-site link, platform URL, yt-dlp (AUG-149), audio deleted, re-download audio (AUG-150), confidence score, transcription quality score, confidenceScore, auto-delete WAV, wavAutoDeletedAt (AUG-152).
 - For WAV uploads, estimatedDuration is computed synchronously in the endpoint; for non-WAV uploads, prepareAndTranscribe sets it after background extraction before starting whisper (AUG-147).
 - Orphaned sessions stuck in "transcribing" or "preparing" with no active process are auto-recovered to "failed" on server startup.
 - Live transcription mode streams real-time audio chunks over WebSocket to whisper-cli or Groq Whisper API (opt-in) — see child route live-transcription/.
@@ -43,7 +47,7 @@
 - Live phantom [Me] lines ("Okay.") are prevented by a frame-based speech gate plus Silero VAD on live local chunks (AUG-127; root cause AUG-126).
 - Live repeated fragments come from the 1 s chunk overlap being decoded twice with no overlap dedup (AUG-126).
 - With --vad, whisper.cpp stretches segment end times across skipped silence, so batch segment ends are unreliable (AUG-126).
-- whisper-cli 1.8.4 JSON lacks no_speech_prob, so the merger no-speech gate is a no-op; token-level p is available (AUG-126).
+- whisper-cli 1.8.4 JSON lacks no_speech_prob, so the merger no-speech gate is a no-op; token-level p is available and feeds the confidence score (AUG-126, AUG-152).
 
 This route governs how audio becomes a transcript: the whisper.cpp CLI wrapper, the TranscriptMerger cleanup pass, URL download, and the session states in between.
 
@@ -60,13 +64,16 @@ Document the exact mechanics of turning a recorded or uploaded audio file into a
 - Transcript header lines are exactly "- Date:" and "- Duration:"; renderTranscript takes no offset parameter.
 - The former "- Track offset: ±N ms" header (AUG-108) was removed as a user-facing technical detail; existing transcript.md files keep it until retranscribed.
 - Dual-stream merge: mergeDualStream takes mic and system segments, tags them with roles (Me/Them), sorts chronologically, then applies the same dedup/join pipeline — joinAdjacentSameRole only joins segments with matching roles.
+- Confidence score: server/src/services/confidenceScore.ts computeConfidence({ tracks, dropped, audioDurationSec }) runs in runTranscription and runDualTranscription right after the merge, before status flips to completed; dual-track passes both aligned tracks and the real call length (AUG-152).
+- Merger drop count: mergeSingleStreamDetailed / mergeDualStreamDetailed return { utterances, dropped } where dropped = raw segments − segments kept by dedupHallucinations (filler, blacklist, repeats, no-speech gate); mergeSingleStream / mergeDualStream stay as wrappers (AUG-152).
+- confidenceDetail { source: 'no-speech-prob' | 'token-logprob' | 'coverage-only', segments, dropped, coverage, lowLogProbShare, noSpeechBase } is a diagnostic kept in session.json and the server log only, never rendered in the UI (AUG-152).
 - Process tracking: whisper.ts maintains a Map<string, ChildProcess[]> keyed by session ID. whisper-cli, ffmpeg (ensureWav), ffprobe (assertVideoHasAudio) and yt-dlp (via trackChildProcess, AUG-149) child processes are all registered under the session key and deregistered when they exit.
 - Dual-track tracks run sequentially, so at most one batch whisper-cli process is registered and running at a time.
 - Batch slot: transcribe() acquires a process-wide promise-chain slot in whisper.ts, so two sessions or two tracks never run GPU-backed whisper-cli concurrently.
 - Cancellation generations: cancelTranscription(key) bumps a per-session generation; beginTranscriptionJob(key) returns an isCancelled check used by queued jobs and between the mic and system tracks.
 - A cancelled job returns silently from its catch block, so a retranscribe started after the cancel is never marked failed by the old job.
 - Cancellation: cancelTranscription(sessionId) kills all tracked child processes (whisper-cli, ffmpeg, ffprobe, yt-dlp) for that session. The cancel endpoint (POST /api/sessions/:id/cancel) accepts both "preparing" and "transcribing" states, calls cancelTranscription and sets status to "failed" with "Cancelled by user". The catch block in runTranscription/runDualTranscription/prepareAndTranscribe skips overwriting if status is already "failed" to avoid a race with the cancel endpoint.
-- Failed-session recovery: when a session is in "failed" state, the UI shows a "Transcribe again" button with language and boost options. Clicking it calls POST /api/sessions/:id/retranscribe, which runs a preflight check (whisper-cli binary exists, model file exists) before flipping the session to "transcribing". If audio files are missing, the endpoint returns 400 and the UI shows "Audio file no longer exists" with the action disabled. The header Redo node also triggers retranscription independently.
+- Failed-session recovery: when a session is in "failed" state, the UI shows a "Transcribe again" button with language and boost options. Clicking it calls POST /api/sessions/:id/retranscribe, which runs a preflight check (whisper-cli binary exists, model file exists) before flipping the session to "transcribing". If audio files are missing, the endpoint returns 400; for sessions stripped on the Archive page (audioDeletedAt, AUG-150) the message is "Audio was deleted — re-download it first" (sourceUrl) or "Audio was deleted — this session cannot be transcribed again", and the UI disables Redo and offers "Re-download audio" for link sessions. The header Redo node also triggers retranscription independently. When the auto-deleted WAV and its source are both gone (wavAutoDeletedAt set), the 400 message names the automatic removal and the confidence score and tells link sessions to re-download first (AUG-152).
 - URL download flow: POST /api/sessions/from-url validates the URL (http/https only, no private hosts), creates a session with status "uploading" and sourceUrl set, responds immediately, then downloads in the background. Redirects are followed manually (≤5 hops) with URL re-validation at each hop. The file is saved as audio.{ext} in the session directory. On completion, the session enters "preparing" (non-WAV) or "transcribing" (WAV) via the standard pipeline.
 - URL download progress: the server streams the download and updates session.downloadProgress (0–100) from Content-Length; the client polls and renders a progress bar with percentage in TranscriptView when session.sourceUrl is set.
 - URL download cancellation: activeDownloads Map tracks per-session AbortControllers. The cancel endpoint accepts "uploading" status and aborts the download before falling through to cancelTranscription. The download error handler skips overwriting if status is already "failed" (same race-avoidance pattern as transcription cancel).
@@ -102,6 +109,12 @@ Document the exact mechanics of turning a recorded or uploaded audio file into a
 - Long single [Them] lines are expected when the mic track is silent or missing: joinAdjacentSameRole joins same-role segments closer than 2 s.
 - Chronometer Ring UI: during transcribing state, the client renders a circular SVG progress ring with a requestAnimationFrame-driven MM:SS:mm countdown. Three visual phases: amber (normal), red (< 60 seconds remaining), zeroed (0:00:00 with "Exterminatus Initiated" banner and pulsing digits).
 
+## Components
+
+- confidenceScore (component): part of the August server; computes confidenceScore from whisper segment probabilities and TranscriptMerger drop counts (AUG-152).
+- sessions route (component): depends on confidenceScore and on sessionManager.autoDeleteDerivedWavs after each batch transcription (AUG-152).
+- TranscriptMerger (component): part of the August server; mergeSingleStreamDetailed / mergeDualStreamDetailed report the drop count that confidenceScore uses (AUG-152).
+
 ## Invariants
 
 - TranscriptMerger constants are copied exactly from SplitVox's original C# implementation — never re-tune them without re-validating against known reference audio.
@@ -115,7 +128,12 @@ Document the exact mechanics of turning a recorded or uploaded audio file into a
 - joinAdjacentSameRole respects the role field — segments are only joined when they share the same role AND are within the gap threshold.
 - DEDUP_WINDOW = 30.0 seconds — near-duplicate text within this window is collapsed to one segment.
 - NO_SPEECH_PROB_THRESHOLD = 0.6 — segments at or above this whisper.cpp no-speech probability are dropped.
-- The no-speech gate drops a segment only when no_speech_prob is high AND the text is blacklisted; in practice it is a no-op because the field is absent.
+- The no-speech gate drops a segment only when no_speech_prob is high AND the text is blacklisted; in practice it is a no-op because whisper-cli 1.8.4 JSON has no such field (re-verified for AUG-152, upstream master included).
+- confidenceScore and confidenceDetail are reset to undefined when a retranscription starts and recomputed on completion, so a failed re-run never shows a stale score (AUG-152).
+- Auto-deletion runs only after transcript.md is written and the boosted WAVs are removed; its errors are logged and never fail the session (AUG-152).
+- Auto-deletion skips -boosted / -partial WAVs and any WAV without a same-basename non-WAV sibling, so a direct .wav upload and server-captured audio-system.wav always survive (AUG-152).
+- Auto-deleted files are recorded in session.audioDeletedFiles with auto: true and session.wavAutoDeletedAt is set; audioDeletedAt stays unset, so Redo stays enabled and findAudioFiles picks the remaining source (AUG-152).
+- A confidence below the threshold keeps audio.wav and logs "keeping audio.wav"; the threshold is read from user-preferences.json at completion time, not at upload time (AUG-152).
 - dedupHallucinations in mergeDualStream compares against the previous kept segment of any role, so an identical [Me] reply after [Them] within 30 s is dropped.
 - --max-context 0 on every invocation.
 - GPU flag per services/gpuBackend.ts: Metal on Apple Silicon, CUDA on Windows x64 when gpuEngine='cuda', CPU otherwise; automatic CPU fallback on Metal/CUDA; WHISPER_USE_GPU=0|1 pins it.
@@ -153,7 +171,8 @@ Document the exact mechanics of turning a recorded or uploaded audio file into a
 - HTML responses (text/html, application/xhtml+xml) are rejected with "This link is not a direct media file — download it and upload the file instead."
 - URL downloads enforce the same 2 GB cap as file uploads: Content-Length pre-check and a streaming byte counter that aborts on overflow.
 - URL download stall timeout: 60 seconds of no data aborts the download; the timer resets on each received chunk.
-- Retranscribe on a URL-sourced session reuses the downloaded audio file without re-downloading; findAudioFiles finds audio.{ext}.
+- Retranscribe on a URL-sourced session reuses the downloaded audio file without re-downloading; findAudioFiles finds audio.{ext}. Only after the audio was deleted on the Archive page does POST /api/sessions/:id/redownload fetch it again (restores audio only; a session with a transcript returns to completed without re-transcribing — AUG-150).
+- Deleting audio on the Archive page (DELETE /api/sessions/:id/audio) is refused with 409 while the session is uploading, preparing or transcribing, so a running job never loses its input (AUG-150).
 - Orphan recovery covers URL downloads: sessions in "uploading" with sourceUrl and no activeDownloads entry are moved to "failed" on startup.
 - The from-url endpoint is placed before parameterized /:id routes in Express to prevent "from-url" matching as a session ID.
 - Platform links never reach urlDownloader.ts, and the direct-download path stays unchanged for every other URL. Only hosts listed in PLATFORM_HOSTS (exact or subdomain match) go to yt-dlp; to support another yt-dlp site, add its host there.
@@ -207,13 +226,17 @@ Document the exact mechanics of turning a recorded or uploaded audio file into a
 - Do not lower or raise the 2 GB limit without a product decision; local-path import for larger files is a separate feature.
 - Never parse titles or file paths from yt-dlp stdout. On Windows the PyInstaller build writes stdout in the ANSI codepage (cp1251) even with PYTHONIOENCODING=utf-8 (verified in AUG-149). Metadata comes from the UTF-8 ytdlp-info.info.json file, and only the extension is printed (AUGEXT).
 - yt-dlp only downloads audio. Transcription stays local whisper, and neither the URL nor the audio goes to any transcription service. Downloading from video sites may conflict with their terms of service (e.g. YouTube's); the caveat is documented in README.md.
+- Do not patch or rebuild whisper-cli to export no_speech_prob / avg_logprob: Windows CPU and CUDA builds are pinned prebuilt release zips and macOS builds the same tag from source; the confidence score must keep working from token p (AUG-152).
+- CONFIDENCE weights (40 / 30 / 30, logprob floor −1.0, coverage floor 0.5) live in server/src/services/confidenceScore.ts; re-tune only against known audio and keep the computation server-side (AUG-152).
+- Auto-deletion must never remove a source file (audio.webm/.m4a/.mp4, audio-mic.webm, audio-system.wav, a direct .wav upload); only derived WAVs with a non-WAV sibling qualify (AUG-152).
 
 ## Key files
 
-- server/src/services/whisper.ts — runWhisper (single whisper-cli invocation), flags, JSON parsing, ffmpeg helpers.
+- server/src/services/confidenceScore.ts — computeConfidence and the CONFIDENCE weights (AUG-152).
+- server/src/services/whisper.ts — runWhisper (single whisper-cli invocation), flags, JSON parsing, avgLogProbFromTokens (AUG-152), ffmpeg helpers.
 - server/src/routes/sessions.ts — session API endpoints including upload and retranscribe.
 - server/src/services/mediaFormats.ts — accepted upload extensions, video detection, ffprobe audio-stream classification and video error messages.
-- server/src/services/transcriptMerger.ts — filtering, dedup, join, and markdown rendering logic; also holds alignedDualDuration and describeTrackMismatch.
+- server/src/services/transcriptMerger.ts — filtering, dedup, join, and markdown rendering logic; mergeSingleStreamDetailed / mergeDualStreamDetailed report merger drops (AUG-152); also holds alignedDualDuration and describeTrackMismatch.
 - server/src/services/gpuBackend.ts — GPU policy, fallback, and the Vulkan-only banner rule.
 - client/src/components/FileUpload.tsx — mic Web Audio recording graph with re-acquire on 'ended'; ACCEPTED_EXTENSIONS for the dropzone, picker and formats hint; runs the video no-audio pre-check before upload.
 - client/src/services/videoAudioProbe.ts — probeVideoHasAudio (MP4/MOV moov/hdlr parser, true/false/null), isVideoFile, NO_AUDIO_MESSAGE (AUG-146).

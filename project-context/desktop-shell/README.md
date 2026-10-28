@@ -24,6 +24,8 @@
 - NSIS updates (--updated) skip the model-dir and GPU-engine pages and keep the first-install choices from %APPDATA%/August/.
 - Custom NSIS pages must use the customPageAfterChangeDir hook, after the install-mode page: choosing "all users" relaunches the installer elevated and re-shows every page before it.
 - Right-click on a sidebar session calls window.august.revealSession(id) over august:reveal-session; main reveals the folder via shell.showItemInFolder (AUG-124).
+- The Archive page opens the sessions data dir via window.august.revealSessionsDir() over august:reveal-sessions-dir; main calls shell.openPath(sessionsDir()) and takes no path from the renderer (AUG-150). The method is optional in desktop.d.ts; the browser build shows the path as text.
+- Also known as: reveal sessions folder, open data directory (AUG-150).
 - Key files: electron/src/main.ts, electron/src/preload.cts, electron/src/tray.ts, electron/src/hotkey.ts, electron/src/sessionWatcher.ts, electron/src/updater.ts, electron/electron-builder.yml, server/src/app.ts, client/src/desktop.d.ts.
 
 This route documents how August's Electron desktop shell embeds the existing web app instead of replacing it.
@@ -57,6 +59,7 @@ A desktop shell exists so non-technical users get a one-click install with no te
 - august:reveal-session takes only a session ID; the renderer never sends filesystem paths to the main process.
 - The main process resolves the session folder as <AUGUST_DATA_DIR or repo server/data>/sessions/<id>, mirroring server/src/config.ts.
 - revealSession rejects IDs outside [A-Za-z0-9_-], paths escaping the sessions dir, and missing folders, returning { ok: false, error } without opening anything.
+- revealSessionsDir accepts no arguments and only opens the resolved sessions dir; it returns { ok: false, error } when the folder is missing or shell.openPath reports an error.
 - In --dev mode the main process assumes the tsx server uses the repo server/data default; a custom AUGUST_DATA_DIR set only in the server's .env is not seen by main.
 - The desktop toggle is consumed by FileUpload exactly once per request (desktopToggleRequest + onDesktopToggleHandled) so remounts never replay a start.
 - backgroundThrottling is disabled on the window so a recording continues at full rate while hidden in the tray.
@@ -148,7 +151,7 @@ A desktop shell exists so non-technical users get a one-click install with no te
 
 - No third-party inference in the shell either — the embedded server still runs whisper-cli locally.
 - Do not add Electron IPC endpoints that duplicate REST routes.
-- Do not add a generic "open any path" IPC; file-manager reveal stays scoped to session IDs.
+- Do not add a generic "open any path" IPC; file-manager reveal stays scoped to a validated session ID (revealSession) or the fixed sessions dir (revealSessionsDir, AUG-150).
 - Do not bundle the whisper model.
 - Do not enable asar.
 - Keep electron-updater's feed pointing at GitHub Releases.

@@ -164,6 +164,14 @@ export function joinAdjacentSameRole(segments: MergedUtterance[]): MergedUtteran
 /// single-track imported/recorded media (no mic/system split to diarize
 /// by).
 export function mergeSingleStream(segments: TranscriptSegment[]): MergedUtterance[] {
+  return mergeSingleStreamDetailed(segments).utterances;
+}
+
+export interface MergeResult { utterances: MergedUtterance[]; dropped: number; }
+
+/// Same pipeline as mergeSingleStream, also reporting how many raw segments the no-speech gate, credit stripping and
+/// dedupHallucinations removed (filler, blacklist, repeats) — a hallucination signal for confidenceScore.ts (AUG-152).
+export function mergeSingleStreamDetailed(segments: TranscriptSegment[]): MergeResult {
   const gated = segments.filter((segment) => {
     const noSpeechProb = segment.noSpeechProb ?? 0;
     if (noSpeechProb > NO_SPEECH_PROB_THRESHOLD && isHallucination(normalize(segment.text))) {
@@ -180,7 +188,7 @@ export function mergeSingleStream(segments: TranscriptSegment[]): MergedUtteranc
 
   const cleaned = stripCreditLines(utterances);
   const deduped = dedupHallucinations(cleaned);
-  return joinAdjacentSameRole(deduped);
+  return { utterances: joinAdjacentSameRole(deduped), dropped: segments.length - deduped.length };
 }
 
 /// Shifts every segment by `offsetSec`, clamping at zero. Used to put a
@@ -244,6 +252,14 @@ export function mergeDualStream(
   micSegments: TranscriptSegment[],
   systemSegments: TranscriptSegment[],
 ): MergedUtterance[] {
+  return mergeDualStreamDetailed(micSegments, systemSegments).utterances;
+}
+
+/// Same pipeline as mergeDualStream, also reporting the number of raw segments dropped (AUG-152).
+export function mergeDualStreamDetailed(
+  micSegments: TranscriptSegment[],
+  systemSegments: TranscriptSegment[],
+): MergeResult {
   const gate = (s: TranscriptSegment) => {
     const prob = s.noSpeechProb ?? 0;
     return !(prob > NO_SPEECH_PROB_THRESHOLD && isHallucination(normalize(s.text)));
@@ -259,7 +275,10 @@ export function mergeDualStream(
   const combined = [...micUtterances, ...systemUtterances].sort((a, b) => a.start - b.start);
   const cleaned = stripCreditLines(combined);
   const deduped = dedupHallucinations(cleaned);
-  return joinAdjacentSameRole(deduped);
+  return {
+    utterances: joinAdjacentSameRole(deduped),
+    dropped: micSegments.length + systemSegments.length - deduped.length,
+  };
 }
 
 /// Formats seconds as `HH:MM:SS`. Direct port of TranscriptMerger.cs's

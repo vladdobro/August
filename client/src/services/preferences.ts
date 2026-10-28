@@ -26,6 +26,8 @@ export interface UserPreferences {
   skipStopConfirmation?: boolean;
   skipClearConfirmation?: boolean;
   gpuEngine?: 'cpu' | 'cuda';
+  autoDeleteWav?: boolean;
+  autoDeleteWavThreshold?: number;
 }
 
 export const DEFAULT_PREFERENCES: Required<UserPreferences> = {
@@ -47,6 +49,8 @@ export const DEFAULT_PREFERENCES: Required<UserPreferences> = {
   skipStopConfirmation: false,
   skipClearConfirmation: false,
   gpuEngine: 'cpu',
+  autoDeleteWav: false,
+  autoDeleteWavThreshold: 70,
 };
 
 export async function getPreferences(): Promise<UserPreferences> {

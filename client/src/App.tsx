@@ -3,7 +3,8 @@ import SessionList from './components/SessionList';
 import FileUpload from './components/FileUpload';
 import TranscriptView from './components/TranscriptView';
 import ModelDownloadModal from './components/ModelDownloadModal';
-import { checkHealth, deleteSession, fetchCaptureCapabilities, fetchSessions, fetchTranscript, renameSession, retranscribeSession, cancelTranscription } from './api';
+import ArchivePage from './components/ArchivePage';
+import { checkHealth, deleteSession, fetchCaptureCapabilities, fetchSessions, fetchTranscript, redownloadSessionAudio, renameSession, retranscribeSession, cancelTranscription } from './api';
 import type { CaptureCapabilities, HealthStatus, SessionMetadata } from './types';
 import SetupGuide from './components/SetupGuide';
 import GroqKeyModal from './components/GroqKeyModal';
@@ -25,6 +26,7 @@ const App: React.FC = () => {
   const [healthStatus, setHealthStatus] = useState<HealthStatus | null>(null);
   const [setupDismissed, setSetupDismissed] = useState(false);
   const [showDiagnostics, setShowDiagnostics] = useState(false);
+  const [showArchive, setShowArchive] = useState(false);
   const [pendingDelete, setPendingDelete] = useState<{
     session: SessionMetadata;
     timeoutId: ReturnType<typeof setTimeout>;
@@ -94,12 +96,14 @@ const App: React.FC = () => {
     const offOpen = desktop.onOpenSession((id) => {
       setSelectedSessionId(id);
       setShowDiagnostics(false);
+      setShowArchive(false);
       setSetupDismissed(true);
     });
     const offToggle = desktop.onToggleRecording(() => {
       // FileUpload only mounts on the "new session" view, so leave any open session/setup guide first.
       setSelectedSessionId(null);
       setShowDiagnostics(false);
+      setShowArchive(false);
       setSetupDismissed(true);
       setDesktopToggleRequest(Date.now());
     });
@@ -167,6 +171,7 @@ const App: React.FC = () => {
 
   const handleSelect = (id: string) => {
     setSelectedSessionId(id);
+    setShowArchive(false);
   };
 
   const handleNewSession = () => {
@@ -233,6 +238,23 @@ const App: React.FC = () => {
     }
   };
 
+  const handleRedownload = async () => {
+    if (!selectedSessionId) return;
+    try {
+      await redownloadSessionAudio(selectedSessionId);
+      await refreshSessions();
+    } catch (err) {
+      setLoadError((err as Error).message || 'Failed to re-download audio');
+    }
+  };
+
+  const handleArchiveChanged = async (deletedIds: string[]) => {
+    if (selectedSessionIdRef.current && deletedIds.includes(selectedSessionIdRef.current)) {
+      setSelectedSessionId(null);
+    }
+    await refreshSessions();
+  };
+
   const handleCancel = async () => {
     if (!selectedSessionId) return;
     try {
@@ -263,7 +285,7 @@ const App: React.FC = () => {
   const shouldEnableAgentation = import.meta.env.DEV;
   const agentationEndpoint = import.meta.env.VITE_AGENTATION_ENDPOINT || 'http://127.0.0.1:4747';
 
-  const showFileUpload = !selectedSession && !needsSetup;
+  const showFileUpload = !selectedSession && !needsSetup && !showArchive;
 
   return (
     <>
@@ -278,9 +300,11 @@ const App: React.FC = () => {
           onRename={handleRename}
           onNewSession={() => {
             handleNewSession();
+            setShowArchive(false);
             if (showDiagnostics) { setSetupDismissed(true); setShowDiagnostics(false); }
           }}
-          onDiagnostics={() => { setSetupDismissed(false); setShowDiagnostics(true); }}
+          onDiagnostics={() => { setSetupDismissed(false); setShowDiagnostics(true); setShowArchive(false); }}
+          onArchive={() => { setShowArchive(true); setShowDiagnostics(false); setSetupDismissed(true); }}
           onKeysAndTokens={() => setShowGroqKeyModal(true)}
           onSettings={() => setShowSettings(true)}
           gpuBackend={healthStatus?.gpuBackend}
@@ -290,13 +314,13 @@ const App: React.FC = () => {
         <main className="main-content">
           {loadError && <div className="global-error">{loadError}</div>}
 
-          {needsSetup && (
+          {needsSetup && !showArchive && (
             <>
               {isRecording && (
                 <button
                   type="button"
                   className="recording-active-banner"
-                  onClick={() => { setSetupDismissed(true); setShowDiagnostics(false); setSelectedSessionId(null); }}
+                  onClick={() => { setSetupDismissed(true); setShowDiagnostics(false); setShowArchive(false); setSelectedSessionId(null); }}
                 >
                   <span className="recording-dot" aria-hidden="true" />
                   Recording in progress — click to return
@@ -310,8 +334,17 @@ const App: React.FC = () => {
             </>
           )}
 
-          {!needsSetup && selectedSession && (
-            <TranscriptView session={selectedSession} transcript={transcript} onRetranscribe={handleRetranscribe} onCancel={handleCancel} ffmpegAvailable={ffmpegAvailable} praxisProjects={preferences.praxisProjects ?? []} praxisDefaultPromptCustom={Boolean(preferences.praxisDefaultPrompt?.trim())} onRename={(title) => handleRename(selectedSession.id, title)} />
+          {showArchive && (
+            <ArchivePage
+              onBack={() => setShowArchive(false)}
+              onChanged={handleArchiveChanged}
+              isRecording={isRecording}
+              onReturnToRecording={() => { setShowArchive(false); setSelectedSessionId(null); }}
+            />
+          )}
+
+          {!needsSetup && !showArchive && selectedSession && (
+            <TranscriptView session={selectedSession} transcript={transcript} onRetranscribe={handleRetranscribe} onCancel={handleCancel} ffmpegAvailable={ffmpegAvailable} praxisProjects={preferences.praxisProjects ?? []} praxisDefaultPromptCustom={Boolean(preferences.praxisDefaultPrompt?.trim())} onRename={(title) => handleRename(selectedSession.id, title)} onRedownload={handleRedownload} />
           )}
 
           {(showFileUpload || isRecording) && (
@@ -333,7 +366,7 @@ const App: React.FC = () => {
           )}
         </main>
 
-        {selectedSession && !needsSetup && <ThemeToggle />}
+        {((selectedSession && !needsSetup) || showArchive) && <ThemeToggle />}
       </div>
       <ModelDownloadModal />
       {showGroqKeyModal && (

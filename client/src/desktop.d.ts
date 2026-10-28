@@ -32,6 +32,8 @@ export interface AugustDesktopApi {
   setRecordHotkey(accelerator: string | null): Promise<DesktopHotkeyResult>;
   // Reveals the session's folder in Finder/Explorer; the main process resolves the path from the id.
   revealSession(sessionId: string): Promise<DesktopRevealResult>;
+  // Opens the whole sessions folder (Archive page); optional because older desktop shells lack it.
+  revealSessionsDir?(): Promise<DesktopRevealResult>;
   setRecordingState(recording: boolean): void;
   onToggleRecording(cb: () => void): () => void;
   onOpenSession(cb: (sessionId: string) => void): () => void;

@@ -1,6 +1,7 @@
 import React, { useMemo, useState, useRef, useEffect } from 'react';
 import type { SessionMetadata } from '../types';
 import PraxisModal from './PraxisModal';
+import ConfidenceBadge from './ConfidenceBadge';
 import type { PraxisProject } from '../services/preferences';
 
 interface TranscriptViewProps {
@@ -12,6 +13,7 @@ interface TranscriptViewProps {
   praxisProjects?: PraxisProject[];
   praxisDefaultPromptCustom?: boolean;
   onRename?: (title: string) => Promise<void>;
+  onRedownload?: () => Promise<void>;
 }
 
 interface ParsedLine {
@@ -270,7 +272,7 @@ const ChronoRing: React.FC<{ session: SessionMetadata }> = ({ session }) => {
   );
 };
 
-const TranscriptView: React.FC<TranscriptViewProps> = ({ session, transcript, onRetranscribe, onCancel, ffmpegAvailable = false, praxisProjects, praxisDefaultPromptCustom, onRename }) => {
+const TranscriptView: React.FC<TranscriptViewProps> = ({ session, transcript, onRetranscribe, onCancel, ffmpegAvailable = false, praxisProjects, praxisDefaultPromptCustom, onRename, onRedownload }) => {
   const [feedbackText, setFeedbackText] = useState<string | null>(null);
   const [dropdownOpen, setDropdownOpen] = useState(false);
   const [retrying, setRetrying] = useState(false);
@@ -282,6 +284,8 @@ const TranscriptView: React.FC<TranscriptViewProps> = ({ session, transcript, on
   const [failedMenuOpen, setFailedMenuOpen] = useState(false);
   const failedMenuRef = useRef<HTMLDivElement>(null);
   const [showPraxisModal, setShowPraxisModal] = useState(false);
+  const [redownloading, setRedownloading] = useState(false);
+  const audioDeleted = !!session.audioDeletedAt;
 
   useEffect(() => {
     if (!dropdownOpen) return;
@@ -335,6 +339,16 @@ const TranscriptView: React.FC<TranscriptViewProps> = ({ session, transcript, on
       await onRetranscribe(language, boostEnabled);
     } finally {
       setRetrying(false);
+    }
+  };
+
+  const handleRedownload = async () => {
+    if (!onRedownload || redownloading) return;
+    setRedownloading(true);
+    try {
+      await onRedownload();
+    } finally {
+      setRedownloading(false);
     }
   };
 
@@ -407,9 +421,33 @@ const TranscriptView: React.FC<TranscriptViewProps> = ({ session, transcript, on
             <span>{languageLabel(session.language)}</span>
             <span className="meta-separator">&bull;</span>
             <span className={`status-badge status-${session.status}`}>{session.status}</span>
+            {session.status === 'completed' && typeof session.confidenceScore === 'number' && (
+              <>
+                <span className="meta-separator">&bull;</span>
+                <ConfidenceBadge score={session.confidenceScore} withLabel />
+              </>
+            )}
           </div>
           {session.trackWarning && (
             <div className="transcript-track-warning" role="status">{session.trackWarning}</div>
+          )}
+          {session.status === 'completed' && audioDeleted && (
+            <div className="transcript-audio-deleted" role="status">
+              Audio deleted — transcript only.
+              {session.sourceUrl && onRedownload && (
+                <>
+                  {' '}
+                  <button type="button" className="transcript-audio-deleted-link" onClick={handleRedownload} disabled={redownloading}>
+                    {redownloading ? 'Starting...' : 'Re-download'}
+                  </button>
+                </>
+              )}
+            </div>
+          )}
+          {session.status === 'completed' && !audioDeleted && session.wavAutoDeletedAt && (
+            <div className="transcript-audio-deleted" role="status">
+              WAV removed after transcription{typeof session.confidenceScore === 'number' ? ` (${session.confidenceScore}%)` : ''}. Re-transcribing rebuilds it from the original file.
+            </div>
           )}
         </div>
 
@@ -473,12 +511,12 @@ const TranscriptView: React.FC<TranscriptViewProps> = ({ session, transcript, on
 
             {onRetranscribe && (
               <div className="transcript-action-wrap transcript-action-wrap--retranscribe" ref={retranscribeRef}>
-                <button type="button" className="transcript-action-node" onClick={() => setRetranscribeOpen(prev => !prev)} disabled={retrying} aria-label="Re-transcribe">
+                <button type="button" className="transcript-action-node" onClick={() => { if (!audioDeleted) setRetranscribeOpen(prev => !prev); }} disabled={retrying || audioDeleted} title={audioDeleted ? 'Audio was deleted in Archive' : undefined} aria-label="Re-transcribe">
                   <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
                     <polyline points="23 4 23 10 17 10" />
                     <path d="M20.49 15a9 9 0 1 1-2.12-9.36L23 10" />
                   </svg>
-                  <span className="transcript-action-label">{retrying ? '...' : 'Redo'}</span>
+                  <span className="transcript-action-label">{audioDeleted ? 'No audio' : retrying ? '...' : 'Redo'}</span>
                 </button>
                 {retranscribeOpen && (
                   <div className="retranscribe-menu">
@@ -626,8 +664,19 @@ const TranscriptView: React.FC<TranscriptViewProps> = ({ session, transcript, on
             <p className="error-message">{session.error || 'An unknown error occurred.'}</p>
             {onRetranscribe && (
               <div className="failed-recovery" ref={failedMenuRef}>
-                {session.error?.includes('Audio file no longer exists') ? (
-                  <p className="failed-no-audio">Audio file no longer exists — this session cannot be re-transcribed.</p>
+                {audioDeleted || session.error?.includes('Audio file no longer exists') ? (
+                  session.sourceUrl && onRedownload ? (
+                    <>
+                      <p className="failed-no-audio">Audio was deleted. It can be downloaded again from the original link.</p>
+                      <button type="button" className="retry-button" onClick={handleRedownload} disabled={redownloading}>
+                        {redownloading ? 'Starting...' : 'Re-download audio'}
+                      </button>
+                    </>
+                  ) : audioDeleted ? (
+                    <p className="failed-no-audio">Audio was deleted — this session cannot be transcribed again.</p>
+                  ) : (
+                    <p className="failed-no-audio">Audio file no longer exists — this session cannot be re-transcribed.</p>
+                  )
                 ) : (
                   <>
                     <button

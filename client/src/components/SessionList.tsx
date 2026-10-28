@@ -1,6 +1,7 @@
 import React, { useEffect, useLayoutEffect, useRef, useState } from 'react';
 import type { HealthStatus, SessionMetadata, SessionStatus } from '../types';
 import AboutModal from './AboutModal';
+import ConfidenceBadge from './ConfidenceBadge';
 
 interface SessionListProps {
   sessions: SessionMetadata[];
@@ -12,6 +13,7 @@ interface SessionListProps {
   onRename: (id: string, title: string) => void;
   onNewSession: () => void;
   onDiagnostics: () => void;
+  onArchive: () => void;
   onKeysAndTokens: () => void;
   onSettings: () => void;
   gpuBackend?: HealthStatus['gpuBackend'];
@@ -71,6 +73,7 @@ const SessionList: React.FC<SessionListProps> = ({
   onRename,
   onNewSession,
   onDiagnostics,
+  onArchive,
   onKeysAndTokens,
   onSettings,
   gpuBackend,
@@ -323,6 +326,17 @@ const SessionList: React.FC<SessionListProps> = ({
                 <button
                   type="button"
                   className="sidebar-menu-item sidebar-menu-item--2"
+                  onClick={() => { setMenuOpen(false); onArchive(); }}
+                >
+                  <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+                    <rect x="3" y="3" width="18" height="5" rx="0" />
+                    <path d="M5 8v12h14V8M10 12h4" />
+                  </svg>
+                  Archive
+                </button>
+                <button
+                  type="button"
+                  className="sidebar-menu-item sidebar-menu-item--3"
                   onClick={() => { setMenuOpen(false); onKeysAndTokens(); }}
                 >
                   <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
@@ -333,7 +347,7 @@ const SessionList: React.FC<SessionListProps> = ({
                 </button>
                 <button
                   type="button"
-                  className="sidebar-menu-item sidebar-menu-item--3"
+                  className="sidebar-menu-item sidebar-menu-item--4"
                   onClick={() => { setMenuOpen(false); onSettings(); }}
                 >
                   <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
@@ -343,7 +357,7 @@ const SessionList: React.FC<SessionListProps> = ({
                   Settings
                 </button>
                 <a
-                  className="sidebar-menu-item sidebar-menu-item--4"
+                  className="sidebar-menu-item sidebar-menu-item--5"
                   href="https://youtu.be/dQw4w9WgXcQ"
                   target="_blank"
                   rel="noopener noreferrer"
@@ -534,6 +548,9 @@ const SessionList: React.FC<SessionListProps> = ({
                   )}
                   {statusLabel(session.status)}
                 </span>
+                {session.status === 'completed' && typeof session.confidenceScore === 'number' && (
+                  <ConfidenceBadge score={session.confidenceScore} />
+                )}
                 <span className="session-item-date">{formatDate(session.createdAt)}</span>
               </div>
             </div>

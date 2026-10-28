@@ -127,6 +127,11 @@ const SettingsModal: React.FC<SettingsModalProps> = ({
   const sessionSortOrder = preferences.sessionSortOrder ?? DEFAULT_PREFERENCES.sessionSortOrder;
   const skipStopConfirmation = preferences.skipStopConfirmation ?? DEFAULT_PREFERENCES.skipStopConfirmation;
   const skipClearConfirmation = preferences.skipClearConfirmation ?? DEFAULT_PREFERENCES.skipClearConfirmation;
+  const autoDeleteWav = preferences.autoDeleteWav ?? DEFAULT_PREFERENCES.autoDeleteWav;
+  const autoDeleteWavThreshold = preferences.autoDeleteWavThreshold ?? DEFAULT_PREFERENCES.autoDeleteWavThreshold;
+  const [thresholdDraft, setThresholdDraft] = useState<number>(autoDeleteWavThreshold);
+  useEffect(() => { setThresholdDraft(autoDeleteWavThreshold); }, [autoDeleteWavThreshold]);
+  const commitThreshold = () => { if (thresholdDraft !== autoDeleteWavThreshold) onPreferenceChange({ autoDeleteWavThreshold: thresholdDraft }); };
 
   const handleReset = () => {
     if (!confirmingReset) {
@@ -262,6 +267,44 @@ const SettingsModal: React.FC<SettingsModalProps> = ({
                 ]}
                 onChange={(v) => onPreferenceChange({ retranscriptionLanguage: v || null })}
               />
+            </div>
+            <div className="settings-row">
+              <span className="settings-label">Delete audio.wav after transcription</span>
+              <label className="settings-toggle">
+                <input
+                  type="checkbox"
+                  checked={autoDeleteWav}
+                  onChange={(e) => onPreferenceChange({ autoDeleteWav: e.target.checked })}
+                />
+                <span className="settings-toggle-label">{autoDeleteWav ? 'On' : 'Off'}</span>
+              </label>
+            </div>
+            {autoDeleteWav && (
+              <div className="settings-row">
+                <label className="settings-label" htmlFor="settings-autodelete-threshold">Minimum confidence</label>
+                <div className="settings-slider">
+                  <input
+                    id="settings-autodelete-threshold"
+                    type="range"
+                    min={50}
+                    max={95}
+                    step={5}
+                    value={thresholdDraft}
+                    onChange={(e) => setThresholdDraft(Number(e.target.value))}
+                    onMouseUp={commitThreshold}
+                    onTouchEnd={commitThreshold}
+                    onKeyUp={commitThreshold}
+                    onBlur={commitThreshold}
+                    aria-valuetext={`${thresholdDraft}%`}
+                  />
+                  <span className="settings-slider-value">{thresholdDraft}%</span>
+                </div>
+              </div>
+            )}
+            <div className="settings-hint">
+              {autoDeleteWav
+                ? 'Removes only the converted WAV once the confidence score reaches the threshold. The original recording or upload stays, so you can always re-transcribe.'
+                : 'Frees disk space after confident transcriptions. The original recording or upload is never removed.'}
             </div>
             {nvidiaGpu?.detected ? (() => {
               const currentEngine = gpuEngine ?? 'cpu';

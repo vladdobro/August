@@ -30,6 +30,9 @@
 - All animations and transitions disabled under prefers-reduced-motion: reduce.
 - Responsive: 720px switches to vertical layout, shrinks circuit nodes; 640px makes live panel full-width; 600px shrinks chronometer.
 - Sidebar footer shows a GPU/CPU indicator strip; green for GPU, yellow for CPU fallback, with an Idle/Transcribing sublabel.
+- Archive page (AUG-150) is a standalone page from the sidebar ≡ menu (not a Settings tab): storage card, CRT scan-line session list with select-all, expandable per-file breakdown, sticky bulk bar and in-app blur-backdrop confirm dialogs; red only on destructive buttons.
+- Confidence badge (.confidence-badge, AUG-152): terminal-font 10px outline chip with 0 radius and a 5px square marker; green ≥ 80 (--status-completed), amber 60–79 (--status-uploading), red < 60 (--status-failed); shown in the sidebar session meta and the transcript header for completed sessions only.
+- Also known as: Archive page, storage page, delete audio UI, bulk delete (AUG-150), confidence badge, auto-deleted label, threshold slider (AUG-152).
 
 The frontend design system defines the Necron-themed visual language, color tokens, theme switching, and component styling rules for the August web app.
 
@@ -196,6 +199,7 @@ Container max-widths:
 - Upload panel: 680px
 - Circuit diagram: 480px (also circuit-dropzone)
 - Diagnostics page: 600px
+- Archive page: max-width min(620px, 100%), centered; ≤720px rows collapse to a grid-template-areas layout and the bulk bar stretches full width.
 - Transcript lines: 760px
 - Transcript circuit diagram: 340px
 - Modals: min(440-460px, 100%)
@@ -296,6 +300,13 @@ Status badges (.status-badge):
   - transcribing: rgba(10,123,80,0.15) / var(--status-transcribing)
   - completed: rgba(45,107,79,0.15) / var(--status-completed)
   - failed: rgba(212,64,64,0.15) / var(--status-failed)
+
+Confidence badge (.confidence-badge, AUG-152, client/src/components/ConfidenceBadge.tsx):
+- border 1px solid currentColor, border-radius 0 (a measurement chip, deliberately not a pill), padding 1px 6px
+- font var(--font-terminal) 10px weight 700, letter-spacing .04em, tabular-nums; ::before draws a 5px square in currentColor
+- tiers from confidenceTier(): ok ≥ 80 → var(--status-completed), warn 60–79 → var(--status-uploading), bad < 60 → var(--status-failed)
+- sidebar shows "87%", transcript header shows "87% confidence"; both render only when status is completed and confidenceScore is a number
+- the title attribute explains the inputs (token probabilities, audio coverage, filtered hallucinations); no breakdown numbers appear in the UI
 
 Recording indicator:
 - Red dot: 10px circle, var(--status-failed) bg, pulse animation
@@ -504,10 +515,25 @@ Gothic font (--font-gothic) is available but not currently applied — too styli
 
 The sidebar header contains a hamburger menu button (.sidebar-menu-trigger) next to the "August" title.
 Clicking the trigger opens a dropdown (.sidebar-menu-dropdown) with angular styling (0 border-radius, necron-900 background, necron-700 border).
-Menu items appear with staggered slide-in animation (.sidebar-menu-item--1 at 0.04s, --2 at 0.12s, --3 at 0.20s) via sidebar-menu-fade-in keyframes.
+Menu items appear with staggered slide-in animation (.sidebar-menu-item--1 at 0.04s, --2 at 0.12s, --3 at 0.20s, --4 at 0.28s, --5 at 0.36s) via sidebar-menu-fade-in keyframes.
 Menu closes on click-outside via a mousedown document listener registered only while open.
-Current menu items: Diagnostics (opens diagnostics page), tooltip_missing (external link).
+Current menu items in order: Diagnostics (opens diagnostics page), Archive (opens the Archive page, AUG-150), Keys & Tokens, Settings, then the external link.
 Menu z-index (1000) requires the header z-index (20) to be above the filters section below.
+
+### Archive Page (AUG-150)
+
+The Archive page is opened from the sidebar menu item "Archive"; component client/src/components/ArchivePage.tsx, all classes prefixed archive-.
+The page title uses the accent gradient linear-gradient(135deg, #00c876, #2dd690) with background-clip text.
+Session row grid: 20px 18px minmax(0,1fr) 92px 56px 76px with gap 10px.
+Source labels: MIC (accent), FILE (text-primary), YT/VIDEO (status-failed red), LINK (status-uploading yellow).
+Active rows (uploading, preparing, transcribing) render at opacity .4 with a Transcribing/Uploading badge and are not selectable.
+Deleted audio files are struck through with a red "deleted" label; WAVs removed by the confidence rule get an accent "auto-deleted" label (.archive-file-auto-tag) and the row shows "WAV auto-deleted" next to the title (AUG-152).
+Per-file Delete is offered only on audio files.
+The sticky bulk bar has "Delete Audio Only" (accent-outline) and "Delete Sessions" (danger-outline).
+Confirm dialogs are in-app, never native confirm: fixed backdrop rgba(0,0,0,.45) with blur(8px), card max-width min(420px,100%), closed by Escape or backdrop click.
+Light theme uses tokens; dark overrides use necron values under :root[data-theme='dark'].
+All Archive elements use border-radius 0, including badges.
+TranscriptView shows the ".transcript-audio-deleted" line "Audio deleted — transcript only." with a Re-download link; when only the WAV was auto-deleted it shows "WAV removed after transcription (N%). Re-transcribing rebuilds it from the original file." in the same style and Redo stays enabled (AUG-152).
 
 ### Session Context Menu
 
@@ -578,6 +604,7 @@ Inline editor actions use .praxis-btn-inline; the primary one (Add project) uses
 ArrowUp/ArrowDown on the focused list move the selection; Escape in an editor input returns focus to the list without closing the modal.
 At widths of 560px and below the list stacks above the editor.
 The former .praxis-project-card, .praxis-project-add and .praxis-hint rules are removed; .praxis-project-badge* and .praxis-project-path remain.
+The Transcription tab's auto-delete threshold (AUG-152) is a native range input styled by .settings-slider: 160px wide, 2px track in var(--border-color), 12×16px square accent thumb with 0 radius, focus-visible 1px accent outline, and a .settings-slider-value label in the terminal font; it appears only while the "Delete audio.wav after transcription" toggle is on.
 
 ## Invariants
 
@@ -626,4 +653,6 @@ Status badge colors (uploading, transcribing, completed, failed) must remain dis
 - client/src/components/PraxisModal.tsx — Modal with project chips (SettingsDropdown above 5 projects), an always-visible path input with browse, a prompt note, task creation from a session transcript, and session rename sync.
 - client/src/components/SettingsDropdown.tsx — shared angular dropdown with optional per-option sublabel and placeholder, used by SettingsModal and PraxisModal.
 - client/src/components/PraxisProjectsPage.tsx — Settings Projects tab: master-detail layout with a project list, default-prompt and per-project editors, and a New project mode.
+- client/src/components/ArchivePage.tsx — Archive page: storage card, session list with per-file breakdown, bulk delete bar, confirm dialogs (AUG-150)
+- client/src/components/ConfidenceBadge.tsx — confidence percentage chip with tier colouring (AUG-152)
 - client/src/components/SetupGuide.tsx — Diagnostics page with circuit-node layout, W40K CRT aesthetic, adaptive GPU/model reveal logic

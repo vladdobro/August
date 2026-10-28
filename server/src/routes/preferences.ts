@@ -27,6 +27,8 @@ const ALLOWED_KEYS = new Set([
   'skipStopConfirmation',
   'skipClearConfirmation',
   'gpuEngine',
+  'autoDeleteWav',
+  'autoDeleteWavThreshold',
 ]);
 
 // GET /api/preferences
@@ -55,6 +57,14 @@ router.patch('/', async (req, res) => {
   }
   if ('praxisDefaultPrompt' in patch) {
     patch.praxisDefaultPrompt = typeof patch.praxisDefaultPrompt === 'string' ? patch.praxisDefaultPrompt : null;
+  }
+  if ('autoDeleteWav' in patch) {
+    patch.autoDeleteWav = patch.autoDeleteWav === true;
+  }
+  if ('autoDeleteWavThreshold' in patch) {
+    const n = Number(patch.autoDeleteWavThreshold);
+    if (Number.isFinite(n)) patch.autoDeleteWavThreshold = Math.min(95, Math.max(50, Math.round(n)));
+    else delete patch.autoDeleteWavThreshold;
   }
 
   const current = await readPreferencesMigrated();

@@ -6,13 +6,15 @@ import multer from 'multer';
 import { config } from '../config.js';
 import * as sessionManager from '../services/sessionManager.js';
 import { transcribe, ensureWav, boostAudio, checkFfmpegAvailable, getAudioDuration, WhisperError, cancelTranscription, beginTranscriptionJob, isTranscribing, FFMPEG_MISSING_MESSAGE, fileExists } from '../services/whisper.js';
-import { mergeSingleStream, mergeDualStream, renderTranscript, alignDualSegments, alignedDualDuration, describeTrackMismatch } from '../services/transcriptMerger.js';
+import { mergeSingleStreamDetailed, mergeDualStreamDetailed, renderTranscript, alignDualSegments, alignedDualDuration, describeTrackMismatch } from '../services/transcriptMerger.js';
+import { readPreferences } from '../services/preferencesStore.js';
+import { computeConfidence } from '../services/confidenceScore.js';
 import { recordCompletion, getEstimatedDuration } from '../services/performanceTracker.js';
 import { getModelStatus } from '../services/modelDownloader.js';
 import { consumeCapture, hasCapture, CaptureError } from '../services/systemCapture.js';
 import { downloadFromUrl, UrlDownloadError } from '../services/urlDownloader.js';
 import { isPlatformUrl, probePlatformVideo, downloadPlatformAudio, YtDlpError, YTDLP_MISSING_MESSAGE, INFO_JSON_NAME } from '../services/ytDlp.js';
-import type { TranscriptionLanguage } from '../types.js';
+import type { SessionMetadata, SessionStatus, TranscriptionLanguage } from '../types.js';
 
 const router = Router();
 
@@ -35,11 +37,43 @@ export function cancelDownload(sessionId: string): boolean {
   return true;
 }
 
+const ACTIVE_STATUSES: SessionStatus[] = ['uploading', 'preparing', 'transcribing'];
+
+function isActive(s: SessionMetadata): boolean {
+  return ACTIVE_STATUSES.includes(s.status) || isTranscribing(s.id) || activeDownloads.has(s.id);
+}
+
 function normalizeLanguage(value: unknown): TranscriptionLanguage {
   if (typeof value === 'string' && (ALLOWED_LANGUAGES as string[]).includes(value)) {
     return value as TranscriptionLanguage;
   }
   return 'ru';
+}
+
+/// AUG-152: Settings → Transcription "Delete audio.wav after transcription" + threshold slider (user-preferences.json).
+export const AUTO_DELETE_THRESHOLD = { min: 50, max: 95, default: 70 } as const;
+
+/// Runs after a transcript was written. Deletes only derived WAVs (sessionManager.autoDeleteDerivedWavs) when the
+/// preference is on and the score reaches the threshold; never throws — a cleanup problem must not fail the session.
+async function autoDeleteWavIfConfident(sessionId: string, score: number): Promise<void> {
+  try {
+    const prefs = await readPreferences();
+    if (prefs.autoDeleteWav !== true) return;
+    const raw = Number(prefs.autoDeleteWavThreshold);
+    const threshold = Number.isFinite(raw)
+      ? Math.min(AUTO_DELETE_THRESHOLD.max, Math.max(AUTO_DELETE_THRESHOLD.min, Math.round(raw)))
+      : AUTO_DELETE_THRESHOLD.default;
+    if (score < threshold) {
+      console.log(`[session ${sessionId}] confidence ${score}% is below the ${threshold}% threshold — keeping audio.wav`);
+      return;
+    }
+    const result = await sessionManager.autoDeleteDerivedWavs(sessionId);
+    if (result && result.removed.length > 0) {
+      console.log(`[session ${sessionId}] auto-deleted ${result.removed.map((r) => r.name).join(', ')} (${(result.freedBytes / 1024 / 1024).toFixed(1)} MB) at confidence ${score}% ≥ ${threshold}%`);
+    }
+  } catch (err) {
+    console.warn(`[session ${sessionId}] auto-delete of audio.wav failed: ${(err as Error)?.message ?? err}`);
+  }
 }
 
 interface DualTrackPrep {
@@ -80,11 +114,15 @@ async function runTranscription(sessionId: string, audioPath: string, language: 
     }
 
     const segments = await transcribe(inputPath, language, sessionId, isCancelled);
-    const utterances = mergeSingleStream(segments);
+    const merged = mergeSingleStreamDetailed(segments);
+    const utterances = merged.utterances;
 
     const session = await sessionManager.getSession(sessionId);
     const startedAt = session?.createdAt ?? new Date().toISOString();
     const duration = utterances.length > 0 ? utterances[utterances.length - 1].end : 0;
+    const audioSec = session?.duration && session.duration > 0 ? session.duration : duration;
+    const confidence = computeConfidence({ tracks: [segments], dropped: merged.dropped, audioDurationSec: audioSec });
+    console.log(`[session ${sessionId}] confidence ${confidence.score}% (${confidence.detail.source}, coverage ${confidence.detail.coverage}, lowLogProb ${confidence.detail.lowLogProbShare}, dropped ${confidence.detail.dropped}/${confidence.detail.segments})`);
 
     const transcript = renderTranscript(utterances, startedAt, duration);
     await sessionManager.writeTranscript(sessionId, transcript);
@@ -92,17 +130,19 @@ async function runTranscription(sessionId: string, audioPath: string, language: 
     await sessionManager.updateSession(sessionId, {
       status: 'completed',
       duration,
+      confidenceScore: confidence.score,
+      confidenceDetail: confidence.detail,
     });
 
     const completedSession = await sessionManager.getSession(sessionId);
     if (completedSession?.transcriptionStartedAt) {
       const processingTime = (Date.now() - new Date(completedSession.transcriptionStartedAt).getTime()) / 1000;
-      const audioSec = session?.duration && session.duration > 0 ? session.duration : duration;
       await recordCompletion(audioSec, processingTime, false);
     }
 
     // Boosted WAVs are kept after a failure or cancel so a retry reuses them (AUG-125); removed once the transcript is written.
     if (boostedPath) await fs.unlink(boostedPath).catch(() => {});
+    await autoDeleteWavIfConfident(sessionId, confidence.score);
   } catch (err) {
     if (isCancelled()) return;
     const current = await sessionManager.getSession(sessionId);
@@ -140,7 +180,8 @@ async function runDualTranscription(
     const systemSegments = await transcribe(systemInput, language, sessionId, isCancelled);
 
     const aligned = alignDualSegments(micSegments, systemSegments, systemOffsetMs);
-    const utterances = mergeDualStream(aligned.mic, aligned.system);
+    const merged = mergeDualStreamDetailed(aligned.mic, aligned.system);
+    const utterances = merged.utterances;
 
     const session = await sessionManager.getSession(sessionId);
     const startedAt = session?.createdAt ?? new Date().toISOString();
@@ -148,6 +189,8 @@ async function runDualTranscription(
     const audioDuration = tracks ? alignedDualDuration(tracks.mic, tracks.system, systemOffsetMs) : 0;
     const lastEnd = utterances.length > 0 ? Math.max(...utterances.map((u) => u.end)) : 0;
     const duration = Math.max(audioDuration, lastEnd);
+    const confidence = computeConfidence({ tracks: [aligned.mic, aligned.system], dropped: merged.dropped, audioDurationSec: duration });
+    console.log(`[session ${sessionId}] confidence ${confidence.score}% (${confidence.detail.source}, coverage ${confidence.detail.coverage}, lowLogProb ${confidence.detail.lowLogProbShare}, dropped ${confidence.detail.dropped}/${confidence.detail.segments})`);
 
     const transcript = renderTranscript(utterances, startedAt, duration);
     await sessionManager.writeTranscript(sessionId, transcript);
@@ -155,6 +198,8 @@ async function runDualTranscription(
     await sessionManager.updateSession(sessionId, {
       status: 'completed',
       duration,
+      confidenceScore: confidence.score,
+      confidenceDetail: confidence.detail,
     });
 
     const completedSession = await sessionManager.getSession(sessionId);
@@ -167,6 +212,7 @@ async function runDualTranscription(
     // Boosted WAVs are kept after a failure or cancel so a retry reuses them (AUG-125); removed once the transcript is written.
     if (boostedMicPath) await fs.unlink(boostedMicPath).catch(() => {});
     if (boostedSystemPath) await fs.unlink(boostedSystemPath).catch(() => {});
+    await autoDeleteWavIfConfident(sessionId, confidence.score);
   } catch (err) {
     if (isCancelled()) return;
     const current = await sessionManager.getSession(sessionId);
@@ -228,6 +274,15 @@ router.get('/', async (_req, res) => {
   res.json(sessions);
 });
 
+// GET /api/sessions/storage (Archive page, AUG-150) — registered before /:id
+router.get('/storage', async (_req, res) => {
+  try {
+    res.json(await sessionManager.listStorage());
+  } catch (err) {
+    res.status(500).json({ error: (err as Error)?.message || 'Failed to read storage' });
+  }
+});
+
 // GET /api/sessions/:id
 router.get('/:id', async (req, res) => {
   const session = await sessionManager.getSession(req.params.id);
@@ -262,6 +317,141 @@ router.delete('/:id', async (req, res) => {
   }
   await sessionManager.deleteSession(req.params.id);
   res.status(204).end();
+});
+
+// DELETE /api/sessions/:id/audio[?file=name] (Archive page, AUG-150): removes audio, keeps transcript + session.json
+router.delete('/:id/audio', async (req, res) => {
+  const id = req.params.id;
+  if (!sessionManager.isValidSessionId(id)) {
+    res.status(400).json({ error: 'Invalid session id' });
+    return;
+  }
+  const session = await sessionManager.getSession(id);
+  if (!session) {
+    res.status(404).json({ error: 'Session not found' });
+    return;
+  }
+  if (isActive(session)) {
+    res.status(409).json({ error: 'Session is busy — wait until it finishes' });
+    return;
+  }
+  const file = typeof req.query.file === 'string' && req.query.file ? req.query.file : undefined;
+  try {
+    const result = await sessionManager.deleteSessionAudio(id, file);
+    if (!result) {
+      res.status(404).json({ error: 'Session not found' });
+      return;
+    }
+    res.json(result);
+  } catch (err) {
+    const message = (err as Error)?.message || 'Failed to delete audio';
+    res.status(message === 'Not an audio file of this session' ? 400 : 500).json({ error: message });
+  }
+});
+
+/// Re-download restores audio only (AUG-150): a session that still has its transcript returns to completed and is
+/// not re-transcribed; one without a transcript goes through the normal preparing → transcribing pipeline.
+// POST /api/sessions/:id/redownload
+router.post('/:id/redownload', async (req, res) => {
+  const id = req.params.id;
+  if (!sessionManager.isValidSessionId(id)) {
+    res.status(400).json({ error: 'Invalid session id' });
+    return;
+  }
+  const session = await sessionManager.getSession(id);
+  if (!session) {
+    res.status(404).json({ error: 'Session not found' });
+    return;
+  }
+  const url = session.sourceUrl;
+  if (!url) {
+    res.status(400).json({ error: 'This session has no source link to re-download from' });
+    return;
+  }
+  if (isActive(session)) {
+    res.status(409).json({ error: 'Session is busy — wait until it finishes' });
+    return;
+  }
+  const destDir = sessionManager.sessionAudioDir(id);
+  const present = await findAudioFiles(destDir);
+  if (present.mic || present.system || present.single) {
+    res.status(400).json({ error: 'Audio is already present' });
+    return;
+  }
+  const platform = isPlatformUrl(url);
+  if (platform && config.ytDlpSource !== 'path' && !(await fileExists(config.ytDlpPath))) {
+    res.status(400).json({ error: YTDLP_MISSING_MESSAGE });
+    return;
+  }
+
+  const updated = await sessionManager.updateSession(id, { status: 'uploading', downloadProgress: 0, error: undefined });
+  res.json(updated ?? session);
+
+  const controller = new AbortController();
+  activeDownloads.set(id, controller);
+  // Chained like the other download paths: overlapping read-modify-write updates of session.json can truncate it.
+  let progressWrites: Promise<unknown> = Promise.resolve();
+  const onProgress = (percent: number) => {
+    progressWrites = progressWrites
+      .then(() => sessionManager.updateSession(id, { downloadProgress: percent }))
+      .catch(() => {});
+  };
+
+  void (async () => {
+    try {
+      let filePath: string;
+      if (platform) {
+        const info = await probePlatformVideo(url, { destDir, sessionKey: id, signal: controller.signal });
+        const result = await downloadPlatformAudio(info.infoJsonPath, { destDir, sessionKey: id, signal: controller.signal, onProgress });
+        await fs.unlink(path.join(destDir, INFO_JSON_NAME)).catch(() => {});
+        filePath = result.filePath;
+      } else {
+        const result = await downloadFromUrl(url, { destDir, signal: controller.signal, onProgress });
+        filePath = result.filePath;
+      }
+
+      activeDownloads.delete(id);
+      await progressWrites;
+      if (controller.signal.aborted) return;
+
+      const hasTranscript = (await sessionManager.getTranscript(id)) !== null;
+      if (hasTranscript) {
+        await sessionManager.updateSession(id, {
+          status: 'completed',
+          downloadProgress: undefined,
+          audioDeletedAt: undefined,
+          wavAutoDeletedAt: undefined,
+          audioDeletedFiles: undefined,
+          error: undefined,
+        });
+      } else {
+        await sessionManager.updateSession(id, {
+          status: 'preparing',
+          downloadProgress: undefined,
+          audioDeletedAt: undefined,
+          wavAutoDeletedAt: undefined,
+          audioDeletedFiles: undefined,
+        });
+        void prepareAndTranscribe(id, filePath, session.language);
+      }
+    } catch (err) {
+      activeDownloads.delete(id);
+      await progressWrites;
+      if (platform) await fs.unlink(path.join(destDir, INFO_JSON_NAME)).catch(() => {});
+      const hasTranscript = (await sessionManager.getTranscript(id)) !== null;
+      const current = await sessionManager.getSession(id);
+      // Cancel already moved the session on (failed, or completed when a transcript exists); nothing left to report.
+      if (current?.status !== 'uploading') return;
+      const base = err instanceof YtDlpError || err instanceof UrlDownloadError
+        ? err.message
+        : (err as Error)?.message || 'Download failed';
+      await sessionManager.updateSession(id, {
+        status: hasTranscript ? 'completed' : 'failed',
+        downloadProgress: undefined,
+        error: `Re-download failed: ${base}`,
+      });
+    }
+  })();
 });
 
 // PATCH /api/sessions/:id
@@ -661,10 +851,15 @@ router.post('/:id/cancel', async (req, res) => {
   }
   cancelDownload(req.params.id);
   cancelTranscription(req.params.id);
-  const updated = await sessionManager.updateSession(req.params.id, {
-    status: 'failed',
-    error: 'Transcription cancelled by user',
-  });
+  // A cancelled audio re-download (AUG-150) must not hide a transcript that is still there.
+  const keepsTranscript = session.status === 'uploading' && !!session.audioDeletedAt
+    && (await sessionManager.getTranscript(req.params.id)) !== null;
+  const updated = await sessionManager.updateSession(
+    req.params.id,
+    keepsTranscript
+      ? { status: 'completed', downloadProgress: undefined, error: undefined }
+      : { status: 'failed', error: 'Transcription cancelled by user' },
+  );
   res.json(updated ?? session);
 });
 
@@ -723,6 +918,8 @@ router.post('/:id/retranscribe', async (req, res) => {
     const updated = await sessionManager.updateSession(req.params.id, {
       status: 'transcribing',
       error: undefined,
+      confidenceScore: undefined,
+      confidenceDetail: undefined,
       transcriptionStartedAt: new Date().toISOString(),
       duration: prep.duration > 0 ? prep.duration : undefined,
       ...(prep.estimatedDuration > 0 ? { estimatedDuration: prep.estimatedDuration } : {}),
@@ -738,6 +935,8 @@ router.post('/:id/retranscribe', async (req, res) => {
       const updated = await sessionManager.updateSession(req.params.id, {
         status: 'preparing',
         error: undefined,
+        confidenceScore: undefined,
+        confidenceDetail: undefined,
       });
       res.json(updated ?? session);
       void prepareAndTranscribe(req.params.id, audioFiles.single, language, !!boost);
@@ -747,6 +946,8 @@ router.post('/:id/retranscribe', async (req, res) => {
       const updated = await sessionManager.updateSession(req.params.id, {
         status: 'transcribing',
         error: undefined,
+        confidenceScore: undefined,
+        confidenceDetail: undefined,
         transcriptionStartedAt: new Date().toISOString(),
         duration: audioDur > 0 ? audioDur : undefined,
         ...(estDur > 0 ? { estimatedDuration: estDur } : {}),
@@ -755,6 +956,23 @@ router.post('/:id/retranscribe', async (req, res) => {
       res.json(updated ?? session);
     }
   } else {
+    if (session.wavAutoDeletedAt) {
+      const scoreText = typeof session.confidenceScore === 'number' ? ` (confidence ${session.confidenceScore}%)` : '';
+      res.status(400).json({
+        error: session.sourceUrl
+          ? `audio.wav was removed automatically after transcription${scoreText} and the source file is gone — re-download it from the link first`
+          : `audio.wav was removed automatically after transcription${scoreText} and the source file is gone — this session cannot be transcribed again`,
+      });
+      return;
+    }
+    if (session.audioDeletedAt) {
+      res.status(400).json({
+        error: session.sourceUrl
+          ? 'Audio was deleted — re-download it first'
+          : 'Audio was deleted — this session cannot be transcribed again',
+      });
+      return;
+    }
     res.status(400).json({ error: 'Audio file no longer exists for this session' });
   }
 });
@@ -764,10 +982,15 @@ export async function recoverOrphanedSessions() {
     const sessions = await sessionManager.listSessions();
     for (const session of sessions) {
       if ((session.status === 'transcribing' || session.status === 'preparing' || (session.status === 'uploading' && session.sourceUrl)) && !isTranscribing(session.id) && !activeDownloads.has(session.id)) {
-        await sessionManager.updateSession(session.id, {
-          status: 'failed',
-          error: 'Transcription interrupted (server restart or process crash)',
-        });
+        // An interrupted audio re-download (AUG-150) leaves the finished transcript readable.
+        const keepsTranscript = session.status === 'uploading' && !!session.audioDeletedAt
+          && (await sessionManager.getTranscript(session.id)) !== null;
+        await sessionManager.updateSession(
+          session.id,
+          keepsTranscript
+            ? { status: 'completed', downloadProgress: undefined }
+            : { status: 'failed', error: 'Transcription interrupted (server restart or process crash)' },
+        );
         console.log(`Recovered orphaned session: ${session.id} (${session.title})`);
       }
     }

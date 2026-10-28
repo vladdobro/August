@@ -467,7 +467,7 @@ async function vadModelAvailable(): Promise<boolean> {
 /// noSpeechProb in transcribe()'s output will typically be undefined —
 /// WhisperTranscriber's "layer 2" no-speech gate degrades gracefully to a
 /// no-op in that case; the hallucination blacklist and dedup logic in
-/// transcriptMerger.ts are the primary defenses and are unaffected.
+/// transcriptMerger.ts are the primary defenses and are unaffected. Upstream master still writes no segment-level no_speech_prob/avg_logprob (checked for AUG-152), so confidenceScore.ts works from per-token p instead.
 export async function runWhisper(opts: RunWhisperOptions): Promise<WhisperJsonOutput> {
   const { audioPath, language, outputBase, trackingKey } = opts;
   // Snapshot the binary and the GPU-state epoch at spawn time: the engine may switch or the CUDA variant may finish
@@ -602,6 +602,24 @@ export async function runWhisper(opts: RunWhisperOptions): Promise<WhisperJsonOu
   }
 }
 
+const SPECIAL_TOKEN = /^\[_/;
+
+/// whisper's avg_logprob is the mean token log-probability of a segment; whisper-cli 1.8.4 does not write it to JSON but
+/// does write each token's p with --output-json-full, so it is rebuilt here (AUG-152). Special tokens ([_BEG_], [_TT_n])
+/// are skipped. undefined when the segment has no scored tokens.
+export function avgLogProbFromTokens(tokens: Array<{ text: string; p: number }> | undefined): number | undefined {
+  if (!tokens || tokens.length === 0) return undefined;
+  let sum = 0;
+  let n = 0;
+  for (const token of tokens) {
+    if (typeof token.p !== 'number' || !Number.isFinite(token.p)) continue;
+    if (SPECIAL_TOKEN.test(token.text ?? '')) continue;
+    sum += Math.log(Math.min(1, Math.max(1e-9, token.p)));
+    n += 1;
+  }
+  return n > 0 ? sum / n : undefined;
+}
+
 /// Runs whisper-cli against `audioPath` and returns the parsed, per-segment
 /// transcript with numeric start/end times in seconds and (when whisper
 /// reports it) each segment's no_speech_prob. GPU mode comes from
@@ -637,6 +655,7 @@ export async function transcribe(
       // field even though the underlying whisper.dll API supports it, so this
       // is normally undefined — see the runWhisper() doc comment above.
       noSpeechProb: entry.no_speech_prob,
+      avgLogProb: typeof entry.avg_logprob === 'number' ? entry.avg_logprob : avgLogProbFromTokens(entry.tokens),
     }));
   } finally {
     release();

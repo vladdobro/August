@@ -4,7 +4,9 @@
 - August web app is a React + Vite client talking to a Node.js/Express + TypeScript server over REST.
 - Speech-to-text runs locally via whisper-cli (whisper.cpp) on Windows x64 and macOS arm64/x64, never a third-party AI API.
 - Sessions are stored as folders on disk for the MVP — no PostgreSQL yet, no auth yet.
-- Session CRUD includes create, list, get, delete, and rename (PATCH title update) via the REST API.
+- Session CRUD includes create, list, get, delete, and rename (PATCH title update) via the REST API; the Archive page (AUG-150) adds GET /api/sessions/storage (disk usage), DELETE /api/sessions/:id/audio (strip audio, keep transcript) and POST /api/sessions/:id/redownload.
+- Also known as: Archive page, storage usage, disk usage, delete audio, free space, session cleanup, re-download audio (AUG-150), auto-delete WAV, confidence score, automatic cleanup (AUG-152).
+- session.json carries confidenceScore (0–100), confidenceDetail and wavAutoDeletedAt; GET /api/sessions/storage entries gain wavAutoDeleted and files[] gain auto: true for WAVs removed by the confidence rule (AUG-152).
 - Transcription runs as a background child process; the client polls session status every 5 seconds.
 - Dev mode: server on port 3001 redirects non-API requests to Vite dev server on port 5173; open 5173 for the latest UI.
 - Production mode: server serves the built client from client/dist via express.static; the Electron shell runs this mode on a free port.
@@ -45,6 +47,12 @@ Give any agent working on the codebase a map of the client/server split, how a s
 - Session: the unit of work — one audio recording plus its transcript and metadata, stored as a folder under server/data/sessions/.
 - whisper-cli integration: the server shells out to a local whisper.cpp binary as a child process to transcribe session audio.
 - TranscriptMerger: a TypeScript service that turns raw whisper.cpp segment output into a clean, deduplicated transcript.
+
+## Components
+
+- sessionManager (component): part of the August server; owns session folder lifecycle, storage sizing, audio deletion (AUG-150) and derived-WAV auto-deletion (AUG-152).
+- confidenceScore (component): part of the August server; computes the 0–100 transcription confidence that the sessions route stores and the auto-delete rule compares against the threshold (AUG-152).
+- ArchivePage (component): part of the August client; page that uses the storage, delete-audio and redownload endpoints (AUG-150).
 
 ## Invariants
 
@@ -138,7 +146,7 @@ Give any agent working on the codebase a map of the client/server split, how a s
 - The live WebSocket binds a server capture with an {type: "attach-capture", captureId} text frame, so live mode shows no screen picker and the browser sends only mic chunks.
 - With System audio source = Browser, live mode keeps the screen picker and taps both streams in the browser.
 - IndexedDB crash recovery saves only the mic track when the system track is server-captured (dualTrack false) — the orphaned capture is cleaned on server restart rather than recovered.
-- The server never auto-deletes sessions after transcription; the former <30 s rule silently erased short recordings (measured by last-utterance end, not audio length) and was removed in AUG-121.
+- The server never auto-deletes sessions after transcription; the former <30 s rule silently erased short recordings (measured by last-utterance end, not audio length) and was removed in AUG-121. Sessions, transcripts and source audio are removed only by explicit user actions (sidebar delete, Archive page); the one automatic removal is the opt-in confidence rule for converted WAVs (AUG-152, see Session storage & audio deletion).
 - Sessions can be renamed via PATCH /api/sessions/:id with a JSON body { title }; the client triggers this by double-clicking the session title in the sidebar.
 - Dev/prod static serving: when NODE_ENV !== 'production' (dev mode), server/src/index.ts redirects browser requests to the Vite dev server at http://127.0.0.1:5173 instead of serving stale client/dist files; in production, express.static serves client/dist normally.
 - Praxis integration writes task files directly to the target project's .praxis/tasks/new/ directory — no dependency on a running Praxis MCP server.
@@ -158,13 +166,35 @@ Give any agent working on the codebase a map of the client/server split, how a s
 - The template enforces merge-don't-replace for route updates — new information merges into existing records, never overwrites them.
 - Exported tasks are always assigned to assistant.json unconditionally.
 
+### Session storage & audio deletion (AUG-150, AUG-152)
+
+- The Archive page is a standalone page opened from the sidebar menu item "Archive" (state showArchive in App.tsx), not a Settings tab.
+- GET /api/sessions/storage returns { sessionsDir, totalBytes, sessions[] } with per-session source (recording | upload | link | platform), totalBytes, audioBytes, audioDeleted, wavAutoDeleted (AUG-152) and files[] (name, bytes, kind, note, deleted, auto).
+- The storage route is registered before GET /:id so "storage" is never parsed as a session id.
+- File kind is audio | transcript | meta | other; file note is original | converted | boosted.
+- AUDIO_FILE_PATTERN /^audio(-mic|-system)?[.-]/ decides which files count as audio: source audio, derived audio.wav, and -boosted / -partial WAVs.
+- DELETE /api/sessions/:id/audio[?file=name] removes audio files, keeps transcript.md and session.json, and returns { session, freedBytes }.
+- Delete-audio status codes: 400 invalid id or non-audio file, 404 missing session, 409 when the session is uploading, preparing or transcribing or has a live job or download.
+- session.json gains audioDeletedFiles [{name, bytes, auto?}], shown struck-through in the Archive breakdown as "deleted" (manual) or "auto-deleted" when auto is true (AUG-152).
+- session.json gains audioDeletedAt, set only when no audio file remains.
+- isValidSessionId accepts [A-Za-z0-9_-]{1,128} and path.resolve must stay directly inside config.sessionsDir; the new endpoints use it.
+- DELETE /api/sessions/:id (sidebar delete with 5 s undo) is unchanged; Archive "Delete session" calls the same endpoint.
+- POST /api/sessions/:id/redownload works only for sessions with sourceUrl, no audio left and not active; it fetches via yt-dlp (platform URL) or direct download into the session dir.
+- Re-download restores audio only: with transcript.md present the session returns to completed without re-transcription and audioDeleted* are cleared; without a transcript it goes preparing then transcribing.
+- Re-download failure leaves the session completed with error "Re-download failed: …" when a transcript exists, otherwise failed.
+- Cancel during re-download and orphan recovery of an uploading session with audioDeletedAt plus a transcript restore status completed instead of failed.
+- Archive never deletes or strips active sessions; the server enforces this with 409.
+- Automatic cleanup (AUG-152): when a batch transcription completes with the autoDeleteWav preference on and confidenceScore ≥ autoDeleteWavThreshold (50–95, default 70), sessionManager.autoDeleteDerivedWavs removes converted WAVs that have a non-WAV source beside them, records them with auto: true and sets wavAutoDeletedAt; audioDeletedAt stays unset and source files are never auto-deleted.
+- Re-download clears wavAutoDeletedAt together with audioDeletedAt and audioDeletedFiles; retranscription rebuilds an auto-deleted WAV through ensureWav because the source is still there (AUG-152).
+
 ## Key files
 
 - server/src/app.ts — startServer(): Express app, route wiring, HTTP+WebSocket listen, returns the bound port.
 - server/src/index.ts — CLI entry; calls startServer() and exits on failure.
 - server/src/services/whisper.ts — whisper-cli child_process invocation (runWhisper) and JSON output parsing.
 - server/src/services/transcriptMerger.ts — filtering, dedup, and join logic that turns raw segments into a transcript.
-- server/src/services/sessionManager.ts — session folder lifecycle (create, read, update status).
+- server/src/services/confidenceScore.ts — computeConfidence: 0–100 confidence from whisper segment probabilities, merger drops and audio coverage (AUG-152).
+- server/src/services/sessionManager.ts — session folder lifecycle (create, read, update status), isValidSessionId, AUDIO_FILE_PATTERN, listStorage/getSessionStorage, deleteSessionAudio (AUG-150) and autoDeleteDerivedWavs (AUG-152).
 - client/src/App.tsx — client app shell and top-level routing/state.
 - client/src/vite-env.d.ts — Vite client type declarations (import.meta.env).
 - server/src/config.ts — platform binary resolution, model constants, AUGUST_DATA_DIR data-root override, .env loading, resolveAudioteePath (AUG-118).

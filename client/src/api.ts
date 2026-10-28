@@ -1,4 +1,4 @@
-import type { CaptureCapabilities, HealthStatus, ModelSetupStatus, ServerCapture, SessionMetadata, TranscriptionLanguage } from './types';
+import type { CaptureCapabilities, HealthStatus, ModelSetupStatus, ServerCapture, SessionMetadata, StorageSummary, TranscriptionLanguage } from './types';
 
 export interface UploadProgress {
   loaded: number;
@@ -155,6 +155,21 @@ export async function retranscribeSession(id: string, language?: string, boost?:
 
 export async function cancelTranscription(id: string): Promise<SessionMetadata> {
   const res = await fetch(`${API_BASE}/sessions/${id}/cancel`, { method: 'POST' });
+  return handleJsonResponse<SessionMetadata>(res);
+}
+
+export async function fetchStorage(): Promise<StorageSummary> {
+  const res = await fetch(`${API_BASE}/sessions/storage`);
+  return handleJsonResponse<StorageSummary>(res);
+}
+
+export async function deleteSessionAudio(id: string, file?: string): Promise<{ session: SessionMetadata; freedBytes: number }> {
+  const res = await fetch(`${API_BASE}/sessions/${id}/audio${file ? `?file=${encodeURIComponent(file)}` : ''}`, { method: 'DELETE' });
+  return handleJsonResponse<{ session: SessionMetadata; freedBytes: number }>(res);
+}
+
+export async function redownloadSessionAudio(id: string): Promise<SessionMetadata> {
+  const res = await fetch(`${API_BASE}/sessions/${id}/redownload`, { method: 'POST' });
   return handleJsonResponse<SessionMetadata>(res);
 }
 

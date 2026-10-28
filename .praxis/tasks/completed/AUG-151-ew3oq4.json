@@ -1,0 +1,19 @@
+{
+  "id": "AUG-151-ew3oq4",
+  "assignee": "storm.json",
+  "priority": "high",
+  "status": "completed",
+  "title": "[AUG-151] Research & design mockups for Archive tab in Settings",
+  "why_we_need_this": "AUG-150 adds a complex new Archive tab to Settings with session listing, disk usage, per-file breakdowns, and bulk deletion. Before implementing, we need to validate the UX layout, interaction patterns (multi-select, confirmations, re-download flow), and how it fits the existing Settings modal structure (600px width, brutalist design). Getting the design right first avoids rework on a feature that touches both frontend and backend.",
+  "acceptance_criteria": "- [ ] Interactive HTML mockup of the Archive tab showing: summary header (data dir path, total size), session list with columns (title, date, source type, total size, file breakdown)\n- [ ] Mockup demonstrates multi-select with checkboxes, \"Select all\", bulk action bar with \"Delete audio only\" and \"Delete session\" buttons\n- [ ] Mockup shows confirmation dialog for destructive actions with space-to-be-freed calculation\n- [ ] Mockup shows per-session expand/collapse for file breakdown (source audio, audio.wav, transcript, session.json)\n- [ ] Mockup shows \"audio deleted\" state for sessions missing audio files, with re-download option for link/YouTube sources\n- [ ] Mockup shows the optional \"Delete audio.wav after transcription\" toggle\n- [ ] Design follows brandbook: 0 border-radius, necron palette, color priority schema (red only for destructive), terminal font for paths/sizes\n- [ ] Decision documented: how to handle sessions in active states (recording/uploading/transcribing) — disabled rows vs hidden vs greyed out",
+  "important_constraints": "Depends on: AUG-150 (implementation task). This is pre-work research only — no code changes. Settings modal is min(600px, 100%) wide. The tab strip already has 4 tabs (General, Audio, Transcription, Projects) — 5th tab must not overflow on mobile (720px breakpoint).\n\n## ✅ Итог (2026-10-28)\n**Что сделано:** Интерактивный HTML-макет Archive page (3 версии). V1 — таб в Settings; V2 — убран auto-cleanup, добавлены per-file delete кнопки; V3 — вынесен из Settings в standalone page из hamburger menu (как Diagnostics). Все дизайн-решения и спек перенесены в AUG-150.\n**Как:** Макет построен на Necron palette + brutalist angular design (border-radius: 0). Выбран подход disabled rows для активных сессий (не hidden — чтобы пользователь не думал что сессии пропали). Re-download flow только для сессий с sourceUrl. Per-file delete только для аудио-файлов.\n**Файлы:** @scratchpad/archive-tab-mockup.html, макет опубликован: https://claude.ai/artifact/QwvDNRDKKFWSXcKFGisrir\n**PR / коммиты:** нет (research-only задача, без изменений в коде).\n**Грабли:** Artifact inline edits — \"all or none\" семантика, если одна из 5 правок не совпадает, все 5 отклоняются. Лучше делать через Edit tool + republish.\n**Хвосты:** Auto-cleanup toggle — отдельная задача AUG-152. Реализация всего — AUG-150.",
+  "labels": [
+    "ux",
+    "research",
+    "settings"
+  ],
+  "on_hold_reason": "",
+  "contextRouterIncluded": true,
+  "created_at": 1793195952051,
+  "column_entered_at": 1793203756187
+}

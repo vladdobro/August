@@ -253,6 +253,18 @@ function revealSession(sessionId: unknown): { ok: boolean; error?: string } {
   return { ok: true };
 }
 
+/// Opens the sessions data dir itself (Archive page, AUG-150); no renderer input reaches the path.
+async function revealSessionsDir(): Promise<{ ok: boolean; error?: string }> {
+  const dir = sessionsDir();
+  try {
+    if (!fs.statSync(dir).isDirectory()) return { ok: false, error: 'Sessions folder not found' };
+  } catch {
+    return { ok: false, error: 'Sessions folder not found' };
+  }
+  const error = await shell.openPath(dir);
+  return error ? { ok: false, error } : { ok: true };
+}
+
 function createWindow(appUrl: string): BrowserWindow {
   const win = new BrowserWindow({
     width: 1280,
@@ -369,6 +381,7 @@ function registerIpc(): void {
   }));
 
   ipcMain.handle('august:reveal-session', (_e, sessionId: unknown) => revealSession(sessionId));
+  ipcMain.handle('august:reveal-sessions-dir', () => revealSessionsDir());
 
   ipcMain.handle('august:set-record-hotkey', (_e, accelerator: unknown) => {
     const next = typeof accelerator === 'string' && accelerator.trim() ? accelerator.trim() : null;

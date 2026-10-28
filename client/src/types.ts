@@ -22,7 +22,18 @@ export interface SessionMetadata {
   trackWarning?: string;
   sourceUrl?: string;
   downloadProgress?: number;
+  // AUG-150: set when every audio file was removed from the Archive page; transcript and metadata remain.
+  audioDeletedAt?: string;
+  audioDeletedFiles?: Array<{ name: string; bytes: number; auto?: boolean }>;
+  confidenceScore?: number; // AUG-152: 0–100 transcription confidence
+  wavAutoDeletedAt?: string; // AUG-152: converted WAV removed automatically; source audio kept
 }
+
+export type SessionSource = 'recording' | 'upload' | 'link' | 'platform';
+export type StorageFileKind = 'audio' | 'transcript' | 'meta' | 'other';
+export interface SessionStorageFile { name: string; bytes: number; kind: StorageFileKind; note?: 'original' | 'converted' | 'boosted'; deleted?: boolean; auto?: boolean; }
+export interface SessionStorageEntry { id: string; title: string; createdAt: string; status: SessionStatus; source: SessionSource; sourceUrl?: string; error?: string; totalBytes: number; audioBytes: number; audioDeleted: boolean; wavAutoDeleted: boolean; files: SessionStorageFile[]; }
+export interface StorageSummary { sessionsDir: string; totalBytes: number; sessions: SessionStorageEntry[]; }
 
 export interface HealthStatus {
   status: string;

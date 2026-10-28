@@ -24,13 +24,42 @@ export interface SessionMetadata {
   trackWarning?: string;
   sourceUrl?: string;
   downloadProgress?: number;
+  // AUG-150: set when every audio file was removed from the Archive page; transcript.md and session.json remain.
+  audioDeletedAt?: string;
+  // AUG-150: audio files removed from the Archive page (name + size at deletion), shown struck-through in the breakdown.
+  audioDeletedFiles?: Array<{ name: string; bytes: number; auto?: boolean }>;
+  // AUG-152: 0–100 transcription confidence computed after whisper finishes (services/confidenceScore.ts).
+  confidenceScore?: number;
+  // AUG-152: diagnostic breakdown behind confidenceScore — kept in session.json, never shown in the UI.
+  confidenceDetail?: ConfidenceDetail;
+  // AUG-152: set when the converted WAV(s) were removed automatically after a confident transcription; source audio stays.
+  wavAutoDeletedAt?: string;
 }
+
+/// AUG-152: how confidenceScore was derived. 'no-speech-prob' when the binary exported no_speech_prob, 'token-logprob'
+/// when only per-token probabilities were available (whisper-cli 1.8.4), 'coverage-only' when neither was.
+export interface ConfidenceDetail {
+  source: 'no-speech-prob' | 'token-logprob' | 'coverage-only';
+  segments: number;
+  dropped: number;
+  coverage: number;
+  lowLogProbShare: number;
+  noSpeechBase: number;
+}
+
+export type SessionSource = 'recording' | 'upload' | 'link' | 'platform';
+export type StorageFileKind = 'audio' | 'transcript' | 'meta' | 'other';
+export interface SessionStorageFile { name: string; bytes: number; kind: StorageFileKind; note?: 'original' | 'converted' | 'boosted'; deleted?: boolean; auto?: boolean; }
+export interface SessionStorageEntry { id: string; title: string; createdAt: string; status: SessionStatus; source: SessionSource; sourceUrl?: string; error?: string; totalBytes: number; audioBytes: number; audioDeleted: boolean; wavAutoDeleted: boolean; files: SessionStorageFile[]; }
+export interface StorageSummary { sessionsDir: string; totalBytes: number; sessions: SessionStorageEntry[]; }
 
 export interface TranscriptSegment {
   start: number; // seconds
   end: number; // seconds
   text: string;
   noSpeechProb?: number;
+  // mean ln(token p) over the segment's non-special tokens (AUG-152), or whisper's avg_logprob when exported
+  avgLogProb?: number;
 }
 
 export interface WhisperJsonOutput {
@@ -39,6 +68,8 @@ export interface WhisperJsonOutput {
     offsets: { from: number; to: number };
     text: string;
     no_speech_prob?: number;
+    avg_logprob?: number;
+    tokens?: Array<{ text: string; id?: number; p: number }>;
   }>;
 }
 

@@ -59,3 +59,6 @@ Thumbs.db
 .praxis/analytics
 /package-lock.json
 .praxis/graph.json
+
+# Local installed copy of the packaged app (manual install for testing)
+installed/
