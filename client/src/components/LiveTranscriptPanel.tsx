@@ -20,6 +20,8 @@ interface LiveTranscriptPanelProps {
   onClose: () => void;
   onStop: () => void;
   onClearAll: () => void;
+  elapsed: string;
+  onEndRecording: () => void;
 }
 
 const STATUS_LABEL: Record<LiveStatus, string> = {
@@ -31,7 +33,7 @@ const STATUS_LABEL: Record<LiveStatus, string> = {
 };
 
 const LiveTranscriptPanel: React.FC<LiveTranscriptPanelProps> = ({
-  lines, status, error, warning, micUnavailable, onPause, onResume, onCopyAll, onClose, onStop, onClearAll,
+  lines, status, error, warning, micUnavailable, onPause, onResume, onCopyAll, onClose, onStop, onClearAll, elapsed, onEndRecording,
 }) => {
   const bodyRef = useRef<HTMLDivElement>(null);
   const [autoScroll, setAutoScroll] = useState(true);
@@ -67,63 +69,26 @@ const LiveTranscriptPanel: React.FC<LiveTranscriptPanelProps> = ({
   const isDone = status === 'interrupted' || status === 'stopped';
 
   return (
-    <aside className="live-panel" aria-label="Live transcript">
-      <svg className="live-panel-hex-bg" viewBox="0 0 300 800" preserveAspectRatio="none" aria-hidden="true">
-        <defs>
-          <pattern id="live-hex-grid" width="28" height="48.5" patternUnits="userSpaceOnUse" patternTransform="scale(1.2)">
-            <path d="M14 0L28 8.1V24.2L14 32.3L0 24.2V8.1Z" fill="none" stroke="currentColor" strokeWidth="0.5"/>
-            <path d="M14 16.2L28 24.3V40.4L14 48.5L0 40.4V24.3Z" fill="none" stroke="currentColor" strokeWidth="0.5"/>
-          </pattern>
-        </defs>
-        <rect width="100%" height="100%" fill="url(#live-hex-grid)"/>
-      </svg>
-      <div className="live-panel-header">
-        <div className="live-panel-title-row">
-          <span className="live-panel-title">Live Transcript</span>
-          <button type="button" className="live-panel-close" onClick={onClose} aria-label="Close live transcript">
-            ×
-          </button>
-        </div>
-        <div className={`live-panel-status live-panel-status--${status}`}>
+    <section className="live-panel" aria-label="Live transcript">
+      <div className="live-topbar">
+        <span className="live-topbar-rec">
+          <span className="recording-dot" aria-hidden="true" />
+          <span className="live-topbar-timer">{elapsed}</span>
+        </span>
+        <span className={`live-panel-status live-panel-status--${status}`}>
           {status === 'listening' && <span className="live-panel-dot" aria-hidden="true" />}
           {STATUS_LABEL[status]}
+        </span>
+        <div className="live-topbar-actions">
+          <button type="button" className="live-panel-btn live-panel-btn--pause" onClick={isPaused ? onResume : onPause} disabled={isDone}>{isPaused ? 'Resume' : 'Pause'}</button>
+          <button type="button" className="live-panel-btn live-panel-btn--copy" onClick={onCopyAll} disabled={lines.length === 0}>Copy All</button>
+          <button type="button" className="live-panel-btn live-panel-btn--clear" onClick={() => setConfirmAction('clearAll')} disabled={lines.length === 0}>Clear All</button>
+          <button type="button" className="live-panel-btn live-panel-btn--stop" onClick={() => setConfirmAction('stop')} disabled={isDone} title="Stop live transcription, keep recording">Stop Live</button>
+          <button type="button" className="live-panel-btn live-panel-btn--end" onClick={onEndRecording} title="Stop recording and transcribe">End Recording</button>
         </div>
-        {micUnavailable && (
-          <div className="live-panel-notice">Microphone unavailable — showing Them only</div>
-        )}
-        {error && <div className="live-panel-warning">{error}</div>}
-        {warning && <div className="live-panel-notice">{warning}</div>}
-        <div className="live-panel-actions">
-          <button
-            type="button"
-            className={`live-panel-btn live-panel-btn--pause`}
-            onClick={isPaused ? onResume : onPause}
-            disabled={isDone}
-          >
-            {isPaused ? 'Resume' : 'Pause'}
-          </button>
-          <button type="button" className="live-panel-btn live-panel-btn--copy" onClick={onCopyAll} disabled={lines.length === 0}>
-            Copy All
-          </button>
-          <button
-            type="button"
-            className="live-panel-btn live-panel-btn--stop"
-            onClick={() => setConfirmAction('stop')}
-            disabled={isDone}
-          >
-            Stop
-          </button>
-          <button
-            type="button"
-            className="live-panel-btn live-panel-btn--clear"
-            onClick={() => setConfirmAction('clearAll')}
-            disabled={lines.length === 0}
-          >
-            Clear All
-          </button>
-        </div>
+        <span className="live-topbar-spacer" />
+        <button type="button" className="live-panel-close" onClick={onClose} aria-label="Hide live transcript" title="Hide live transcript">×</button>
       </div>
-
       {confirmAction && (
         <div className="live-panel-confirm">
           <span className="live-panel-confirm-text">Are you sure?</span>
@@ -138,32 +103,43 @@ const LiveTranscriptPanel: React.FC<LiveTranscriptPanelProps> = ({
         </div>
       )}
 
-      <div className="live-panel-divider" aria-hidden="true">
-        <span className="live-panel-divider-dot" />
-        <span className="live-panel-divider-dot" />
-        <span className="live-panel-divider-dot" />
-        <span className="live-panel-divider-dot" />
-        <span className="live-panel-divider-dot" />
-      </div>
-      <div className="live-panel-body" ref={bodyRef} onScroll={handleScroll}>
-        {lines.length === 0 && (status === 'listening' || status === 'connecting') && (
-          <div className="live-panel-empty">Waiting for speech…</div>
-        )}
-        {lines.map((line, i) => (
-          <div key={i} className="live-line">
-            <span className={`live-line-speaker live-line-speaker--${line.speaker.toLowerCase()}`}>
-              {line.speaker}:
-            </span>
-            <span className="live-line-text">{line.text}</span>
-          </div>
-        ))}
-      </div>
-      {!autoScroll && (
-        <button type="button" className="live-panel-jump" onClick={jumpToLive} aria-label="Jump to latest">
-          ↓ Live
-        </button>
+      {(micUnavailable || error || warning) && (
+        <div className="live-panel-notices">
+          {micUnavailable && <div className="live-panel-notice">Microphone unavailable — showing Them only</div>}
+          {error && <div className="live-panel-warning">{error}</div>}
+          {warning && <div className="live-panel-notice">{warning}</div>}
+        </div>
       )}
-    </aside>
+      <div className="live-panel-canvas">
+        <svg className="live-panel-hex-bg" viewBox="0 0 300 800" preserveAspectRatio="none" aria-hidden="true">
+          <defs>
+            <pattern id="live-hex-grid" width="28" height="48.5" patternUnits="userSpaceOnUse" patternTransform="scale(1.2)">
+              <path d="M14 0L28 8.1V24.2L14 32.3L0 24.2V8.1Z" fill="none" stroke="currentColor" strokeWidth="0.5"/>
+              <path d="M14 16.2L28 24.3V40.4L14 48.5L0 40.4V24.3Z" fill="none" stroke="currentColor" strokeWidth="0.5"/>
+            </pattern>
+          </defs>
+          <rect width="100%" height="100%" fill="url(#live-hex-grid)"/>
+        </svg>
+        <div className="live-panel-body" ref={bodyRef} onScroll={handleScroll}>
+          {lines.length === 0 && (status === 'listening' || status === 'connecting') && (
+            <div className="live-panel-empty">Waiting for speech…</div>
+          )}
+          {lines.map((line, i) => (
+            <div key={i} className="live-line">
+              <span className={`live-line-speaker live-line-speaker--${line.speaker.toLowerCase()}`}>
+                {line.speaker}:
+              </span>
+              <span className="live-line-text">{line.text}</span>
+            </div>
+          ))}
+        </div>
+        {!autoScroll && (
+          <button type="button" className="live-panel-jump" onClick={jumpToLive} aria-label="Jump to latest">
+            ↓ Live
+          </button>
+        )}
+      </div>
+    </section>
   );
 };
 

@@ -6,6 +6,7 @@
 - Light mode uses muted sage/stone grays (#c4cec8, #d0d8d3) — no white backgrounds or bright greens allowed.
 - Dark mode accent is gauss green (#00c876); light mode accent is deep forest green (#0a7b50).
 - All theme-dependent colors use CSS variables; dark mode overrides use :root[data-theme='dark'] selectors.
+- Layout is transcript-first (AUG-154): main content always takes 100% width; SessionList lives in a left overlay and ControlsPanel (New session, Settings, Archive, API Keys, Diagnostics) in a right glass overlay, opened by the always-visible bottom pin bar ([ Sessions / Controls ]), Ctrl/Cmd+1 / Ctrl/Cmd+2, or 8px edge-hover zones (200ms); Esc, backdrop click or the toggle closes them. Only one overlay is open at a time; state is not persisted.
 - Sidebar uses V3 Bracketed design with [ bracket — node — bracket ] rows, hex grid background, orbital-circle filter chips with connecting rays, and "planet parade" layout.
 - Sidebar header shows the clickable August logo left of the title; clicking it creates a new session.
 - FileUpload uses a circuit-node radial layout with SVG connection lines and positioned circular control nodes.
@@ -28,11 +29,12 @@
 - Modals use rgba(0,0,0,0.45) backdrop with blur(8px), 0 border-radius card with 28px padding, modePickerFadeIn animation.
 - Long-press (≥500ms) on the Record button starts recording with saved preferences, bypassing the RecordingModePicker.
 - All animations and transitions disabled under prefers-reduced-motion: reduce.
-- Responsive: 720px switches to vertical layout, shrinks circuit nodes; 640px makes live panel full-width; 600px shrinks chronometer.
+- Responsive: 720px shrinks circuit nodes and paddings (no vertical sidebar stack — the sidebar is an overlay of width min(320px, 88vw)); 640px lets the live top bar wrap; 600px shrinks chronometer.
 - Sidebar footer shows a GPU/CPU indicator strip; green for GPU, yellow for CPU fallback, with an Idle/Transcribing sublabel.
 - Archive page (AUG-150) is a standalone page from the sidebar ≡ menu (not a Settings tab): storage card, CRT scan-line session list with select-all, expandable per-file breakdown, sticky bulk bar and in-app blur-backdrop confirm dialogs; red only on destructive buttons.
 - Confidence badge (.confidence-badge, AUG-152): terminal-font 10px outline chip with 0 radius and a 5px square marker; green ≥ 80 (--status-completed), amber 60–79 (--status-uploading), red < 60 (--status-failed); shown in the sidebar session meta and the transcript header for completed sessions only.
-- Also known as: Archive page, storage page, delete audio UI, bulk delete (AUG-150), confidence badge, auto-deleted label, threshold slider (AUG-152).
+- Compact Mode (AUG-155, brainstormed, not implemented): while recording, the Electron window shrinks to a 360px dock strip (Live) or a 180px timer square (Default) and restores saved bounds on End Recording.
+- Also known as: Bold Layout, transcript-first layout, overlay panels, pin bar, panel layout, layout overlays (AUG-154), Compact Mode, compact layout, dock strip, timer square, Ghost HUD, auto-collapse on recording (AUG-155), Archive page, storage page, delete audio UI, bulk delete (AUG-150), confidence badge, auto-deleted label, threshold slider (AUG-152).
 
 The frontend design system defines the Necron-themed visual language, color tokens, theme switching, and component styling rules for the August web app.
 
@@ -389,11 +391,40 @@ In dark mode, accent shifts from deep forest (#0a7b50) to gauss green (#00c876) 
 Dark mode card backgrounds shift from translucent sage to translucent near-black with slightly higher opacity (0.88 → 0.92).
 Dark mode borders use necron green rgba instead of forest green rgba — all borders slightly greener.
 
+### Transcript-first layout and overlays (AUG-154)
+
+- App.tsx renders `.app-layout` (full-width `.main-content`) plus `OverlayLayer`; SessionList and ControlsPanel are passed in as overlay contents and stay mounted (hidden with transform + visibility), so sidebar state survives closing.
+- Overlay state is `openOverlay: 'sessions' | 'controls' | null` in App.tsx; it is never persisted, so the app always starts with both overlays closed.
+- Every navigation action from either overlay (select session, New session, Diagnostics, Archive, API Keys, Settings) closes the overlay before acting, so modals (z-index 50) never open beneath an overlay.
+- Z-order: edge triggers 44 < pin bar 45 < backdrop 46 < overlay panels 47 < modals 50. The fixed ThemeToggle (z 50) is hidden while an overlay is open (`.app-layout--overlay-open .theme-toggle`).
+- Keyboard: a window keydown listener in App.tsx maps Ctrl or Cmd + Digit1/Digit2 (checked by `e.code` so non-Latin layouts work) to toggle, Escape to close all.
+- Edge triggers are disabled on `(hover: none)` devices and while an overlay is open.
+- After an overlay closes, edge hover is suppressed until the cursor leaves the edge zone (or 400ms pass with no zone hovered); otherwise Esc after an edge-hover open re-opened the panel 200ms later, because the zone reappears under the resting cursor.
+- `.main-content` reserves 56px bottom padding for the pin bar; the Archive sticky bulk bar sits at `bottom: 60px` and the live "↓ Live" jump button at `bottom: 72px` for the same reason.
+- Scan-line texture (2px/4px repeating-linear-gradient) covers `.transcript-body` and the live transcript canvas.
+
+### Compact Mode (AUG-155, brainstorm only — not implemented)
+
+- Status: design decision recorded 2026-10-29 from the AUG-155 brainstorm; no code exists yet. The brainstorm document and the two interactive mockups (Dock Strip, Ghost HUD) are linked in the AUG-155 task card.
+- Recommended approach: same-window Compact Mode — the recording window resizes to a right-edge dock strip (default 360px, user range 280–520px) in Live mode or a 180×180 timer square in Default mode; the Ghost HUD transparent always-on-top widget is a later phase.
+- Collapse happens 300ms after the recording actually starts (not on click), closes overlays and the pin bar, hides the theme toggle and compresses the live top bar to 24px; nothing unmounts (FileUpload must stay mounted while recording).
+- Expand on End Recording restores a bounds snapshot (position, size, maximized flag) and lands on the new session's TranscriptView; Stop Live keeps recording and morphs the strip into the square.
+- Expand policy is a preference: expand immediately on stop, or stay compact until the user clicks the window (calls usually outlive recordings).
+- Manual expand while recording: `[ ⤢ ]` in the compact header, Esc, Ctrl/Cmd+Shift+C, double-click on the header, or a tray item; the full live top bar gets `[ ⤡ COMPACT ]` to re-enter.
+- Compact strip visual rules: 3px left speaker bar (Me accent, Them amber) instead of the `Me:`/`Them:` prefix, latest line bright and older lines fading, scan-line texture, `↓ Live` jump button when auto-follow is paused, 1px strong outline so the edge reads over any wallpaper.
+- Compact square visual rules: 28px tabular timer, 12 level bars and no dB numbers, the whole bottom edge is `[ STOP ]`; the stop confirmation is inline (`END RECORDING?` + `[ YES ]` `[ NO ]`) and respects skipStopConfirmation.
+- Errors never auto-expand: an interrupted live stream turns the compact header red with `[ RETRY ]` `[ OPEN ]`, a lost capture shows `CAPTURE LOST` + `[ OPEN AUGUST ]`; a native notification fires only while the window is hidden.
+- Planned preferences in UserPreferences: compactOnRecording (default true), compactShape 'auto' | 'square' | 'hidden', compactAlwaysOnTop (default true), compactExpandOn 'stop' | 'focus', compactStripWidth (360); desktop-only rows render only when window.august exists, and the browser build gets the in-window layout without a window resize.
+- Electron constraint: the BrowserWindow minimum size 960×600 must be lowered with setMinimumSize before any compact resize and restored on expand; compact bounds come from screen.getDisplayMatching(bounds).workArea.
+- Electron constraint: macOS setBounds animates natively, Windows does not, so the in-window CSS transition (200ms) carries the motion and the window resize is a cut on Windows.
+- Always-on-top divergence: Windows needs setAlwaysOnTop(true) only; macOS needs setAlwaysOnTop(true, 'floating') plus setVisibleOnAllWorkspaces(true, { visibleOnFullScreen: true }) to float over a full-screen call.
+- Electron cannot resize other apps' windows, so compact docks to the right edge of the current display and shows a one-time hint to snap the call into the freed space.
+- Proposed bridge method setCompactMode({ shape }) must be added to electron/src/preload.cts and client/src/desktop.d.ts together.
+
 ### Responsive Breakpoints
 
 720px breakpoint (tablet/mobile):
-- App layout switches from horizontal flex to vertical column
-- Sidebar: width 100%, max-height 40vh
+- App layout stays a single full-width column (AUG-154 removed the vertical sidebar stack; the sidebar is an overlay)
 - Circuit nodes: center 100px → 84px, corners 64px → 56px
 - Node glyph: 24px → 20px
 - Node ring inset: 8px → 6px
@@ -648,6 +679,8 @@ Status badge colors (uploading, transcribing, completed, failed) must remain dis
 - client/index.html — Inline SVG favicon with necron dark background and gauss green text
 - client/src/components/TranscriptView.tsx — Transcript display, export dropdown with copy/download options; includes the ChronoRing local component for transcription ETA countdown.
 - client/src/components/FileUpload.tsx — Circuit-node radial layout for recording and upload controls
+- client/src/components/OverlayLayer.tsx — edge triggers, backdrop, left/right overlay panels and the bottom pin bar (AUG-154)
+- client/src/components/ControlsPanel.tsx — right overlay list: New session, Settings, Archive, API Keys, Diagnostics with active-item highlight (AUG-154)
 - client/src/components/SessionList.tsx — Sidebar with V3 Bracketed session items, hex grid SVG, orbital-circle filter chips, August logo New Session button
 - client/src/components/RecordingModePicker.tsx — Radial expanding mode picker (DEFAULT / LIVE inner ring, LOCAL / GROQ outer right-side sub-arcs) rendered inside circuit-diagram with SVG connection lines
 - client/src/components/PraxisModal.tsx — Modal with project chips (SettingsDropdown above 5 projects), an always-visible path input with browse, a prompt note, task creation from a session transcript, and session rename sync.

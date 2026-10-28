@@ -11,6 +11,8 @@ import GroqKeyModal from './components/GroqKeyModal';
 import SettingsModal from './components/SettingsModal';
 import { getPreferences, patchPreferences, resetPreferences } from './services/preferences';
 import type { UserPreferences } from './services/preferences';
+import OverlayLayer, { type OverlayId } from './components/OverlayLayer';
+import ControlsPanel from './components/ControlsPanel';
 import { ThemeToggle } from './theme';
 import { Agentation } from 'agentation';
 
@@ -39,6 +41,10 @@ const App: React.FC = () => {
   const [captureCapabilities, setCaptureCapabilities] = useState<CaptureCapabilities | null>(null);
   // Desktop shell (Electron) only: a pending "toggle recording" request from the global hotkey or tray.
   const [desktopToggleRequest, setDesktopToggleRequest] = useState<number | null>(null);
+
+  const [openOverlay, setOpenOverlay] = useState<OverlayId | null>(null);
+  const closeOverlay = useCallback(() => setOpenOverlay(null), []);
+  const toggleOverlay = useCallback((id: OverlayId) => setOpenOverlay(prev => (prev === id ? null : id)), []);
 
   selectedSessionIdRef.current = selectedSessionId;
 
@@ -112,6 +118,24 @@ const App: React.FC = () => {
       offToggle();
     };
   }, []);
+
+  // Layout overlays: Ctrl/Cmd+1 sessions, Ctrl/Cmd+2 controls, Esc closes.
+  useEffect(() => {
+    const onKey = (e: KeyboardEvent) => {
+      if ((e.ctrlKey || e.metaKey) && !e.altKey && !e.shiftKey) {
+        const target: OverlayId | null = e.code === 'Digit1' || e.key === '1' ? 'sessions'
+          : e.code === 'Digit2' || e.key === '2' ? 'controls' : null;
+        if (target) {
+          e.preventDefault();
+          toggleOverlay(target);
+          return;
+        }
+      }
+      if (e.key === 'Escape') setOpenOverlay(null);
+    };
+    window.addEventListener('keydown', onKey);
+    return () => window.removeEventListener('keydown', onKey);
+  }, [toggleOverlay]);
 
   useEffect(() => {
     const enumerate = async () => {
@@ -287,30 +311,32 @@ const App: React.FC = () => {
 
   const showFileUpload = !selectedSession && !needsSetup && !showArchive;
 
+  const openNewSession = () => {
+    handleNewSession();
+    setShowArchive(false);
+    if (showDiagnostics) { setSetupDismissed(true); setShowDiagnostics(false); }
+    setOpenOverlay(null);
+  };
+  const openDiagnostics = () => {
+    setSetupDismissed(false); setShowDiagnostics(true); setShowArchive(false);
+    setOpenOverlay(null);
+  };
+  const openArchive = () => {
+    setShowArchive(true); setShowDiagnostics(false); setSetupDismissed(true);
+    setOpenOverlay(null);
+  };
+  const openKeys = () => {
+    setShowGroqKeyModal(true);
+    setOpenOverlay(null);
+  };
+  const openSettings = () => {
+    setShowSettings(true);
+    setOpenOverlay(null);
+  };
+
   return (
     <>
-      <div className="app-layout">
-        <SessionList
-          sessions={sessions}
-          selectedSessionId={selectedSessionId}
-          pendingDeleteId={pendingDelete?.session.id ?? null}
-          onSelect={handleSelect}
-          onDelete={handleDelete}
-          onUndoDelete={handleUndoDelete}
-          onRename={handleRename}
-          onNewSession={() => {
-            handleNewSession();
-            setShowArchive(false);
-            if (showDiagnostics) { setSetupDismissed(true); setShowDiagnostics(false); }
-          }}
-          onDiagnostics={() => { setSetupDismissed(false); setShowDiagnostics(true); setShowArchive(false); }}
-          onArchive={() => { setShowArchive(true); setShowDiagnostics(false); setSetupDismissed(true); }}
-          onKeysAndTokens={() => setShowGroqKeyModal(true)}
-          onSettings={() => setShowSettings(true)}
-          gpuBackend={healthStatus?.gpuBackend}
-          isTranscribing={sessions.some(s => s.status === 'transcribing' || s.status === 'preparing')}
-        />
-
+      <div className={`app-layout${openOverlay ? ' app-layout--overlay-open' : ''}`}>
         <main className="main-content">
           {loadError && <div className="global-error">{loadError}</div>}
 
@@ -348,7 +374,7 @@ const App: React.FC = () => {
           )}
 
           {(showFileUpload || isRecording) && (
-            <div style={showFileUpload ? undefined : { display: 'none' }}>
+            <div className="file-upload-host" style={showFileUpload ? undefined : { display: 'none' }}>
               <FileUpload
                 onUploaded={handleUploaded}
                 onRecordingChange={setIsRecording}
@@ -367,6 +393,41 @@ const App: React.FC = () => {
         </main>
 
         {((selectedSession && !needsSetup) || showArchive) && <ThemeToggle />}
+
+        <OverlayLayer
+          open={openOverlay}
+          onOpen={setOpenOverlay}
+          onToggle={toggleOverlay}
+          onClose={closeOverlay}
+          sessions={
+            <SessionList
+              sessions={sessions}
+              selectedSessionId={selectedSessionId}
+              pendingDeleteId={pendingDelete?.session.id ?? null}
+              onSelect={(id) => { handleSelect(id); setOpenOverlay(null); }}
+              onDelete={handleDelete}
+              onUndoDelete={handleUndoDelete}
+              onRename={handleRename}
+              onNewSession={openNewSession}
+              onDiagnostics={openDiagnostics}
+              onArchive={openArchive}
+              onKeysAndTokens={openKeys}
+              onSettings={openSettings}
+              gpuBackend={healthStatus?.gpuBackend}
+              isTranscribing={sessions.some(s => s.status === 'transcribing' || s.status === 'preparing')}
+            />
+          }
+          controls={
+            <ControlsPanel
+              active={showArchive ? 'archive' : needsSetup ? 'diagnostics' : showFileUpload ? 'upload' : null}
+              onUpload={openNewSession}
+              onSettings={openSettings}
+              onArchive={openArchive}
+              onKeys={openKeys}
+              onDiagnostics={openDiagnostics}
+            />
+          }
+        />
       </div>
       <ModelDownloadModal />
       {showGroqKeyModal && (

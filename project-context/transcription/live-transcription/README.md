@@ -13,7 +13,7 @@
 - Key files: server/src/services/liveTranscription.ts, server/src/services/groqTranscription.ts, client/src/services/liveTranscriptionClient.ts.
 - Key files also include server/src/services/liveChunking.ts (server ChunkAccumulator, LivePcmFeeder, control-frame parser) and attachLiveSink in server/src/services/systemCapture.ts.
 - Post-recording full-file transcription remains local whisper only — Groq is exclusively a live mode option.
-- Live panel buttons are a 2×2 grid: Pause (yellow) + Copy All (green) top row, Stop (red filled) + Clear All (red frame) bottom row.
+- Live transcript fills the whole main area while visible (AUG-154): a 48px top bar holds the rec dot + timer, status, Pause/Resume (yellow), Copy All (green), Clear All (red frame), Stop Live (red frame), End Recording (red filled) and × hide; the circuit diagram is hidden (not unmounted) behind it.
 - Stop and Clear All require a confirmation dialog ("Are you sure?") before executing.
 - Live local chunks run whisper-cli with Silero VAD (vad: true in transcribeChunk); a chunk with no detected speech emits no line (AUG-127).
 - Live text has no overlap dedup, so words in the 1 s overlap appear twice in consecutive lines (AUG-126).
@@ -60,12 +60,12 @@ Document the mechanics of the live transcription mode — how audio is captured 
 - attach-capture control frame (AUG-113): the client sends {type: "attach-capture", captureId, language} as a text frame right after the config frame when the recording uses a server capture; the server replies {type: "capture-attached", captureId} or a {type: "warning"} ("System audio not attached (...) — live transcript continues with the microphone only") when the captureId is unknown, already stopped, not started with live: true, or already attached.
 - Server PCM tee: POST /api/capture/start { live: true } adds a second ffmpeg output (-f s16le -ac 1 -ar 16000 pipe:1) next to the unchanged WAV; systemCapture.ts drains stdout from spawn and forwards bytes to at most one CaptureLiveSink.
 - LivePcmFeeder (server/src/services/liveChunking.ts) converts the s16le bytes to Float32 (carrying an odd trailing byte between chunks) and feeds a server-side ChunkAccumulator with the same 64000/16000/0.006 constants as the browser one; full windows are queued as speaker Them on the same per-connection queue and engine as mic chunks.
-- LiveTranscriptPanel: a fixed 340px right-side panel (client/src/components/LiveTranscriptPanel.tsx) displaying interleaved Me/Them lines with auto-scroll and a 2×2 button grid.
-- Panel button grid layout: Row 1 = Pause/Resume + Copy All; Row 2 = Stop + Clear All. CSS uses grid-template-columns: 1fr 1fr.
-- Button color scheme: Pause = yellow frame default / yellow fill on hover; Copy All = green frame default / green fill on hover; Stop = red filled always; Clear All = red frame default / red fill on hover.
-- Confirmation dialog: clicking Stop or Clear All shows an inline confirmation bar ("Are you sure?") with "Yes, proceed" (red) and "No, return" (green) buttons instead of executing immediately.
+- LiveTranscriptPanel (client/src/components/LiveTranscriptPanel.tsx): an in-flow flex panel inside FileUpload's `.circuit-layout.live-open` that takes the full main area, with a 48px top bar and a scan-lined transcript canvas of interleaved Me/Them lines (15px, max-width 860px, accent left border on the latest line) with auto-scroll. FileUpload adds `live-open` only when liveActive && !liveHidden, and CSS hides every other circuit child except `.mic-notice` and `.upload-error`.
+- Top bar button order: Pause/Resume, Copy All, Clear All, Stop Live, End Recording. Stop Live calls handleLiveStop (ends live transcription, recording continues); End Recording calls FileUpload's stopRecording (same as the circuit STOP node) with no confirmation. FileUpload passes `elapsed={formatTime(elapsedSeconds)}` and `onEndRecording={stopRecording}`.
+- Button color scheme: Pause = yellow frame default / yellow fill on hover; Copy All = green frame default / green fill on hover; Stop Live and Clear All = red frame default / red fill on hover; End Recording = red filled (dark theme has explicit overrides so the generic dark .live-panel-btn reset does not drop the red).
+- Confirmation dialog: clicking Stop Live or Clear All shows an inline confirmation bar ("Are you sure?") with "Yes, proceed" (red) and "No, return" (green) buttons instead of executing immediately.
 - Clear All action: clears all transcript lines (setLiveLines([])) without stopping the WebSocket or audio capture — the session continues recording.
-- Panel hide/reopen: closing the panel (×) sets liveHidden=true, hiding it without stopping the WebSocket or clearing lines. A pulsing LIVE badge appears in the recording info bar; clicking it sets liveHidden=false, reopening the panel with all accumulated lines intact. A separate Stop button in the panel calls handleLiveStop to fully terminate the live client.
+- Panel hide/reopen: closing the panel (×) sets liveHidden=true, hiding it without stopping the WebSocket or clearing lines. A pulsing LIVE badge appears in the recording info bar; clicking it sets liveHidden=false, reopening the panel with all accumulated lines intact. A separate Stop Live button in the top bar calls handleLiveStop to fully terminate the live client.
 - Line coalescing: consecutive transcript results from the same speaker append to the previous line rather than creating a new line.
 - HTTP server upgrade: server/src/index.ts creates an http.Server wrapping the Express app, passes it to setupLiveTranscription() for WebSocket upgrade handling, then calls httpServer.listen().
 
@@ -87,7 +87,7 @@ Document the mechanics of the live transcription mode — how audio is captured 
 - Pause/resume is bidirectional: the client stops feeding chunks to the accumulator AND sends a JSON control message so the server can skip any queued work.
 - LiveTranscriptionClient.stop() disconnects all Web Audio nodes, closes the AudioContext, sends a stop control message, and closes the WebSocket.
 - The live panel closes automatically when recording stops (stopRecording sets liveActive and liveHidden to false).
-- Closing the panel (×) hides it without stopping transcription — only the explicit Stop button or stopRecording terminates the live client.
+- Closing the panel (×) hides it without stopping transcription — only the explicit Stop Live button or stopRecording (End Recording / circuit STOP) terminates the live client.
 - Clear All clears displayed lines without stopping transcription, audio capture, or the WebSocket connection.
 - Stop and Clear All both gate behind a shared confirmAction state ('stop' | 'clearAll' | null) — only one confirmation dialog can be active at a time.
 - The Vite dev proxy must have ws: true on the /api proxy config for WebSocket upgrade forwarding.

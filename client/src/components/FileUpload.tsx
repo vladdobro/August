@@ -779,7 +779,7 @@ const FileUpload: React.FC<FileUploadProps> = ({ onUploaded, onRecordingChange, 
   }, []);
 
   return (
-    <div className={`circuit-layout${isRecording ? ' circuit-recording' : ''}${liveActive ? ' live-open' : ''}`}>
+    <div className={`circuit-layout${isRecording ? ' circuit-recording' : ''}${liveActive && !liveHidden ? ' live-open' : ''}`}>
       <h2 className="circuit-title">New Transcription</h2>
 
       <div className="circuit-diagram">
@@ -1023,6 +1023,8 @@ const FileUpload: React.FC<FileUploadProps> = ({ onUploaded, onRecordingChange, 
           onClose={handleLiveHide}
           onStop={handleLiveStop}
           onClearAll={handleLiveClearAll}
+          elapsed={formatTime(elapsedSeconds)}
+          onEndRecording={stopRecording}
         />
       )}
     </div>
