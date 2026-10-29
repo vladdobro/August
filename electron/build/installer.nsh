@@ -6,6 +6,12 @@
 ; shown before the install-mode page would be asked twice (AUG-141).
 ; Updates (electron-updater runs the installer with --updated, usually also /S) skip both pages and keep
 ; the choices from the first install: customInit re-reads model-dir / gpu-engine before customInstall persists them.
+; User data (AUG-158): <install dir>\data holds sessions, uploads, preferences and the .env with API keys.
+; This version's uninstaller (customRemoveFiles) keeps it on updates/reinstalls and silent uninstalls and asks
+; on a manual uninstall. Uninstallers up to 0.0.40 wipe the whole folder, so before they run the installer
+; renames data to a sibling "<install dir>-data-backup" folder (same volume, atomic) and customInstall moves it
+; back. A KeepsUserData registry marker tells the next installer the old uninstaller is safe. A backup that
+; cannot be moved back is left in place, never deleted.
 
 !include nsDialogs.nsh
 !include FileFunc.nsh
@@ -13,7 +19,143 @@
 !ifndef BUILD_UNINSTALLER
   Var /GLOBAL ModelDir
   Var /GLOBAL GpuEngine
+  Var /GLOBAL AugOldInstDir
+  Var /GLOBAL AugDataBackup
 !endif
+
+; Legacy uninstallers (<= 0.0.40, no KeepsUserData marker) run RMDir /r on their install folder and delete the
+; CUDA engine. Move both aside first; customInstall (augRestoreUserData + the CUDA block) brings them back.
+; Silent runs call this from customInit, interactive runs from augInstFilesPre (after the last cancellable page).
+!macro augBackupUserData
+  Push $R0
+  Push $R1
+  Push $R2
+  StrCpy $AugDataBackup ""
+  StrCpy $AugOldInstDir ""
+  StrCpy $R1 ""
+  ReadRegStr $AugOldInstDir SHELL_CONTEXT "${INSTALL_REGISTRY_KEY}" InstallLocation
+  ReadRegStr $R1 SHELL_CONTEXT "${INSTALL_REGISTRY_KEY}" KeepsUserData
+  ${if} $AugOldInstDir == ""
+    ReadRegStr $AugOldInstDir HKCU "${INSTALL_REGISTRY_KEY}" InstallLocation
+    ReadRegStr $R1 HKCU "${INSTALL_REGISTRY_KEY}" KeepsUserData
+  ${endIf}
+  ${if} $AugOldInstDir == ""
+    ReadRegStr $AugOldInstDir HKLM "${INSTALL_REGISTRY_KEY}" InstallLocation
+    ReadRegStr $R1 HKLM "${INSTALL_REGISTRY_KEY}" KeepsUserData
+  ${endIf}
+  StrLen $R2 $AugOldInstDir
+  ; A drive root has no sibling folder to move data into.
+  ${if} $R1 != "1"
+  ${andIf} $R2 > 3
+    ${if} ${FileExists} "$AugOldInstDir\data\*.*"
+      ; Never reuse a backup left by an earlier failed run.
+      StrCpy $AugDataBackup "$AugOldInstDir-data-backup"
+      StrCpy $R2 1
+      ${While} ${FileExists} "$AugDataBackup\*.*"
+        IntOp $R2 $R2 + 1
+        StrCpy $AugDataBackup "$AugOldInstDir-data-backup-$R2"
+      ${EndWhile}
+      ${Do}
+        ; The app's server may still be exiting after quitAndInstall; give it up to ~10 s to release files.
+        StrCpy $R2 0
+        ${Do}
+          ClearErrors
+          Rename "$AugOldInstDir\data" "$AugDataBackup"
+          ${IfNot} ${Errors}
+            ${Break}
+          ${EndIf}
+          IntOp $R2 $R2 + 1
+          ${If} $R2 >= 10
+            ${Break}
+          ${EndIf}
+          Sleep 1000
+        ${Loop}
+        ${IfNot} ${FileExists} "$AugOldInstDir\data\*.*"
+          ${Break}
+        ${EndIf}
+        ; Nothing has been changed yet, so stopping here is safe. Silent updates stop and keep the old version.
+        ${If} ${Cmd} `MessageBox MB_RETRYCANCEL|MB_ICONEXCLAMATION "August could not move your sessions and settings aside before replacing the old version:$\r$\n$AugOldInstDir\data$\r$\n$\r$\nClose August and any program using that folder, then click Retry. Cancel stops the installation without changing anything." /SD IDCANCEL IDCANCEL`
+          SetErrorLevel 2
+          Quit
+        ${EndIf}
+      ${Loop}
+    ${endIf}
+
+    ${if} $installMode == "all"
+      SetShellVarContext current
+    ${endif}
+    ${if} ${FileExists} "$APPDATA\August\whisper\bin\win-x64-cuda\*.*"
+    ${andIfNot} ${FileExists} "$APPDATA\August\whisper\win-x64-cuda.update-backup\*.*"
+      Rename "$APPDATA\August\whisper\bin\win-x64-cuda" "$APPDATA\August\whisper\win-x64-cuda.update-backup"
+    ${endIf}
+    ${if} $installMode == "all"
+      SetShellVarContext all
+    ${endif}
+  ${endIf}
+  Pop $R2
+  Pop $R1
+  Pop $R0
+!macroend
+
+; Runs in customInstall, after the new files (including data\tools) are in place. The user's folder comes back
+; whole, then every installer-shipped entry of the fresh data folder replaces its old copy.
+!macro augRestoreUserData
+  ${if} $AugDataBackup != ""
+  ${andIf} ${FileExists} "$AugDataBackup\*.*"
+    Push $R0
+    Push $R1
+    Push $R2
+    StrCpy $R2 "ok"
+    RMDir /r "$INSTDIR\data.new"
+    ${if} ${FileExists} "$INSTDIR\data\*.*"
+      ClearErrors
+      Rename "$INSTDIR\data" "$INSTDIR\data.new"
+      ${if} ${Errors}
+        StrCpy $R2 "fail"
+      ${endIf}
+    ${endIf}
+    ${if} $R2 == "ok"
+      ClearErrors
+      Rename "$AugDataBackup" "$INSTDIR\data"
+      ${if} ${Errors}
+        StrCpy $R2 "fail"
+      ${endIf}
+    ${endIf}
+    ${if} $R2 == "fail"
+      ${if} ${FileExists} "$INSTDIR\data.new\*.*"
+      ${andIfNot} ${FileExists} "$INSTDIR\data\*.*"
+        Rename "$INSTDIR\data.new" "$INSTDIR\data"
+      ${endIf}
+      DetailPrint "Could not move $AugDataBackup back to $INSTDIR\data; it was left in place."
+      ${ifNot} ${Silent}
+        MessageBox MB_OK|MB_ICONEXCLAMATION "August kept your sessions and settings in:$\r$\n$AugDataBackup$\r$\n$\r$\nbut could not move them back into $INSTDIR\data. Close August and move the contents of that folder into $INSTDIR\data by hand."
+      ${endIf}
+    ${else}
+      FindFirst $R0 $R1 "$INSTDIR\data.new\*.*"
+      ${While} $R1 != ""
+        ${if} $R1 != "."
+        ${andIf} $R1 != ".."
+          ${if} ${FileExists} "$INSTDIR\data.new\$R1\*.*"
+            RMDir /r "$INSTDIR\data\$R1"
+          ${else}
+            Delete "$INSTDIR\data\$R1"
+          ${endIf}
+          ClearErrors
+          Rename "$INSTDIR\data.new\$R1" "$INSTDIR\data\$R1"
+          ${if} ${Errors}
+            CopyFiles /SILENT "$INSTDIR\data.new\$R1" "$INSTDIR\data"
+          ${endIf}
+        ${endIf}
+        FindNext $R0 $R1
+      ${EndWhile}
+      FindClose $R0
+      RMDir /r "$INSTDIR\data.new"
+    ${endIf}
+    Pop $R2
+    Pop $R1
+    Pop $R0
+  ${endIf}
+!macroend
 
 ; Both pages are shown after electron-builder's install-mode and install-folder pages.
 !macro customPageAfterChangeDir
@@ -35,9 +177,15 @@
   ; --- Page 2: GPU engine selection ---
   Page custom augGpuPageCreate augGpuPageLeave
 
-  !ifdef allowToChangeInstallationDirectory
-    !define MUI_PAGE_CUSTOMFUNCTION_PRE instFilesPre
-  !endif
+  ; Our INSTFILES pre-function: electron-builder's instFilesPre (folder sanitising) first, then the legacy data
+  ; backup — after every page that can still be cancelled, before the old uninstaller runs.
+  !define MUI_PAGE_CUSTOMFUNCTION_PRE augInstFilesPre
+  Function augInstFilesPre
+    !ifdef allowToChangeInstallationDirectory
+      Call instFilesPre
+    !endif
+    !insertmacro augBackupUserData
+  FunctionEnd
 !macroend
 
 ; An "all users" install switches the shell context to "all", which turns $APPDATA into
@@ -73,6 +221,14 @@
   ${if} $installMode == "all"
     SetShellVarContext all
   ${endif}
+  ; Silent runs (electron-updater) show no pages, so the legacy data backup happens here. An unelevated silent
+  ; update of an "all users" install relaunches itself elevated from the install section; only that copy moves data.
+  ${if} ${Silent}
+    ${if} $hasPerMachineInstallation != "1"
+    ${orIf} ${UAC_IsAdmin}
+      !insertmacro augBackupUserData
+    ${endIf}
+  ${endIf}
 !macroend
 
 !ifndef BUILD_UNINSTALLER
@@ -115,6 +271,8 @@ FunctionEnd
 !endif
 
 !macro customInstall
+  !insertmacro augRestoreUserData
+
   ${if} $installMode == "all"
     SetShellVarContext current
   ${endif}
@@ -152,6 +310,13 @@ FunctionEnd
     FileClose $0
   ${endIf}
 
+  ; --- Return the CUDA engine moved aside for a legacy uninstaller (augBackupUserData) ---
+  ${if} ${FileExists} "$APPDATA\August\whisper\win-x64-cuda.update-backup\*.*"
+  ${andIfNot} ${FileExists} "$APPDATA\August\whisper\bin\win-x64-cuda\*.*"
+    CreateDirectory "$APPDATA\August\whisper\bin"
+    Rename "$APPDATA\August\whisper\win-x64-cuda.update-backup" "$APPDATA\August\whisper\bin\win-x64-cuda"
+  ${endIf}
+
   ${if} $installMode == "all"
     SetShellVarContext all
   ${endif}
@@ -171,11 +336,15 @@ FunctionEnd
       MessageBox MB_OK|MB_ICONEXCLAMATION "August could not save the GPU engine choice. Transcription will use the CPU by default."
     ${endIf}
   ${endIf}
+
+  ; Tells the next installer that this version's uninstaller keeps <install dir>\data (see augBackupUserData).
+  WriteRegStr SHELL_CONTEXT "${INSTALL_REGISTRY_KEY}" KeepsUserData "1"
 !macroend
 
 ; The ~900 MB speech model is useless without the app, so a manual uninstall offers to remove it.
 ; Updates/reinstalls (the old uninstaller runs with --updated) and silent uninstalls keep it, so the
-; next version finds the model in place instead of downloading it again.
+; next version finds the model in place instead of downloading it again. Updates also keep the first-install
+; choices (model-dir, gpu-engine) and the downloaded CUDA engine (~642 MB, AUG-158).
 !macro customUnInstall
   ${if} $installMode == "all"
     SetShellVarContext current
@@ -209,12 +378,57 @@ FunctionEnd
     Pop $R1
     Pop $R0
   ${endIf}
-  Delete "$APPDATA\August\model-dir"
-  Delete "$APPDATA\August\gpu-engine"
-  ; Remove downloaded CUDA files if present
-  RMDir /r "$APPDATA\August\whisper\bin\win-x64-cuda"
-  RMDir "$APPDATA\August\whisper\bin"
+  ${ifNot} ${isUpdated}
+    Delete "$APPDATA\August\model-dir"
+    Delete "$APPDATA\August\gpu-engine"
+    ; Remove downloaded CUDA files if present
+    RMDir /r "$APPDATA\August\whisper\bin\win-x64-cuda"
+    RMDir /r "$APPDATA\August\whisper\win-x64-cuda.update-backup"
+    RMDir "$APPDATA\August\whisper\bin"
+  ${endIf}
   ${if} $installMode == "all"
     SetShellVarContext all
   ${endif}
+!macroend
+
+; Replaces electron-builder's default file removal (RMDir /r $INSTDIR), which wiped <install dir>\data on every
+; update (AUG-158). Updates/reinstalls (--updated) and silent uninstalls keep data; a manual uninstall asks,
+; defaulting to keep.
+!macro customRemoveFiles
+  Push $R0
+  Push $R1
+  Push $R2
+  StrCpy $R2 "keep"
+  ${ifNot} ${isUpdated}
+  ${andIfNot} ${Silent}
+  ${andIf} ${FileExists} "$INSTDIR\data\*.*"
+    ${If} ${Cmd} `MessageBox MB_YESNO|MB_ICONQUESTION|MB_DEFBUTTON2 "Also remove your recordings, transcripts and settings (including API keys)?$\r$\n$INSTDIR\data" /SD IDNO IDYES`
+      StrCpy $R2 "remove"
+    ${EndIf}
+  ${endIf}
+  ; Move out of $INSTDIR so it can be removed
+  SetOutPath $TEMP
+  ${if} $R2 == "remove"
+    RMDir /r $INSTDIR
+  ${else}
+    FindFirst $R0 $R1 "$INSTDIR\*.*"
+    ${While} $R1 != ""
+      ${if} $R1 != "."
+      ${andIf} $R1 != ".."
+      ${andIf} $R1 != "data"
+        ${if} ${FileExists} "$INSTDIR\$R1\*.*"
+          RMDir /r "$INSTDIR\$R1"
+        ${else}
+          Delete "$INSTDIR\$R1"
+        ${endIf}
+      ${endIf}
+      FindNext $R0 $R1
+    ${EndWhile}
+    FindClose $R0
+    ; Removes the folder only when there was no data to keep.
+    RMDir $INSTDIR
+  ${endIf}
+  Pop $R2
+  Pop $R1
+  Pop $R0
 !macroend

@@ -24,12 +24,19 @@
 - A per-machine ("all users") Windows install triggers a UAC prompt during every silent update; that prompt is the installer elevating, not a hang.
 - NSIS updates (--updated) skip the model-dir and GPU-engine pages and keep the first-install choices from %APPDATA%/August/.
 - Custom NSIS pages must use the customPageAfterChangeDir hook, after the install-mode page: choosing "all users" relaunches the installer elevated and re-shows every page before it.
+- Windows update data preservation (AUG-158): electron-builder's default NSIS uninstall is RMDir /r $INSTDIR, and every update/reinstall runs the old uninstaller with `/S --updated`, so up to 0.0.40 each update wiped <install dir>/data (sessions, uploads, captures, user-preferences.json, .env API keys, perf-stats.json).
+- installer.nsh customRemoveFiles deletes everything in $INSTDIR except data on updates/reinstalls and silent uninstalls; a manual uninstall asks "Also remove your recordings, transcripts and settings?" (default No), after the speech-model prompt.
+- Legacy migration: when the registry InstallLocation has no KeepsUserData=1 value (uninstaller ≤ 0.0.40), the installer renames <old install dir>/data to the sibling <old install dir>-data-backup[-N] (same volume, atomic) and the CUDA engine to %APPDATA%/August/whisper/win-x64-cuda.update-backup before the old uninstaller runs; customInstall moves both back and writes KeepsUserData=1.
+- The backup runs in customInit for silent runs (skipped in the unelevated half of an "all users" silent update) and in the INSTFILES pre-function augInstFilesPre for interactive runs, so cancelling a page never leaves data moved away.
+- If the data folder cannot be renamed (retried ~10 s), the installer quits before changing anything (silent updates leave the old version installed); if it cannot be moved back, the backup folder stays in place with a warning and is never deleted.
+- On restore, entries of the freshly installed data folder (data/tools: WASAPI helper) replace their old copies, so installer-shipped files always come from the new version.
+- The MSI target uses its own uninstall and is not covered by this preservation (MSI has no auto-update).
 - Right-click on a sidebar session calls window.august.revealSession(id) over august:reveal-session; main reveals the folder via shell.showItemInFolder (AUG-124).
 - The Archive page opens the sessions data dir via window.august.revealSessionsDir() over august:reveal-sessions-dir; main calls shell.openPath(sessionsDir()) and takes no path from the renderer (AUG-150). The method is optional in desktop.d.ts; the browser build shows the path as text.
 - Compact Mode (AUG-156): CompactController (electron/src/compact.ts) resizes the main window to a right-edge Dock Strip or a 180×180 Dock Square, or hides it behind a frameless transparent always-on-top ghost window (Ghost Caption / Ghost Coin) loading the same app URL with ?ghost=caption|coin; setCompactMode({ shape: 'none' }) restores the saved bounds, maximized flag and the 960×600 minimum.
 - Always-on-top diverges: macOS setAlwaysOnTop(on, 'floating') + setVisibleOnAllWorkspaces(on, { visibleOnFullScreen: true }); Windows setAlwaysOnTop(on) only.
-- Also known as: reveal sessions folder, open data directory (AUG-150), Compact Mode, dock strip, dock square, ghost window, ghost caption, ghost coin, setCompactMode (AUG-156).
-- Key files: electron/src/main.ts, electron/src/compact.ts, electron/src/preload.cts, electron/src/tray.ts, electron/src/hotkey.ts, electron/src/sessionWatcher.ts, electron/src/updater.ts, electron/electron-builder.yml, server/src/app.ts, client/src/desktop.d.ts.
+- Also known as: reveal sessions folder, open data directory (AUG-150), Compact Mode, dock strip, dock square, ghost window, ghost caption, ghost coin, setCompactMode (AUG-156), nsis update data loss, data-backup, KeepsUserData, customRemoveFiles (AUG-158).
+- Key files: electron/build/installer.nsh, electron/src/main.ts, electron/src/compact.ts, electron/src/preload.cts, electron/src/tray.ts, electron/src/hotkey.ts, electron/src/sessionWatcher.ts, electron/src/updater.ts, electron/electron-builder.yml, server/src/app.ts, client/src/desktop.d.ts.
 
 This route documents how August's Electron desktop shell embeds the existing web app instead of replacing it.
 

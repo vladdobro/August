@@ -127,7 +127,7 @@ Explain the setup, binary-distribution, and model-download mechanics behind tran
 - Both Vulkan and CUDA builds can fall back: on Metal, CPU-only, and on a pinned mode, runWhisper() never retries and never alters flags.
 - CUDA variant is never bundled in the installer — it downloads on demand (~457 MB) on first launch when GPU-NVIDIA was chosen; the CPU variant is always bundled.
 - Silent/unattended installs default to CPU engine because GpuEngine is initialized as 'cpu' in customInit.
-- The uninstaller always deletes %APPDATA%/August/gpu-engine and %APPDATA%/August/whisper/bin/win-x64-cuda/ to clean up CUDA artifacts.
+- A manual uninstall deletes %APPDATA%/August/model-dir, gpu-engine and whisper/bin/win-x64-cuda/; updates and reinstalls (--updated) keep them, so GPU users do not re-download CUDA after each update (AUG-158). Updating from ≤ 0.0.40, whose uninstaller still deletes CUDA, the installer moves it aside and back (see desktop-shell).
 - ensureWhisperCuda() runs before runPreflightChecks() and probeGpuBackend() in startServer(), so the CUDA binary is present before the health check and GPU probe.
 - The engine switch endpoint refuses with 409 when WHISPER_GPU_ENGINE env is set — env overrides are operator-level and must not be toggled from the UI.
 - The engine switch endpoint refuses with 400 when requesting cuda without a detected NVIDIA GPU.
@@ -186,7 +186,7 @@ Explain the setup, binary-distribution, and model-download mechanics behind tran
 
 - server/src/scripts/setup.ts — per-platform whisper-cli installer (setupVadModel() for the Silero VAD model, download for Windows, cmake build for macOS with a portable CMake fallback), legacy migration, pinned FFMPEG_BUILDS table and setupFfmpeg(), pinned VULKAN_RUNTIME and setupVulkanLoader() (Windows), ffmpeg pre-flight.
 - server/src/services/cudaDownloader.ts — ensureWhisperCuda(), CUDA variant download state machine, on-demand extraction of 9 DLLs + exe from the zip (AUG-130).
-- electron/build/installer.nsh — NSIS installer pages for model directory chooser (AUG-119) and GPU engine radio selection (AUG-130); persists choices to %APPDATA%/August/ and preserves them across updates (AUG-141).
+- electron/build/installer.nsh — NSIS installer pages for model directory chooser (AUG-119) and GPU engine radio selection (AUG-130); persists choices to %APPDATA%/August/ and preserves them across updates (AUG-141); keeps <install dir>/data and the CUDA engine across updates (AUG-158).
 - server/src/services/modelDownloader.ts — ensureWhisperModel(), model status state machine, checksum verification.
 - server/src/services/download.ts — shared streaming download and SHA256 helper (downloadToFile, isOfflineError) used by setup and the model downloader.
 - server/src/routes/setup.ts — GET /api/setup/status and the SSE /api/setup/download-progress stream.
