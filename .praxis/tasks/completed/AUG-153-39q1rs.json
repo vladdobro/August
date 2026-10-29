@@ -2,11 +2,11 @@
   "id": "AUG-153-39q1rs",
   "assignee": "storm.json",
   "priority": "medium",
-  "status": "to_review",
+  "status": "completed",
   "title": "[AUG-153] Brainstorm: collapsible panels + resize для фокуса на транскрипте",
   "why_we_need_this": "Родион (пользователь) часто использует August на половине экрана — слева видеозвонок, справа August. Ему нужно максимизировать транскрипт, а остальные панели (sidebar, main controls) сворачивать. Сейчас все три панели всегда видны и занимают фиксированное пространство, что не оптимально для узких окон.",
   "acceptance_criteria": "- [ ] Описаны варианты UX для сворачивания каждой из трёх панелей (sidebar, main/controls, transcript) независимо друг от друга\n- [ ] Описан механизм ресайза оставшихся панелей (как перераспределяется пространство)\n- [ ] Рассмотрен сценарий \"Live-only mode\" — когда свёрнуто всё кроме транскрипта\n- [ ] Рассмотрено поведение при Stop/завершении записи — восстанавливается ли layout автоматически или остаётся как есть\n- [ ] Учтены edge-cases: минимальная ширина панелей, поведение на маленьких экранах, сохранение состояния между сессиями\n- [ ] Предложен визуальный язык сворачивания (кнопки/ручки/жесты), вписывающийся в angular brutalist дизайн August\n- [ ] Подготовлены визуальные макеты (mockups) ключевых состояний для согласования перед реализацией",
-  "important_constraints": "Запрос от пользователя Родиона (реальный юзкейс — половина экрана на звонок, вторая на August). Три панели: 1) Sidebar (список сессий, фильтры), 2) Main (контролы записи, drag-n-drop), 3) Transcript (live-транскрипт). Родион хочет контроль над КАЖДОЙ панелью отдельно + ресайз оставшихся в пользу транскрипта. Дизайн — angular brutalist (border-radius: 0), зелёная палитра necron.",
+  "important_constraints": "Запрос от пользователя Родиона (реальный юзкейс — половина экрана на звонок, вторая на August). Три панели: 1) Sidebar (список сессий, фильтры), 2) Main (контролы записи, drag-n-drop), 3) Transcript (live-транскрипт). Родион хочет контроль над КАЖДОЙ панелью отдельно + ресайз оставшихся в пользу транскрипта. Дизайн — angular brutalist (border-radius: 0), зелёная палитра necron.\n\n## ✅ Итог (2026-10-29)\n**Что сделано:** Полный брейншторм (30+ идей, evaluation matrix, top-5 рекомендаций) + два интерактивных HTML-макета — Conservative (bracket-collapse 3-column) и Bold (transcript-first overlay layers). Пользователь выбрал Bold Layout.\n**Как:** Rapid Ideation по 5 направлениям (collapse mechanics, resize, live-only, stop behavior, visual language). Evaluation по feasibility/impact. Два макета с рабочими toggle/overlay, keyboard shortcuts, drag-resize. Bold выбран за максимум пространства для транскрипта.\n**Файлы:** Только артефакты — без изменений в коде репозитория.\n**PR / коммиты:** Нет (brainstorm task, код не менялся).\n**Грабли:** Нет.\n**Хвосты:** Реализация Bold Layout → AUG-154 (Jarvis, high). Новый брейншторм Compact Mode → AUG-155 (Storm, medium). AUG-155 зависит от AUG-154.",
   "labels": [
     "brainstorm",
     "ux",
@@ -15,5 +15,5 @@
   "on_hold_reason": "",
   "contextRouterIncluded": true,
   "created_at": 1793223623236,
-  "column_entered_at": 1793225498063
+  "column_entered_at": 1793232133276
 }
