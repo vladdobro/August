@@ -9,6 +9,20 @@ const api = {
   setRecordHotkey: (accelerator: string | null) => ipcRenderer.invoke('august:set-record-hotkey', accelerator),
   revealSession: (sessionId: string) => ipcRenderer.invoke('august:reveal-session', sessionId),
   revealSessionsDir: () => ipcRenderer.invoke('august:reveal-sessions-dir'),
+  getUpdateState: () => ipcRenderer.invoke('august:get-update-state'),
+  checkForUpdates: () => {
+    ipcRenderer.send('august:check-for-updates');
+  },
+  installUpdate: () => {
+    ipcRenderer.send('august:install-update');
+  },
+  onUpdateState: (cb: (state: unknown) => void) => {
+    const listener = (_event: Electron.IpcRendererEvent, state: unknown) => cb(state);
+    ipcRenderer.on('august:update-state', listener);
+    return () => {
+      ipcRenderer.removeListener('august:update-state', listener);
+    };
+  },
   setRecordingState: (recording: boolean) => {
     ipcRenderer.send('august:recording-state', recording);
   },

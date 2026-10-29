@@ -21,7 +21,7 @@ import { installFileLogger } from './log.js';
 import { startSessionWatcher } from './sessionWatcher.js';
 import { DEFAULT_RECORD_HOTKEY, SettingsStore } from './settings.js';
 import { AppTray } from './tray.js';
-import { setupAutoUpdater } from './updater.js';
+import { setupAutoUpdater, type UpdateState } from './updater.js';
 
 const __dirname = path.dirname(fileURLToPath(import.meta.url));
 // electron/dist -> repo root (dev) or the unpacked app dir (packaged; asar is disabled in electron-builder.yml).
@@ -58,6 +58,8 @@ interface ServerModule {
 }
 
 let mainWindow: BrowserWindow | null = null;
+let updater: ReturnType<typeof setupAutoUpdater> | null = null;
+let updateState: UpdateState = { phase: 'idle' };
 let tray: AppTray | null = null;
 let server: RunningServer | null = null;
 let isQuitting = false;
@@ -470,6 +472,11 @@ function registerIpc(): void {
     if (!compact?.isGhostSender(e.sender)) return;
     if (phase === 'start' || phase === 'move' || phase === 'end') compact.ghostDrag(phase);
   });
+
+  // Sidebar ≡ menu update item (AUG-157). null = no updater (unpackaged build), the renderer hides the item.
+  ipcMain.handle('august:get-update-state', () => (updater ? updateState : null));
+  ipcMain.on('august:check-for-updates', () => updater?.checkNow());
+  ipcMain.on('august:install-update', () => updater?.installNow());
 }
 
 async function main(): Promise<void> {
@@ -513,8 +520,15 @@ async function main(): Promise<void> {
     if (compact && compact.shape !== 'none') compact.apply({ shape: 'none' });
   });
 
-  const updater = app.isPackaged
-    ? setupAutoUpdater({ onShowWindow: showWindow, onState: (update) => tray?.update({ update }) })
+  updater = app.isPackaged
+    ? setupAutoUpdater({
+        onShowWindow: showWindow,
+        onState: (update) => {
+          updateState = update;
+          tray?.update({ update });
+          mainWindow?.webContents.send('august:update-state', update);
+        },
+      })
     : null;
   tray = new AppTray(path.join(appRoot, 'electron', 'build', 'tray'), {
     showWindow,

@@ -18,6 +18,7 @@
 - Native notifications fire on transcribing → completed/failed transitions detected by the main process polling GET /api/sessions every 5 seconds, and on recording start/stop while the window is hidden.
 - Auto-update uses electron-updater against GitHub Releases (vladdobro/August); Windows nsis and macOS zip targets update, msi and dmg do not.
 - The tray update item mirrors updater state: Check for Updates… → Checking… → Downloading (N%) → "Restart to Update to x.y.z" (AUG-141).
+- The sidebar ≡ menu has the same update item (update menu, AUG-157): "Check for Updates" (idle/error) → "Checking for Updates…" and "Downloading Update v{version} ({percent}%)…" (disabled) → "Restart to Update to v{version}" (calls installNow). It is hidden in the browser build and in unpackaged desktop runs (no updater).
 - A manual tray check always notifies the outcome (up to date, downloading, error); background checks notify only when a download is ready.
 - "Restart to Update" calls quitAndInstall(silent, forceRun) so the NSIS installer relaunches August; quitting instead installs silently without relaunch.
 - A per-machine ("all users") Windows install triggers a UAC prompt during every silent update; that prompt is the installer elevating, not a hang.
@@ -82,7 +83,8 @@ A desktop shell exists so non-technical users get a one-click install with no te
 - App and tray icons use square corners by design (brand rule: no border radius).
 - The updater starts checking only after the tray exists (updater.start() in main.ts) so the first "checking" state reaches the menu.
 - updater.ts routes electron-updater's logger to console.log/warn/error with a [updater] prefix; log.ts mirrors console.info too, because electron-updater logs at info level and those lines were missing from main.log before AUG-141.
-- A failed update check never clears a 'ready' (downloaded) state; the error state is transient and the tray shows it as idle.
+- A failed update check never clears a 'ready' (downloaded) state; the error state is transient and the tray and sidebar menu show it as idle.
+- main.ts keeps the updater and the last UpdateState at module level so IPC registered before the updater exists can answer; updater onState fans out to the tray and to the renderer (AUG-157).
 - electron-updater runs the Windows installer as `<pending>.exe --updated /S` from %LOCALAPPDATA%/august-updater/pending; Cyrillic user paths work there.
 - electron-builder's ${isUpdated} test needs the StdUtils plugin dir, which may be declared after the custom installer.nsh include; top-level functions in installer.nsh must test --updated with FileFunc ${GetParameters}/${GetOptions} instead.
 - Differential download may fail with "sha512 checksum mismatch" when the installed build came from a local installer; electron-updater falls back to a full download, which is not a bug.
@@ -139,6 +141,7 @@ A desktop shell exists so non-technical users get a one-click install with no te
 - Main sends events to the renderer over august:compact-event: expand, toggle, strip-width.
 - The renderer reports errors over august:compact-issue: interrupted, capture-lost.
 - Ghost-only channels are august:ghost-ignore-mouse, august:ghost-resize and august:ghost-drag; main accepts them only from the ghost webContents.
+- Updater channels (AUG-157): august:get-update-state (invoke; null when there is no updater), august:check-for-updates and august:install-update (send), and the push august:update-state from main on every state change. The bridge methods getUpdateState/checkForUpdates/installUpdate/onUpdateState are optional in desktop.d.ts; DesktopUpdateState there mirrors UpdateState in updater.ts.
 - On the first compact, main snapshots the bounds (normal bounds when maximized or full-screen) and the maximized flag; it leaves full-screen and maximized first.
 - Strip: minimum size drops to 280×240, window docks to the right edge of the current display workArea at full height, width 280–520.
 - Strip resize by the user above 600 px or maximize sends an expand event.

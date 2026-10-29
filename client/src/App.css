@@ -4661,6 +4661,10 @@ body {
 :root[data-theme='dark'] .sidebar-menu-item:hover {
   color: var(--necron-900);
 }
+:root[data-theme='dark'] .sidebar-menu-item:disabled,
+:root[data-theme='dark'] .sidebar-menu-item:disabled:hover {
+  color: var(--text-secondary);
+}
 
 :root[data-theme='dark'] .live-panel-notice {
   background: rgba(0, 200, 118, 0.06);
@@ -6315,6 +6319,26 @@ button:hover:not(:disabled):not(.sidebar-menu-item):not(.export-menu-item):not(.
 /* ========== Sidebar Menu — 4th/5th item ========== */
 .sidebar-menu-item--4 { animation-delay: 0.28s; }
 .sidebar-menu-item--5 { animation-delay: 0.36s; }
+.sidebar-menu-item--6 { animation-delay: 0.44s; }
+
+/* Busy updater states (AUG-157): visible but inert, no hover fill or pulse. */
+.sidebar-menu-item:disabled {
+  color: var(--text-secondary);
+  cursor: default;
+}
+.sidebar-menu-item:disabled:hover {
+  background: none;
+  color: var(--text-secondary);
+  animation-name: sidebar-menu-fade-in;
+  animation-duration: 0.25s;
+  animation-timing-function: ease;
+  animation-fill-mode: forwards;
+  animation-iteration-count: 1;
+}
+.sidebar-menu-item:disabled:hover svg {
+  opacity: 0.7;
+  stroke: currentColor;
+}
 
 /* ========== Settings Modal ========== */
 .settings-backdrop {

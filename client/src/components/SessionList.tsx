@@ -2,6 +2,7 @@ import React, { useEffect, useLayoutEffect, useRef, useState } from 'react';
 import type { HealthStatus, SessionMetadata, SessionStatus } from '../types';
 import AboutModal from './AboutModal';
 import ConfidenceBadge from './ConfidenceBadge';
+import type { DesktopUpdateState } from '../desktop';
 
 interface SessionListProps {
   sessions: SessionMetadata[];
@@ -80,6 +81,8 @@ const SessionList: React.FC<SessionListProps> = ({
   isTranscribing,
 }) => {
   const [menuOpen, setMenuOpen] = useState(false);
+  // Desktop updater state (AUG-157); null hides the menu item (browser build, unpackaged shell).
+  const [updateState, setUpdateState] = useState<DesktopUpdateState | null>(null);
   const [showAbout, setShowAbout] = useState(false);
   const menuRef = useRef<HTMLDivElement>(null);
   const [contextMenu, setContextMenu] = useState<{ sessionId: string; x: number; y: number } | null>(null);
@@ -108,6 +111,18 @@ const SessionList: React.FC<SessionListProps> = ({
     document.addEventListener('mousedown', handleClick);
     return () => document.removeEventListener('mousedown', handleClick);
   }, [menuOpen]);
+
+  useEffect(() => {
+    const api = window.august;
+    if (!api?.getUpdateState) return;
+    let pushed = false;
+    let alive = true;
+    const off = api.onUpdateState?.((s) => { pushed = true; setUpdateState(s); });
+    api.getUpdateState()
+      .then((s) => { if (alive && !pushed) setUpdateState(s); })
+      .catch(() => {});
+    return () => { alive = false; off?.(); };
+  }, []);
 
   useEffect(() => {
     if (!contextMenu) return;
@@ -276,6 +291,22 @@ const SessionList: React.FC<SessionListProps> = ({
 
   const hasFilters = searchQuery || activeFilters.size > 0;
 
+  const updateItem = (() => {
+    const u = updateState;
+    if (!u) return null;
+    switch (u.phase) {
+      case 'checking':
+        return { label: 'Checking for Updates…', disabled: true, onClick: undefined };
+      case 'downloading':
+        return { label: `Downloading Update v${u.version} (${u.percent}%)…`, disabled: true, onClick: undefined };
+      case 'ready':
+        return { label: `Restart to Update to v${u.version}`, disabled: false, onClick: () => { setMenuOpen(false); window.august?.installUpdate?.(); } };
+      default:
+        // idle and error: the menu stays open so the label switches to "Checking…" in place.
+        return { label: 'Check for Updates', disabled: false, onClick: () => window.august?.checkForUpdates?.() };
+    }
+  })();
+
   return (
     <div className="session-list">
       <svg className="session-list-hex-bg" viewBox="0 0 300 800" preserveAspectRatio="none" aria-hidden="true">
@@ -356,8 +387,22 @@ const SessionList: React.FC<SessionListProps> = ({
                   </svg>
                   Settings
                 </button>
+                {updateItem && (
+                  <button
+                    type="button"
+                    className="sidebar-menu-item sidebar-menu-item--5"
+                    onClick={updateItem.onClick}
+                    disabled={updateItem.disabled}
+                  >
+                    <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="miter">
+                      <path d="M21 12a9 9 0 1 1-2.64-6.36" />
+                      <polyline points="21 3 21 9 15 9" />
+                    </svg>
+                    {updateItem.label}
+                  </button>
+                )}
                 <a
-                  className="sidebar-menu-item sidebar-menu-item--5"
+                  className="sidebar-menu-item sidebar-menu-item--6"
                   href="https://youtu.be/dQw4w9WgXcQ"
                   target="_blank"
                   rel="noopener noreferrer"

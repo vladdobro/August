@@ -29,6 +29,14 @@ export interface DesktopCompactRequest { shape: DesktopCompactShape; stripWidth?
 export interface DesktopCompactResult { ok: boolean; shape: DesktopCompactShape; error?: string; }
 export type DesktopCompactEvent = { type: 'expand' } | { type: 'toggle' } | { type: 'strip-width'; width: number };
 export type DesktopCompactIssue = 'interrupted' | 'capture-lost';
+
+// Mirror of UpdateState in electron/src/updater.ts (the state machine lives only in main). 'error' renders like 'idle'.
+export type DesktopUpdateState =
+  | { phase: 'idle' }
+  | { phase: 'checking' }
+  | { phase: 'downloading'; version: string; percent: number }
+  | { phase: 'ready'; version: string }
+  | { phase: 'error'; message: string };
 export type DesktopGhostDragPhase = 'start' | 'move' | 'end';
 
 export interface AugustDesktopApi {
@@ -47,6 +55,11 @@ export interface AugustDesktopApi {
   // Compact Mode (AUG-156). Main window: resize to a dock shape or hide behind a ghost window; 'none' restores the saved bounds.
   setCompactMode?(request: DesktopCompactRequest): Promise<DesktopCompactResult>;
   onCompactEvent?(cb: (event: DesktopCompactEvent) => void): () => void;
+  // Auto-update (AUG-157). getUpdateState resolves null when the shell has no updater (unpackaged build).
+  getUpdateState?(): Promise<DesktopUpdateState | null>;
+  checkForUpdates?(): void;
+  installUpdate?(): void;
+  onUpdateState?(cb: (state: DesktopUpdateState) => void): () => void;
   // Native notification, shown by main only while the main window is hidden.
   reportCompactIssue?(issue: DesktopCompactIssue): void;
   // Ghost window only: click-through toggle (caption), size (coin hover), drag driven by the cursor position in main.
