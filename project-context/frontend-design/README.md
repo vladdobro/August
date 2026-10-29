@@ -12,7 +12,7 @@
 - FileUpload uses a circuit-node radial layout with SVG connection lines and positioned circular control nodes.
 - TranscriptView header uses a circuit diagram with info node and action nodes (Copy, Export, Retranscribe).
 - Export dropdown includes "Send to Praxis", which opens a modal with project chips (a dropdown above 5 projects), an always-visible path input and a prompt note.
-- Settings modal uses a tab strip (General, Audio, Transcription, Projects) in the terminal font with an accent bottom border on the active tab.
+- Settings modal uses a tab strip (General, Audio, Transcription, Projects, Compact mode) in the terminal font with an accent bottom border on the active tab.
 - During recording, the center node turns red with SVG pulse rings and 12 radial frequency bars from AnalyserNode data.
 - ThemeToggle renders as a circuit node inside FileUpload; it renders as a fixed button only when TranscriptView is active.
 - Chronometer Ring (Tomb Amber palette) replaces the shimmer bar during transcription with an animated SVG countdown and phase transitions.
@@ -33,8 +33,8 @@
 - Sidebar footer shows a GPU/CPU indicator strip; green for GPU, yellow for CPU fallback, with an Idle/Transcribing sublabel.
 - Archive page (AUG-150) is a standalone page from the sidebar ≡ menu (not a Settings tab): storage card, CRT scan-line session list with select-all, expandable per-file breakdown, sticky bulk bar and in-app blur-backdrop confirm dialogs; red only on destructive buttons.
 - Confidence badge (.confidence-badge, AUG-152): terminal-font 10px outline chip with 0 radius and a 5px square marker; green ≥ 80 (--status-completed), amber 60–79 (--status-uploading), red < 60 (--status-failed); shown in the sidebar session meta and the transcript header for completed sessions only.
-- Compact Mode (AUG-155, brainstormed, not implemented): while recording, the Electron window shrinks to a 360px dock strip (Live) or a 180px timer square (Default) and restores saved bounds on End Recording.
-- Also known as: Bold Layout, transcript-first layout, overlay panels, pin bar, panel layout, layout overlays (AUG-154), Compact Mode, compact layout, dock strip, timer square, Ghost HUD, auto-collapse on recording (AUG-155), Archive page, storage page, delete audio UI, bulk delete (AUG-150), confidence badge, auto-deleted label, threshold slider (AUG-152).
+- Compact Mode (AUG-156, implemented; designed in AUG-155): 300 ms after a recording starts, the desktop app collapses to a widget chosen in Settings → Compact mode — Variant A in the same window (Dock Strip for the transcript, Dock Square for the indicator) or Variant B as a ghost overlay with August in the tray (Ghost Caption / Ghost Coin); it restores on End Recording or stays as DONE until clicked.
+- Also known as: Bold Layout, transcript-first layout, overlay panels, pin bar, panel layout, layout overlays (AUG-154), Compact Mode, compact layout, dock strip, timer square, Ghost HUD, auto-collapse on recording (AUG-155), Ghost Caption, Ghost Coin, Dock Square, Compact mode settings tab, CompactLayer (AUG-156), Archive page, storage page, delete audio UI, bulk delete (AUG-150), confidence badge, auto-deleted label, threshold slider (AUG-152).
 
 The frontend design system defines the Necron-themed visual language, color tokens, theme switching, and component styling rules for the August web app.
 
@@ -403,23 +403,43 @@ Dark mode borders use necron green rgba instead of forest green rgba — all bor
 - `.main-content` reserves 56px bottom padding for the pin bar; the Archive sticky bulk bar sits at `bottom: 60px` and the live "↓ Live" jump button at `bottom: 72px` for the same reason.
 - Scan-line texture (2px/4px repeating-linear-gradient) covers `.transcript-body` and the live transcript canvas.
 
-### Compact Mode (AUG-155, brainstorm only — not implemented)
+### Compact Mode (AUG-156)
 
-- Status: design decision recorded 2026-10-29 from the AUG-155 brainstorm; no code exists yet. The brainstorm document and the two interactive mockups (Dock Strip, Ghost HUD) are linked in the AUG-155 task card.
-- Recommended approach: same-window Compact Mode — the recording window resizes to a right-edge dock strip (default 360px, user range 280–520px) in Live mode or a 180×180 timer square in Default mode; the Ghost HUD transparent always-on-top widget is a later phase.
-- Collapse happens 300ms after the recording actually starts (not on click), closes overlays and the pin bar, hides the theme toggle and compresses the live top bar to 24px; nothing unmounts (FileUpload must stay mounted while recording).
-- Expand on End Recording restores a bounds snapshot (position, size, maximized flag) and lands on the new session's TranscriptView; Stop Live keeps recording and morphs the strip into the square.
-- Expand policy is a preference: expand immediately on stop, or stay compact until the user clicks the window (calls usually outlive recordings).
-- Manual expand while recording: `[ ⤢ ]` in the compact header, Esc, Ctrl/Cmd+Shift+C, double-click on the header, or a tray item; the full live top bar gets `[ ⤡ COMPACT ]` to re-enter.
-- Compact strip visual rules: 3px left speaker bar (Me accent, Them amber) instead of the `Me:`/`Them:` prefix, latest line bright and older lines fading, scan-line texture, `↓ Live` jump button when auto-follow is paused, 1px strong outline so the edge reads over any wallpaper.
-- Compact square visual rules: 28px tabular timer, 12 level bars and no dB numbers, the whole bottom edge is `[ STOP ]`; the stop confirmation is inline (`END RECORDING?` + `[ YES ]` `[ NO ]`) and respects skipStopConfirmation.
-- Errors never auto-expand: an interrupted live stream turns the compact header red with `[ RETRY ]` `[ OPEN ]`, a lost capture shows `CAPTURE LOST` + `[ OPEN AUGUST ]`; a native notification fires only while the window is hidden.
-- Planned preferences in UserPreferences: compactOnRecording (default true), compactShape 'auto' | 'square' | 'hidden', compactAlwaysOnTop (default true), compactExpandOn 'stop' | 'focus', compactStripWidth (360); desktop-only rows render only when window.august exists, and the browser build gets the in-window layout without a window resize.
-- Electron constraint: the BrowserWindow minimum size 960×600 must be lowered with setMinimumSize before any compact resize and restored on expand; compact bounds come from screen.getDisplayMatching(bounds).workArea.
-- Electron constraint: macOS setBounds animates natively, Windows does not, so the in-window CSS transition (200ms) carries the motion and the window resize is a cut on Windows.
-- Always-on-top divergence: Windows needs setAlwaysOnTop(true) only; macOS needs setAlwaysOnTop(true, 'floating') plus setVisibleOnAllWorkspaces(true, { visibleOnFullScreen: true }) to float over a full-screen call.
-- Electron cannot resize other apps' windows, so compact docks to the right edge of the current display and shows a one-time hint to snap the call into the freed space.
-- Proposed bridge method setCompactMode({ shape }) must be added to electron/src/preload.cts and client/src/desktop.d.ts together.
+- Status: implemented in AUG-156 (designed in AUG-155); build, server tests and the Electron smoke test pass, interactive verification on Windows and macOS is pending.
+- Settings → Compact mode tab (after Projects): the Enable toggle comes first and every other control is disabled while it is off.
+- Mode radios are follow, indicator and transcript; the browser build shows "Desktop app only" with everything locked.
+- Indicator widget cards are Dock Square and Ghost Coin; transcript widget cards are Dock Strip and Ghost Caption, each with a mini 16:9 schematic.
+- A dashed "More options" box holds keep on top, after recording ends (expand on stop or stay until clicked) and strip width 280–520.
+- Preference keys and defaults live in the preferences route, not here.
+- Resolution rule (client/src/services/compact.ts): enabled and mode follow picks the transcript widget while Live is active, otherwise the indicator widget.
+- A transcript mode recording whose Live was stopped falls back to the indicator because there are no lines to show.
+- "Always live transcript" with a Default recording auto-enables Live on the saved liveEngine for that recording only, leaving the saved recordingMode untouched.
+- "Always recording indicator" with Live active shows a "▤ N" live-line counter on the indicators; clicking it opens the live panel and expands.
+- Pause in compact is the Live-transcription pause only (decision 2026-10-29): August has no recording pause, and a real pause would desync the server-capture system track.
+- Default-mode widgets have no pause control.
+- Paused visuals: amber blinking timer, PAUSED tag and flat level bars.
+- Collapse happens 300 ms after the recording actually starts (CompactLayer watches the recording flag), closes overlays, Settings and the Groq modal, and switches App to the recording view.
+- Variant A hides #root with `html.compact-dock #root { display: none }` and renders the widget through a React portal on document.body, so nothing unmounts and FileUpload stays mounted.
+- Expand triggers: [ ⤢ ], Esc, Ctrl/Cmd+Shift+C (in-window, not global), double-click on the strip header, tray "Expand August", and tray or notification click during a ghost compact.
+- Re-enter with [ ⤡ COMPACT ] in the circuit recording info, "⤡ Compact" in the live top bar, or Ctrl/Cmd+Shift+C.
+- A manual expand disables auto-collapse until the next recording.
+- On End Recording the expand policy applies: "stop" restores immediately, "click" shows the DONE face ("DONE · mm:ss") until clicked or Esc.
+- Dock Strip: 24px header with rec dot, timer, status and [ ⤢ ]; the hover row has [ COPY ALL ] [ STOP LIVE ].
+- Dock Strip lines use a 3px speaker bar (Me accent, Them --compact-them) with older lines fading, scan lines and a ↓ LIVE jump button.
+- Dock Strip footer is [ PAUSE ] [ END ]; END shows inline "END RECORDING?" confirmation and respects skipStopConfirmation.
+- Dock Square: tag MIC + SYS or MIC, ▤ N counter, 28px tabular timer, 12 level bars without dB numbers, full-width [ STOP ] on the bottom edge with inline confirmation.
+- Ghost Caption: translucent ribbon showing the last 3 lines, timer and status on the left, [⤢] [⏸] [■] on hover only.
+- Ghost Caption is click-through outside its controls and snaps Top or Bottom after a vertical drag.
+- Ghost Coin: 56px, hover expands to [ PAUSE ] [ END ] [ OPEN ], right-click shows inline END? [ YES ] [ NO ], and a free drag snaps to the nearest corner.
+- Errors never auto-expand: an interrupted live stream shows a red header with [ RETRY ] [ OPEN ]; a lost capture shows CAPTURE LOST with [ OPEN AUGUST ].
+- Red in compact widgets is limited to destructive actions (STOP, END, END RECORDING? confirm, STOP LIVE) and error faces (INTERRUPTED, CAPTURE LOST), per the color utility schema.
+- A one-time hint "Snap your call into the freed space" with [ GOT IT ] appears in Variant A widgets.
+- All compact animations are disabled under prefers-reduced-motion.
+- Data flow: FileUpload publishes a snapshot and actions into client/src/services/compactStore.ts, CompactLayer owns the full | compact | done phase machine, and ghost windows talk over BroadcastChannel 'august-compact' (client/src/components/compact/ghostProtocol.ts).
+- Electron constraint: the 960×600 minimum window size is lowered only while compact and restored on expand.
+- Electron constraint: macOS animates setBounds and Windows cuts, so the in-window fade (200 ms) carries the motion.
+- Electron cannot resize other apps' windows, so Variant A docks to the right edge and shows the one-time snap hint.
+- Window mechanics (bounds, ghost window, always-on-top, bridge channels) live in the desktop-shell route.
 
 ### Responsive Breakpoints
 
@@ -688,4 +708,10 @@ Status badge colors (uploading, transcribing, completed, failed) must remain dis
 - client/src/components/PraxisProjectsPage.tsx — Settings Projects tab: master-detail layout with a project list, default-prompt and per-project editors, and a New project mode.
 - client/src/components/ArchivePage.tsx — Archive page: storage card, session list with per-file breakdown, bulk delete bar, confirm dialogs (AUG-150)
 - client/src/components/ConfidenceBadge.tsx — confidence percentage chip with tier colouring (AUG-152)
+- client/src/components/compact/CompactLayer.tsx — compact phase machine (full | compact | done), auto-collapse and expand triggers (AUG-156)
+- client/src/components/compact/DockWidgets.tsx — Dock Strip and Dock Square widgets (AUG-156)
+- client/src/components/compact/GhostApp.tsx — Ghost Caption and Ghost Coin overlay app loaded with ?ghost=caption|coin (AUG-156)
+- client/src/components/compact/ghostProtocol.ts — BroadcastChannel 'august-compact' message types between main and ghost windows (AUG-156)
+- client/src/services/compact.ts — compact widget resolution rule and auto-Live helper (AUG-156)
+- client/src/services/compactStore.ts — useSyncExternalStore snapshot and actions published by FileUpload (AUG-156)
 - client/src/components/SetupGuide.tsx — Diagnostics page with circuit-node layout, W40K CRT aesthetic, adaptive GPU/model reveal logic

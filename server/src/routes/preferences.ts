@@ -5,6 +5,7 @@ import {
   readPreferencesMigrated,
   writePreferences,
   sanitizePraxisProjects,
+  sanitizeCompactPreferences,
   migratePraxisProjects,
 } from '../services/preferencesStore.js';
 
@@ -29,6 +30,14 @@ const ALLOWED_KEYS = new Set([
   'gpuEngine',
   'autoDeleteWav',
   'autoDeleteWavThreshold',
+  'compactEnabled',
+  'compactMode',
+  'compactIndicatorWidget',
+  'compactTranscriptWidget',
+  'compactAlwaysOnTop',
+  'compactExpandOn',
+  'compactStripWidth',
+  'compactHintSeen',
 ]);
 
 // GET /api/preferences
@@ -45,7 +54,7 @@ router.patch('/', async (req, res) => {
     return;
   }
 
-  const patch: Record<string, unknown> = {};
+  let patch: Record<string, unknown> = {};
   for (const [key, value] of Object.entries(body)) {
     if (ALLOWED_KEYS.has(key)) {
       patch[key] = value;
@@ -66,6 +75,7 @@ router.patch('/', async (req, res) => {
     if (Number.isFinite(n)) patch.autoDeleteWavThreshold = Math.min(95, Math.max(50, Math.round(n)));
     else delete patch.autoDeleteWavThreshold;
   }
+  patch = sanitizeCompactPreferences(patch);
 
   const current = await readPreferencesMigrated();
   const merged = migratePraxisProjects({ ...current, ...patch });

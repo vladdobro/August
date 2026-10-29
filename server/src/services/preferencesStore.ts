@@ -109,6 +109,29 @@ export function sanitizePraxisProjects(input: unknown): PraxisProject[] {
   return out;
 }
 
+/// Compact Mode prefs (AUG-156): booleans are strict, enums drop unknown values, the strip width clamps to 280–520.
+export function sanitizeCompactPreferences(patch: PreferencesRecord): PreferencesRecord {
+  const out: PreferencesRecord = { ...patch };
+  for (const key of ['compactEnabled', 'compactAlwaysOnTop', 'compactHintSeen']) {
+    if (key in out) out[key] = out[key] === true;
+  }
+  const enums: Record<string, readonly string[]> = {
+    compactMode: ['follow', 'indicator', 'transcript'],
+    compactIndicatorWidget: ['dock-square', 'ghost-coin'],
+    compactTranscriptWidget: ['dock-strip', 'ghost-caption'],
+    compactExpandOn: ['stop', 'click'],
+  };
+  for (const [key, allowed] of Object.entries(enums)) {
+    if (key in out && !(typeof out[key] === 'string' && allowed.includes(out[key] as string))) delete out[key];
+  }
+  if ('compactStripWidth' in out) {
+    const n = Number(out.compactStripWidth);
+    if (Number.isFinite(n)) out.compactStripWidth = Math.min(520, Math.max(280, Math.round(n)));
+    else delete out.compactStripWidth;
+  }
+  return out;
+}
+
 /// AUG-142: the single legacy `praxisProjectPath` becomes the first registered project.
 /// Pure. Returns the same object (===) when nothing changed so callers can skip the write.
 export function migratePraxisProjects(prefs: PreferencesRecord): PreferencesRecord {

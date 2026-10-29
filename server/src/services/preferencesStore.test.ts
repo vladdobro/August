@@ -2,7 +2,7 @@ import { describe, test, expect, beforeEach, afterEach } from 'vitest';
 import fs from 'node:fs/promises';
 import os from 'node:os';
 import path from 'node:path';
-import { migrateLegacyPreferences, migratePraxisProjects, sanitizePraxisProjects } from './preferencesStore.js';
+import { migrateLegacyPreferences, migratePraxisProjects, sanitizePraxisProjects, sanitizeCompactPreferences } from './preferencesStore.js';
 
 let root: string;
 let legacyPath: string;
@@ -146,5 +146,30 @@ describe('sanitizePraxisProjects', () => {
     const b = path.join(os.tmpdir(), 'b');
     const out = sanitizePraxisProjects([{ path: a, isDefault: true }, { path: b, isDefault: true }]);
     expect(out.map((x) => x.isDefault)).toEqual([true, false]);
+  });
+});
+
+describe('sanitizeCompactPreferences', () => {
+  test('booleans are strict', () => {
+    const out = sanitizeCompactPreferences({ compactEnabled: 'yes', compactAlwaysOnTop: true });
+    expect(out.compactEnabled).toBe(false);
+    expect(out.compactAlwaysOnTop).toBe(true);
+  });
+
+  test('unknown enum value is dropped, valid one kept', () => {
+    const out = sanitizeCompactPreferences({ compactMode: 'bogus', compactExpandOn: 'click' });
+    expect('compactMode' in out).toBe(false);
+    expect(out.compactExpandOn).toBe('click');
+  });
+
+  test('strip width clamps and non-numeric is dropped', () => {
+    expect(sanitizeCompactPreferences({ compactStripWidth: 100 }).compactStripWidth).toBe(280);
+    expect(sanitizeCompactPreferences({ compactStripWidth: 999 }).compactStripWidth).toBe(520);
+    expect(sanitizeCompactPreferences({ compactStripWidth: 361.6 }).compactStripWidth).toBe(362);
+    expect('compactStripWidth' in sanitizeCompactPreferences({ compactStripWidth: 'wide' })).toBe(false);
+  });
+
+  test('unrelated keys pass through untouched', () => {
+    expect(sanitizeCompactPreferences({ language: 'en' })).toEqual({ language: 'en' });
   });
 });

@@ -1,6 +1,7 @@
 import React, { useEffect, useState } from 'react';
 import type { UserPreferences } from '../services/preferences';
 import { DEFAULT_PREFERENCES, isSystemCaptureUsable, resolveSystemAudioSource } from '../services/preferences';
+import { compactPrefs } from '../services/compact';
 import { switchEngine, CUDA_PROGRESS_URL } from '../api';
 import type { CaptureCapabilities, HealthStatus, SystemAudioSource } from '../types';
 import type { DesktopSettings } from '../desktop';
@@ -41,7 +42,7 @@ const SettingsModal: React.FC<SettingsModalProps> = ({
   const [cudaProgress, setCudaProgress] = useState<number>(0);
   const [cudaError, setCudaError] = useState<string | null>(null);
   const [confirmingReset, setConfirmingReset] = useState(false);
-  const [tab, setTab] = useState<'general' | 'audio' | 'transcription' | 'projects'>('general');
+  const [tab, setTab] = useState<'general' | 'audio' | 'transcription' | 'projects' | 'compact'>('general');
 
   // Desktop shell (Electron) settings — the section renders only when window.august exists.
   const desktop = window.august ?? null;
@@ -133,6 +134,14 @@ const SettingsModal: React.FC<SettingsModalProps> = ({
   useEffect(() => { setThresholdDraft(autoDeleteWavThreshold); }, [autoDeleteWavThreshold]);
   const commitThreshold = () => { if (thresholdDraft !== autoDeleteWavThreshold) onPreferenceChange({ autoDeleteWavThreshold: thresholdDraft }); };
 
+  // Compact mode tab (AUG-156): desktop-only; everything is locked in the browser build or while the master toggle is off.
+  const compactSupported = Boolean(desktop?.setCompactMode);
+  const cp = compactPrefs(preferences);
+  const compactLocked = !compactSupported || !cp.enabled;
+  const [stripDraft, setStripDraft] = useState<number>(cp.stripWidth);
+  useEffect(() => { setStripDraft(cp.stripWidth); }, [cp.stripWidth]);
+  const commitStrip = () => { if (stripDraft !== cp.stripWidth) onPreferenceChange({ compactStripWidth: stripDraft }); };
+
   const handleReset = () => {
     if (!confirmingReset) {
       setConfirmingReset(true);
@@ -150,9 +159,9 @@ const SettingsModal: React.FC<SettingsModalProps> = ({
           <button className="settings-close" onClick={onClose}>×</button>
         </div>
         <nav className="settings-tabs" aria-label="Settings sections">
-          {(['general', 'audio', 'transcription', 'projects'] as const).map((t) => (
+          {(['general', 'audio', 'transcription', 'projects', 'compact'] as const).map((t) => (
             <button key={t} type="button" className={`settings-tab${tab === t ? ' settings-tab--active' : ''}`} onClick={() => setTab(t)}>
-              {t === 'general' ? 'General' : t === 'audio' ? 'Audio' : t === 'transcription' ? 'Transcription' : 'Projects'}
+              {t === 'general' ? 'General' : t === 'audio' ? 'Audio' : t === 'transcription' ? 'Transcription' : t === 'projects' ? 'Projects' : 'Compact mode'}
             </button>
           ))}
         </nav>
@@ -528,6 +537,147 @@ const SettingsModal: React.FC<SettingsModalProps> = ({
 
           {tab === 'projects' && (
             <PraxisProjectsPage preferences={preferences} onPreferenceChange={onPreferenceChange} />
+          )}
+
+          {tab === 'compact' && (
+            <div className="settings-section compact-tab">
+              {!compactSupported && (
+                <div className="settings-hint settings-hint--warn">Desktop app only — Compact mode needs the August desktop app.</div>
+              )}
+              <div className="settings-section-title">Compact mode</div>
+              <div className="settings-row">
+                <span className="settings-label">
+                  Enable Compact mode
+                  <small className="compact-small">While recording, August shrinks to a widget and comes back when the recording ends.</small>
+                </span>
+                <label className="settings-toggle">
+                  <input
+                    type="checkbox"
+                    checked={cp.enabled}
+                    disabled={!compactSupported}
+                    onChange={(e) => onPreferenceChange({ compactEnabled: e.target.checked })}
+                  />
+                  <span className="settings-toggle-label">{cp.enabled ? 'On' : 'Off'}</span>
+                </label>
+              </div>
+              {compactSupported && !cp.enabled && (
+                <div className="compact-locked-note">▲ Turn on Compact mode to edit the options below</div>
+              )}
+
+              <div className={`compact-settings${compactLocked ? ' compact-settings--locked' : ''}`}>
+                <div className="compact-group">
+                  <div className="compact-group-title">Mode <span className="compact-group-hint">what the widget shows</span></div>
+                  <div className="compact-radios">
+                    {([
+                      { value: 'follow', title: 'Follow the recording mode', def: true, desc: 'Default recording → recording indicator. Live transcription → live transcript widget.' },
+                      { value: 'indicator', title: 'Always recording indicator', def: false, desc: 'Timer and level only, even during Live transcription. The widget shows a live line counter; the lines themselves keep streaming into the full window.' },
+                      { value: 'transcript', title: 'Always live transcript', def: false, desc: 'The transcript widget in both modes. A Default recording automatically starts with Live transcription on (saved engine), so the widget always has lines.' },
+                    ] as const).map((o) => (
+                      <label key={o.value} className={`compact-radio${cp.mode === o.value ? ' compact-radio--on' : ''}`}>
+                        <input type="radio" name="compact-mode" value={o.value} checked={cp.mode === o.value} disabled={compactLocked} onChange={() => onPreferenceChange({ compactMode: o.value })} />
+                        <span className="compact-radio-mark" aria-hidden="true" />
+                        <span className="compact-radio-text">
+                          {o.title}{o.def && <span className="compact-badge">DEFAULT</span>}
+                          <small>{o.desc}</small>
+                        </span>
+                      </label>
+                    ))}
+                  </div>
+                </div>
+
+                <div className="compact-group">
+                  <div className="compact-group-title">Recording indicator widget <span className="compact-group-hint">used when the widget shows the indicator</span></div>
+                  <div className="compact-cards">
+                    <label className={`compact-card${cp.indicatorWidget === 'dock-square' ? ' compact-card--on' : ''}`}>
+                      <input type="radio" name="compact-ind" value="dock-square" checked={cp.indicatorWidget === 'dock-square'} disabled={compactLocked} onChange={() => onPreferenceChange({ compactIndicatorWidget: 'dock-square' })} />
+                      <span className="compact-card-title">Dock Square <span className="compact-card-variant">VARIANT A</span></span>
+                      <span className="compact-sch" aria-hidden="true"><span className="compact-sch-call" style={{ right: '22%' }} /><span className="compact-sch-aug" style={{ right: '4%', bottom: '8%', width: '16%', aspectRatio: '1' }} /><span className="compact-sch-dot" style={{ right: '16%', bottom: '20%' }} /></span>
+                      <span className="compact-card-desc">The August window itself shrinks to a 180×180 square: timer, level bars, [ STOP ] on the bottom edge. During Live it also shows the line counter.</span>
+                    </label>
+                    <label className={`compact-card${cp.indicatorWidget === 'ghost-coin' ? ' compact-card--on' : ''}`}>
+                      <input type="radio" name="compact-ind" value="ghost-coin" checked={cp.indicatorWidget === 'ghost-coin'} disabled={compactLocked} onChange={() => onPreferenceChange({ compactIndicatorWidget: 'ghost-coin' })} />
+                      <span className="compact-card-title">Ghost Coin <span className="compact-card-variant">VARIANT B</span></span>
+                      <span className="compact-sch" aria-hidden="true"><span className="compact-sch-call" style={{ right: '4%' }} /><span className="compact-sch-aug" style={{ right: '6%', bottom: '10%', width: '9%', aspectRatio: '1', background: 'rgba(6,11,8,.9)' }} /><span className="compact-sch-dot" style={{ right: '9.5%', bottom: '16%' }} /></span>
+                      <span className="compact-card-desc">August hides to the tray; a 56px always-on-top coin floats over the call and expands on hover. During Live it also shows the line counter.</span>
+                    </label>
+                  </div>
+                </div>
+
+                <div className="compact-group">
+                  <div className="compact-group-title">Live transcript widget <span className="compact-group-hint">used when the widget shows the transcript</span></div>
+                  <div className="compact-cards">
+                    <label className={`compact-card${cp.transcriptWidget === 'dock-strip' ? ' compact-card--on' : ''}`}>
+                      <input type="radio" name="compact-tx" value="dock-strip" checked={cp.transcriptWidget === 'dock-strip'} disabled={compactLocked} onChange={() => onPreferenceChange({ compactTranscriptWidget: 'dock-strip' })} />
+                      <span className="compact-card-title">Dock Strip <span className="compact-card-variant">VARIANT A</span></span>
+                      <span className="compact-sch" aria-hidden="true"><span className="compact-sch-call" style={{ right: '30%' }} /><span className="compact-sch-aug" style={{ right: '4%', top: '6%', bottom: '6%', width: '22%' }} /><span className="compact-sch-line" style={{ right: '7%', top: '30%', width: '16%' }} /><span className="compact-sch-line" style={{ right: '7%', top: '42%', width: '12%', background: '#8a6a2a' }} /><span className="compact-sch-line" style={{ right: '7%', top: '54%', width: '14%' }} /></span>
+                      <span className="compact-card-desc">The August window shrinks to a 360px strip on the right edge: last lines, [ PAUSE ] [ END ].</span>
+                    </label>
+                    <label className={`compact-card${cp.transcriptWidget === 'ghost-caption' ? ' compact-card--on' : ''}`}>
+                      <input type="radio" name="compact-tx" value="ghost-caption" checked={cp.transcriptWidget === 'ghost-caption'} disabled={compactLocked} onChange={() => onPreferenceChange({ compactTranscriptWidget: 'ghost-caption' })} />
+                      <span className="compact-card-title">Ghost Caption <span className="compact-card-variant">VARIANT B</span></span>
+                      <span className="compact-sch" aria-hidden="true"><span className="compact-sch-call" style={{ right: '4%' }} /><span className="compact-sch-aug" style={{ left: '12%', right: '12%', bottom: '12%', height: '22%', background: 'rgba(6,11,8,.85)' }} /><span className="compact-sch-line" style={{ left: '16%', bottom: '24%', width: '40%' }} /><span className="compact-sch-line" style={{ left: '16%', bottom: '17%', width: '30%', background: '#8a6a2a' }} /></span>
+                      <span className="compact-card-desc">August hides to the tray; a transparent caption ribbon with the last 3 lines floats over the call.</span>
+                    </label>
+                  </div>
+                </div>
+
+                <div className="compact-more">
+                  <div className="compact-group-title compact-group-title--amber">More options</div>
+                  <div className="settings-row">
+                    <span className="settings-label">
+                      Keep on top while compact
+                      <small className="compact-small">Variant B needs it; Variant A benefits when the call goes full-screen.</small>
+                    </span>
+                    <label className="settings-toggle">
+                      <input type="checkbox" checked={cp.alwaysOnTop} disabled={compactLocked} onChange={(e) => onPreferenceChange({ compactAlwaysOnTop: e.target.checked })} />
+                      <span className="settings-toggle-label">{cp.alwaysOnTop ? 'On' : 'Off'}</span>
+                    </label>
+                  </div>
+                  <div className="settings-row">
+                    <span className="settings-label">
+                      After recording ends
+                      <small className="compact-small">Calls usually outlive recordings.</small>
+                    </span>
+                    <div className="compact-radios compact-radios--small">
+                      {([
+                        { value: 'stop', label: 'Expand August immediately' },
+                        { value: 'click', label: 'Stay compact until I click' },
+                      ] as const).map((o) => (
+                        <label key={o.value} className={`compact-radio compact-radio--small${cp.expandOn === o.value ? ' compact-radio--on' : ''}`}>
+                          <input type="radio" name="compact-after" value={o.value} checked={cp.expandOn === o.value} disabled={compactLocked} onChange={() => onPreferenceChange({ compactExpandOn: o.value })} />
+                          <span className="compact-radio-mark" aria-hidden="true" />
+                          <span className="compact-radio-text">{o.label}</span>
+                        </label>
+                      ))}
+                    </div>
+                  </div>
+                  <div className="settings-row">
+                    <label className="settings-label" htmlFor="settings-compact-strip-width">
+                      Dock Strip width
+                      <small className="compact-small">Variant A only.</small>
+                    </label>
+                    <div className="settings-slider">
+                      <input
+                        id="settings-compact-strip-width"
+                        type="range"
+                        min={280}
+                        max={520}
+                        step={20}
+                        value={stripDraft}
+                        disabled={compactLocked}
+                        onChange={(e) => setStripDraft(Number(e.target.value))}
+                        onMouseUp={commitStrip}
+                        onTouchEnd={commitStrip}
+                        onKeyUp={commitStrip}
+                        onBlur={commitStrip}
+                        aria-valuetext={`${stripDraft} px`}
+                      />
+                      <span className="settings-slider-value">{stripDraft} px</span>
+                    </div>
+                  </div>
+                </div>
+              </div>
+            </div>
           )}
         </div>
         <div className="settings-actions">

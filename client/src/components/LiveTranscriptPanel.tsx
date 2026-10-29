@@ -22,6 +22,8 @@ interface LiveTranscriptPanelProps {
   onClearAll: () => void;
   elapsed: string;
   onEndRecording: () => void;
+  // Compact Mode (AUG-156): shrink August to a widget. Set only on the desktop shell.
+  onCompact?: () => void;
 }
 
 const STATUS_LABEL: Record<LiveStatus, string> = {
@@ -33,7 +35,7 @@ const STATUS_LABEL: Record<LiveStatus, string> = {
 };
 
 const LiveTranscriptPanel: React.FC<LiveTranscriptPanelProps> = ({
-  lines, status, error, warning, micUnavailable, onPause, onResume, onCopyAll, onClose, onStop, onClearAll, elapsed, onEndRecording,
+  lines, status, error, warning, micUnavailable, onPause, onResume, onCopyAll, onClose, onStop, onClearAll, elapsed, onEndRecording, onCompact,
 }) => {
   const bodyRef = useRef<HTMLDivElement>(null);
   const [autoScroll, setAutoScroll] = useState(true);
@@ -87,6 +89,9 @@ const LiveTranscriptPanel: React.FC<LiveTranscriptPanelProps> = ({
           <button type="button" className="live-panel-btn live-panel-btn--end" onClick={onEndRecording} title="Stop recording and transcribe">End Recording</button>
         </div>
         <span className="live-topbar-spacer" />
+        {onCompact && (
+          <button type="button" className="live-panel-btn live-panel-btn--compact" onClick={onCompact} title="Shrink August to a widget (Ctrl/Cmd+Shift+C)">⤡ Compact</button>
+        )}
         <button type="button" className="live-panel-close" onClick={onClose} aria-label="Hide live transcript" title="Hide live transcript">×</button>
       </div>
       {confirmAction && (

@@ -13,6 +13,7 @@ import { getPreferences, patchPreferences, resetPreferences } from './services/p
 import type { UserPreferences } from './services/preferences';
 import OverlayLayer, { type OverlayId } from './components/OverlayLayer';
 import ControlsPanel from './components/ControlsPanel';
+import CompactLayer from './components/compact/CompactLayer';
 import { ThemeToggle } from './theme';
 import { Agentation } from 'agentation';
 
@@ -454,6 +455,12 @@ const App: React.FC = () => {
         />
       )}
       {shouldEnableAgentation && <Agentation endpoint={agentationEndpoint} />}
+      <CompactLayer
+        preferences={preferences}
+        onPreferenceChange={handlePreferenceChange}
+        onBeforeCollapse={() => { setOpenOverlay(null); setShowSettings(false); setShowGroqKeyModal(false); }}
+        onRevealRecording={() => { setSelectedSessionId(null); setShowDiagnostics(false); setShowArchive(false); setSetupDismissed(true); }}
+      />
     </>
   );
 };

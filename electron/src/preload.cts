@@ -26,6 +26,26 @@ const api = {
       ipcRenderer.removeListener('august:open-session', listener);
     };
   },
+  setCompactMode: (request: unknown) => ipcRenderer.invoke('august:set-compact-mode', request),
+  onCompactEvent: (cb: (event: unknown) => void) => {
+    const listener = (_event: Electron.IpcRendererEvent, ev: unknown) => cb(ev);
+    ipcRenderer.on('august:compact-event', listener);
+    return () => {
+      ipcRenderer.removeListener('august:compact-event', listener);
+    };
+  },
+  reportCompactIssue: (issue: string) => {
+    ipcRenderer.send('august:compact-issue', issue);
+  },
+  ghostSetIgnoreMouse: (ignore: boolean) => {
+    ipcRenderer.send('august:ghost-ignore-mouse', ignore);
+  },
+  ghostResize: (size: { width: number; height: number }) => {
+    ipcRenderer.send('august:ghost-resize', size);
+  },
+  ghostDrag: (phase: string) => {
+    ipcRenderer.send('august:ghost-drag', phase);
+  },
 };
 
 contextBridge.exposeInMainWorld('august', api);

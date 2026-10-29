@@ -9,6 +9,8 @@ import LiveTranscriptPanel, { type LiveLine, type LiveStatus } from './LiveTrans
 import { LiveTranscriptionClient, type LiveEngine } from '../services/liveTranscriptionClient';
 import { saveRecordingProgress, getRecoveredRecording, clearRecoveredRecording, type RecoveredRecording } from '../services/recordingRecovery';
 import { DEFAULT_PREFERENCES, resolveSystemAudioSource, type UserPreferences } from '../services/preferences';
+import { shouldAutoEnableLive } from '../services/compact';
+import { compactStore } from '../services/compactStore';
 import { isVideoFile, probeVideoHasAudio, NO_AUDIO_MESSAGE } from '../services/videoAudioProbe';
 
 // Mirrors UPLOAD_EXTENSIONS in server/src/services/mediaFormats.ts (video: audio track extracted server-side, AUG-144).
@@ -77,9 +79,12 @@ const FileUpload: React.FC<FileUploadProps> = ({ onUploaded, onRecordingChange, 
   const [liveError, setLiveError] = useState<string | null>(null);
   const [liveWarning, setLiveWarning] = useState<string | null>(null);
   const [liveMicUnavailable, setLiveMicUnavailable] = useState(false);
+  // Compact Mode: the mic or shared system-audio track died and could not be recovered.
+  const [captureLost, setCaptureLost] = useState(false);
   const [recoveredRecording, setRecoveredRecording] = useState<RecoveredRecording | null>(null);
   const [showDefaultsInfo, setShowDefaultsInfo] = useState(false);
   const liveClientRef = useRef<LiveTranscriptionClient | null>(null);
+  const liveStartArgsRef = useRef<{ micStream: MediaStream | null; systemStream: MediaStream | null; engine: LiveEngine; captureId: string | null } | null>(null);
 
   const fileInputRef = useRef<HTMLInputElement>(null);
   const mediaRecorderRef = useRef<MediaRecorder | null>(null);
@@ -253,8 +258,8 @@ const FileUpload: React.FC<FileUploadProps> = ({ onUploaded, onRecordingChange, 
   }, [preferences?.micDeviceId, audioDevices]);
 
   const startLiveTranscription = useCallback(
-    (micStream: MediaStream | null, systemStream: MediaStream | null, engine: LiveEngine = 'local', captureId: string | null = null) => {
-      setLiveLines([]);
+    (micStream: MediaStream | null, systemStream: MediaStream | null, engine: LiveEngine = 'local', captureId: string | null = null, keepLines = false) => {
+      if (!keepLines) setLiveLines([]);
       setLiveError(null);
       setLiveWarning(null);
       setLiveMicUnavailable(false);
@@ -287,6 +292,11 @@ const FileUpload: React.FC<FileUploadProps> = ({ onUploaded, onRecordingChange, 
   const startRecording = useCallback(async (liveMode: boolean = false, engine: LiveEngine = 'local') => {
     setError(null);
     setCaptureNotice(null);
+    setCaptureLost(false);
+    // Compact Mode "Always live transcript": a Default recording gets Live too (desktop only; saved recordingMode untouched).
+    const autoLive = !liveMode && shouldAutoEnableLive(preferences ?? {}, Boolean(window.august));
+    const useLive = liveMode || autoLive;
+    const liveEngine: LiveEngine = autoLive ? (preferences?.liveEngine === 'groq' && groqAvailable ? 'groq' : 'local') : engine;
     try {
       void clearRecoveredRecording();
       setRecoveredRecording(null);
@@ -413,8 +423,10 @@ const FileUpload: React.FC<FileUploadProps> = ({ onUploaded, onRecordingChange, 
           micSource.connect(recordDest);
           streamRef.current = next;
           watchMicTrack(next);
+          setCaptureLost(false);
           setMicNotice('Microphone was disconnected — recording continues with the current microphone.');
         } catch {
+          setCaptureLost(true);
           setMicNotice('Microphone was disconnected — your side is silent until a microphone is available again.');
         }
       };
@@ -483,7 +495,7 @@ const FileUpload: React.FC<FileUploadProps> = ({ onUploaded, onRecordingChange, 
 
       if (useServerCapture) {
         try {
-          serverCapture = await startServerCapture({ live: liveMode });
+          serverCapture = await startServerCapture({ live: useLive });
         } catch (err) {
           setCaptureNotice(`Direct system capture failed to start (${(err as Error).message}) — falling back to the browser screen picker.`);
         }
@@ -504,6 +516,10 @@ const FileUpload: React.FC<FileUploadProps> = ({ onUploaded, onRecordingChange, 
 
         soundStreamRef.current = displayStream;
         liveSystemStream = displayStream;
+        // "Stop sharing" in the browser picker ends the system track while the mic keeps recording.
+        audioTracks[0].addEventListener('ended', () => {
+          if (!recorderStopped()) setCaptureLost(true);
+        }, { once: true });
 
         soundChunksRef.current = [];
         const soundRecorder = mimeType
@@ -579,8 +595,9 @@ const FileUpload: React.FC<FileUploadProps> = ({ onUploaded, onRecordingChange, 
       setIsRecording(true);
       onRecordingChange?.(true);
 
-      if (liveMode) {
-        startLiveTranscription(recordStream, liveSystemStream, engine, serverCapture?.captureId ?? null);
+      if (useLive) {
+        liveStartArgsRef.current = { micStream: recordStream, systemStream: liveSystemStream, engine: liveEngine, captureId: serverCapture?.captureId ?? null };
+        startLiveTranscription(recordStream, liveSystemStream, liveEngine, serverCapture?.captureId ?? null);
       }
     } catch (err) {
       recordCtxRef.current?.close().catch(() => {});
@@ -589,7 +606,7 @@ const FileUpload: React.FC<FileUploadProps> = ({ onUploaded, onRecordingChange, 
         'Could not access audio device: ' + ((err as Error).message || 'unknown error'),
       );
     }
-  }, [language, onUploaded, selectedMicId, captureSystemAudio, startLiveTranscription, resolvedSystemSource, preferences?.systemAudioSource, captureCapabilities?.hint]);
+  }, [language, onUploaded, selectedMicId, captureSystemAudio, startLiveTranscription, resolvedSystemSource, preferences?.systemAudioSource, captureCapabilities?.hint, preferences?.compactEnabled, preferences?.compactMode, preferences?.liveEngine, groqAvailable]);
 
   const stopRecording = useCallback(() => {
     mediaRecorderRef.current?.stop();
@@ -603,6 +620,8 @@ const FileUpload: React.FC<FileUploadProps> = ({ onUploaded, onRecordingChange, 
       liveClientRef.current.stop();
       liveClientRef.current = null;
     }
+    liveStartArgsRef.current = null;
+    setCaptureLost(false);
     setLiveActive(false);
     setLiveHidden(false);
 
@@ -727,6 +746,7 @@ const FileUpload: React.FC<FileUploadProps> = ({ onUploaded, onRecordingChange, 
   const handleLiveStop = useCallback(() => {
     liveClientRef.current?.stop();
     liveClientRef.current = null;
+    liveStartArgsRef.current = null;
     setLiveActive(false);
     setLiveHidden(false);
     setLiveLines([]);
@@ -738,6 +758,47 @@ const FileUpload: React.FC<FileUploadProps> = ({ onUploaded, onRecordingChange, 
   const handleLiveClearAll = useCallback(() => {
     setLiveLines([]);
   }, []);
+
+  // Compact Mode retry: the server detaches the capture tee on WS stop and re-attaches on attach-capture, so this is safe.
+  const handleLiveRetry = useCallback(() => {
+    const args = liveStartArgsRef.current;
+    if (!args || !liveClientRef.current) return;
+    liveClientRef.current.stop();
+    startLiveTranscription(args.micStream, args.systemStream, args.engine, args.captureId, true);
+  }, [startLiveTranscription]);
+
+  // Compact Mode bridge: publish a snapshot for the widgets and register stable actions (latest callbacks via ref).
+  useEffect(() => {
+    compactStore.publish({
+      recording: isRecording,
+      live: liveActive,
+      lines: liveLines,
+      liveStatus: liveActive ? liveStatus : null,
+      liveError,
+      captureLost,
+      elapsedSeconds,
+      levels: audioLevels,
+      dualTrack: captureSystemAudio,
+      skipStopConfirmation: preferences?.skipStopConfirmation ?? false,
+    });
+  }, [isRecording, liveActive, liveLines, liveStatus, liveError, captureLost, elapsedSeconds, audioLevels, captureSystemAudio, preferences?.skipStopConfirmation]);
+
+  const compactActionsRef = useRef({ stopRecording, handleLivePause, handleLiveResume, handleLiveStop, handleLiveRetry, handleLiveCopyAll });
+  compactActionsRef.current = { stopRecording, handleLivePause, handleLiveResume, handleLiveStop, handleLiveRetry, handleLiveCopyAll };
+  useEffect(() => {
+    compactStore.setActions({
+      end: () => compactActionsRef.current.stopRecording(),
+      pauseLive: () => compactActionsRef.current.handleLivePause(),
+      resumeLive: () => compactActionsRef.current.handleLiveResume(),
+      stopLive: () => compactActionsRef.current.handleLiveStop(),
+      retryLive: () => compactActionsRef.current.handleLiveRetry(),
+      copyAll: () => compactActionsRef.current.handleLiveCopyAll(),
+      showLivePanel: () => setLiveHidden(false),
+    });
+    return () => compactStore.setActions(null);
+  }, []);
+
+  const canCompact = Boolean(window.august?.setCompactMode) && (preferences?.compactEnabled ?? true);
 
   const handleRecoveryUpload = useCallback(async () => {
     if (!recoveredRecording) return;
@@ -915,6 +976,9 @@ const FileUpload: React.FC<FileUploadProps> = ({ onUploaded, onRecordingChange, 
           <span className="recording-dot" aria-hidden="true" />
           <span className="recording-timer">{formatTime(elapsedSeconds)}</span>
           {captureSystemAudio && <span className="recording-tracks">2 tracks</span>}
+          {canCompact && (
+            <button type="button" className="recording-compact-btn" onClick={() => compactStore.requestCompact()} title="Shrink August to a widget (Ctrl/Cmd+Shift+C)">[ ⤡ COMPACT ]</button>
+          )}
           {liveActive && (
             <button type="button" className={`recording-live-badge${liveHidden ? '' : ' recording-live-badge--dim'}`} onClick={() => setLiveHidden(prev => !prev)} aria-label={liveHidden ? 'Show live transcript' : 'Hide live transcript'}>
               <span className="recording-live-dot" aria-hidden="true" />
@@ -1025,6 +1089,7 @@ const FileUpload: React.FC<FileUploadProps> = ({ onUploaded, onRecordingChange, 
           onClearAll={handleLiveClearAll}
           elapsed={formatTime(elapsedSeconds)}
           onEndRecording={stopRecording}
+          onCompact={canCompact ? () => compactStore.requestCompact() : undefined}
         />
       )}
     </div>

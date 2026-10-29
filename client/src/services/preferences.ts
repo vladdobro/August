@@ -9,6 +9,10 @@ export interface PraxisProject {
   prompt?: string;
 }
 
+export type CompactModePreference = 'follow' | 'indicator' | 'transcript';
+export type CompactIndicatorWidget = 'dock-square' | 'ghost-coin';
+export type CompactTranscriptWidget = 'dock-strip' | 'ghost-caption';
+
 export interface UserPreferences {
   language?: string;
   micDeviceId?: string;
@@ -28,6 +32,16 @@ export interface UserPreferences {
   gpuEngine?: 'cpu' | 'cuda';
   autoDeleteWav?: boolean;
   autoDeleteWavThreshold?: number;
+  // Compact Mode (AUG-156)
+  compactEnabled?: boolean;
+  compactMode?: CompactModePreference;
+  compactIndicatorWidget?: CompactIndicatorWidget;
+  compactTranscriptWidget?: CompactTranscriptWidget;
+  compactAlwaysOnTop?: boolean;
+  compactExpandOn?: 'stop' | 'click';
+  compactStripWidth?: number;
+  // One-time "snap your call" hint. Stored here, not localStorage: the packaged app's origin port changes every launch.
+  compactHintSeen?: boolean;
 }
 
 export const DEFAULT_PREFERENCES: Required<UserPreferences> = {
@@ -51,6 +65,14 @@ export const DEFAULT_PREFERENCES: Required<UserPreferences> = {
   gpuEngine: 'cpu',
   autoDeleteWav: false,
   autoDeleteWavThreshold: 70,
+  compactEnabled: true,
+  compactMode: 'follow',
+  compactIndicatorWidget: 'dock-square',
+  compactTranscriptWidget: 'dock-strip',
+  compactAlwaysOnTop: true,
+  compactExpandOn: 'stop',
+  compactStripWidth: 360,
+  compactHintSeen: false,
 };
 
 export async function getPreferences(): Promise<UserPreferences> {

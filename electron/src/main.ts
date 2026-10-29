@@ -15,6 +15,7 @@ import {
   shell,
 } from 'electron';
 
+import { CompactController, parseCompactRequest, type CompactEvent } from './compact.js';
 import { applyRecordHotkey } from './hotkey.js';
 import { installFileLogger } from './log.js';
 import { startSessionWatcher } from './sessionWatcher.js';
@@ -201,7 +202,30 @@ async function waitForUrl(url: string, timeoutMs: number): Promise<void> {
   throw new Error(`Timed out waiting for ${url}. Is "npm run dev" running?`);
 }
 
+let compact: CompactController | null = null;
+let recordingSince: number | null = null;
+let trayTicker: ReturnType<typeof setInterval> | null = null;
+
+function sendCompactEvent(event: CompactEvent): void {
+  mainWindow?.webContents.send('august:compact-event', event);
+}
+
+/// Ticks the tray tooltip once a second while compact and recording; otherwise stops.
+function updateTrayTicker(): void {
+  const wanted = compact !== null && compact.shape !== 'none' && recording;
+  if (wanted && !trayTicker) {
+    trayTicker = setInterval(() => tray?.refreshTooltip(), 1000);
+  } else if (!wanted && trayTicker) {
+    clearInterval(trayTicker);
+    trayTicker = null;
+  }
+}
+
 function showWindow(): void {
+  if (compact && (compact.shape === 'caption' || compact.shape === 'coin')) {
+    sendCompactEvent({ type: 'expand' });
+    return;
+  }
   if (!mainWindow) return;
   if (mainWindow.isMinimized()) mainWindow.restore();
   mainWindow.show();
@@ -401,14 +425,50 @@ function registerIpc(): void {
     const next = value === true;
     if (next === recording) return;
     recording = next;
-    tray?.update({ recording });
-    if (mainWindow && !mainWindow.isVisible()) {
+    recordingSince = recording ? Date.now() : null;
+    tray?.update({ recording, recordingSince });
+    // In compact mode the compact widget is the visible surface, so no notification.
+    if (mainWindow && !mainWindow.isVisible() && !(compact && compact.shape !== 'none')) {
       notify(
         recording ? 'Recording started' : 'Recording stopped',
         recording ? 'August is recording in the background.' : 'Transcription starts shortly.',
         showWindow,
       );
     }
+    updateTrayTicker();
+  });
+
+  ipcMain.handle('august:set-compact-mode', (_e, raw: unknown) => {
+    const req = parseCompactRequest(raw);
+    if (!req) return { ok: false, shape: compact?.shape ?? 'none', error: 'Invalid compact request' };
+    if (!compact) return { ok: false, shape: 'none', error: 'Window not ready' };
+    return compact.apply(req);
+  });
+
+  ipcMain.on('august:compact-issue', (_e, issue: unknown) => {
+    if (!mainWindow || mainWindow.isVisible()) return;
+    if (issue === 'interrupted') {
+      notify('Live transcription interrupted', 'Recording continues. Open August to retry.', showWindow);
+    } else if (issue === 'capture-lost') {
+      notify('Capture lost', 'August lost an audio source. Open August to check the recording.', showWindow);
+    }
+  });
+
+  ipcMain.on('august:ghost-ignore-mouse', (e, ignore: unknown) => {
+    if (compact?.isGhostSender(e.sender)) compact.ghostSetIgnoreMouse(ignore === true);
+  });
+
+  ipcMain.on('august:ghost-resize', (e, size: unknown) => {
+    if (!compact?.isGhostSender(e.sender)) return;
+    const rec = size as { width?: unknown; height?: unknown } | null;
+    if (!rec || typeof rec.width !== 'number' || typeof rec.height !== 'number') return;
+    if (!Number.isFinite(rec.width) || !Number.isFinite(rec.height)) return;
+    compact.ghostResize({ width: rec.width, height: rec.height });
+  });
+
+  ipcMain.on('august:ghost-drag', (e, phase: unknown) => {
+    if (!compact?.isGhostSender(e.sender)) return;
+    if (phase === 'start' || phase === 'move' || phase === 'end') compact.ghostDrag(phase);
   });
 }
 
@@ -434,6 +494,24 @@ async function main(): Promise<void> {
   }
 
   mainWindow = createWindow(appUrl);
+  compact = new CompactController({
+    window: mainWindow,
+    appUrl,
+    preloadPath: path.join(__dirname, 'preload.cjs'),
+    devTools: isDevRenderer || !app.isPackaged,
+    onShapeChange: (shape) => {
+      tray?.update({ compact: shape !== 'none' });
+      updateTrayTicker();
+    },
+    sendEvent: sendCompactEvent,
+  });
+  // A reload or renderer crash loses the compact UI — put the window back so the user is never left with a strip.
+  mainWindow.webContents.on('did-start-loading', () => {
+    if (compact && compact.shape !== 'none') compact.apply({ shape: 'none' });
+  });
+  mainWindow.webContents.on('render-process-gone', () => {
+    if (compact && compact.shape !== 'none') compact.apply({ shape: 'none' });
+  });
 
   const updater = app.isPackaged
     ? setupAutoUpdater({ onShowWindow: showWindow, onState: (update) => tray?.update({ update }) })
@@ -441,6 +519,7 @@ async function main(): Promise<void> {
   tray = new AppTray(path.join(appRoot, 'electron', 'build', 'tray'), {
     showWindow,
     toggleRecording: requestToggleRecording,
+    expandCompact: () => sendCompactEvent({ type: 'expand' }),
     updater,
     quit: () => {
       isQuitting = true;
@@ -463,6 +542,9 @@ async function main(): Promise<void> {
 
   app.on('will-quit', () => {
     stopWatcher();
+    compact?.dispose();
+    compact = null;
+    if (trayTicker) clearInterval(trayTicker);
     globalShortcut.unregisterAll();
     tray?.destroy();
     tray = null;

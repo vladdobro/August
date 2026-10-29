@@ -13,7 +13,7 @@
 - Packaged builds set FFMPEG_PATH to the resources copy of ffmpeg (AUG-115), so a fresh machine needs no ffmpeg install.
 - asar is disabled so whisper-cli, ffmpeg, csc.exe and express.static work against real file paths.
 - `electron . --dev` (npm run dev:electron) attaches to the Vite dev server (default http://127.0.0.1:5175) and the tsx server on 3001 instead of embedding a server.
-- Tray icon states: idle, recording, transcribing; closing the window hides it to the tray and quitting is explicit.
+- Tray icon states: idle, recording, transcribing; closing the window hides it to the tray and quitting is explicit. While compact the tray menu starts with "Expand August" and the tooltip shows the recording timer (AUG-156).
 - Global record hotkey default CommandOrControl+Alt+R, persisted in <userData>/desktop-settings.json, configurable in Settings → Desktop.
 - Native notifications fire on transcribing → completed/failed transitions detected by the main process polling GET /api/sessions every 5 seconds, and on recording start/stop while the window is hidden.
 - Auto-update uses electron-updater against GitHub Releases (vladdobro/August); Windows nsis and macOS zip targets update, msi and dmg do not.
@@ -25,8 +25,10 @@
 - Custom NSIS pages must use the customPageAfterChangeDir hook, after the install-mode page: choosing "all users" relaunches the installer elevated and re-shows every page before it.
 - Right-click on a sidebar session calls window.august.revealSession(id) over august:reveal-session; main reveals the folder via shell.showItemInFolder (AUG-124).
 - The Archive page opens the sessions data dir via window.august.revealSessionsDir() over august:reveal-sessions-dir; main calls shell.openPath(sessionsDir()) and takes no path from the renderer (AUG-150). The method is optional in desktop.d.ts; the browser build shows the path as text.
-- Also known as: reveal sessions folder, open data directory (AUG-150).
-- Key files: electron/src/main.ts, electron/src/preload.cts, electron/src/tray.ts, electron/src/hotkey.ts, electron/src/sessionWatcher.ts, electron/src/updater.ts, electron/electron-builder.yml, server/src/app.ts, client/src/desktop.d.ts.
+- Compact Mode (AUG-156): CompactController (electron/src/compact.ts) resizes the main window to a right-edge Dock Strip or a 180×180 Dock Square, or hides it behind a frameless transparent always-on-top ghost window (Ghost Caption / Ghost Coin) loading the same app URL with ?ghost=caption|coin; setCompactMode({ shape: 'none' }) restores the saved bounds, maximized flag and the 960×600 minimum.
+- Always-on-top diverges: macOS setAlwaysOnTop(on, 'floating') + setVisibleOnAllWorkspaces(on, { visibleOnFullScreen: true }); Windows setAlwaysOnTop(on) only.
+- Also known as: reveal sessions folder, open data directory (AUG-150), Compact Mode, dock strip, dock square, ghost window, ghost caption, ghost coin, setCompactMode (AUG-156).
+- Key files: electron/src/main.ts, electron/src/compact.ts, electron/src/preload.cts, electron/src/tray.ts, electron/src/hotkey.ts, electron/src/sessionWatcher.ts, electron/src/updater.ts, electron/electron-builder.yml, server/src/app.ts, client/src/desktop.d.ts.
 
 This route documents how August's Electron desktop shell embeds the existing web app instead of replacing it.
 
@@ -55,7 +57,9 @@ A desktop shell exists so non-technical users get a one-click install with no te
 - Only `startServer` from server/src/app.ts is imported by the shell; server/src/index.ts must stay a thin CLI wrapper that calls it and exits on failure.
 - The preload API surface (`window.august`) is defined in client/src/desktop.d.ts and implemented in electron/src/preload.cts; the two must change together.
 - Every renderer call to window.august must be guarded, because the browser build has no bridge.
-- The renderer owns MediaRecorder; the shell only forwards toggle requests (august:toggle-recording) and receives recording state (august:recording-state) for the tray.
+- The renderer owns MediaRecorder; the shell only forwards toggle requests (august:toggle-recording) and receives recording state (august:recording-state) for the tray. Compact state is also renderer-owned: main only applies shapes requested via august:set-compact-mode and forwards expand/strip-width events (AUG-156).
+- New bridge methods for Compact Mode are optional in desktop.d.ts and mirrored in preload.cts; ghost-only IPC (august:ghost-ignore-mouse, ghost-resize, ghost-drag) is accepted only from the ghost window's webContents (AUG-156).
+- minWidth 960 / minHeight 600 are lowered only while compact and restored on expand (AUG-156).
 - august:reveal-session takes only a session ID; the renderer never sends filesystem paths to the main process.
 - The main process resolves the session folder as <AUGUST_DATA_DIR or repo server/data>/sessions/<id>, mirroring server/src/config.ts.
 - revealSession rejects IDs outside [A-Za-z0-9_-], paths escaping the sessions dir, and missing folders, returning { ok: false, error } without opening anything.
@@ -128,11 +132,38 @@ A desktop shell exists so non-technical users get a one-click install with no te
 - gh run rerun and workflow_dispatch need admin rights; re-pushing the tag is the way to rerun the workflow without them.
 - Never delete a release while its workflow run is in flight: the running electron-builder jobs keep uploading into the deleted/drafted release.
 
+## Compact Mode (AUG-156)
+
+- CompactController (electron/src/compact.ts) is the main-process owner of compact shapes: none, strip, square, caption, coin.
+- The renderer requests a shape with setCompactMode({ shape, stripWidth?, alwaysOnTop? }) over august:set-compact-mode.
+- Main sends events to the renderer over august:compact-event: expand, toggle, strip-width.
+- The renderer reports errors over august:compact-issue: interrupted, capture-lost.
+- Ghost-only channels are august:ghost-ignore-mouse, august:ghost-resize and august:ghost-drag; main accepts them only from the ghost webContents.
+- On the first compact, main snapshots the bounds (normal bounds when maximized or full-screen) and the maximized flag; it leaves full-screen and maximized first.
+- Strip: minimum size drops to 280×240, window docks to the right edge of the current display workArea at full height, width 280–520.
+- Strip resize by the user above 600 px or maximize sends an expand event.
+- Strip resize inside 280–520 sends a strip-width event and the renderer saves compactStripWidth; out-of-range widths are clamped keeping the right edge.
+- Square: content 180×180 at the bottom-right with a 12 px margin, not resizable.
+- Caption and coin: the main window is hidden and a ghost BrowserWindow opens (frame false, transparent, skipTaskbar, hasShadow false, sandboxed preload, backgroundThrottling false).
+- The ghost uses showInactive so the call app keeps focus, and it is always on top; Variant A follows compactAlwaysOnTop.
+- Caption geometry: width min(760, 80% workArea) × 112, 24 px from the bottom or top; click-through via setIgnoreMouseEvents(true, { forward: true }) except over its left control zone.
+- Caption vertical drag snaps to Top or Bottom.
+- Coin geometry: 56×56 at a corner with a 16 px margin; hover grows it to 248×56 anchored at its corner ([ PAUSE ] [ END ] [ OPEN ]); free drag snaps to the nearest corner.
+- Shape 'none' destroys the ghost, restores minimum size 960×600, resizable, bounds clamped to the current display workArea (unplugged display), the maximized flag, then show and focus.
+- A reload or renderer crash of the main window forces shape 'none'.
+- Bounds changes are guarded for 400 ms so programmatic resizes do not trigger the strip resize logic.
+- Tray: while compact the menu starts with "Expand August", the tooltip shows "Recording mm:ss" refreshed by a 1 s ticker (tooltip only), and tray click or notification click during a ghost compact expands.
+- The "Recording started/stopped" hidden-window notification is skipped while compact.
+- Compact error notifications (interrupted, capture lost) fire from main only while the main window is hidden; errors never auto-expand.
+- Status: not verified interactively on Windows or macOS; build, server tests and the Electron smoke test pass.
+- macOS setBounds right after leaving native full-screen may race the exit animation (inferred, unverified).
+
 ## Key files
 
 - electron/src/main.ts — main-process entry: window creation, server bootstrap, lifecycle wiring.
+- electron/src/compact.ts — CompactController: compact shapes, bounds snapshot/restore, ghost window lifecycle, drag/snap, always-on-top per platform (AUG-156).
 - electron/src/preload.cts — implements the window.august bridge exposed to the renderer.
-- electron/src/tray.ts — tray icon creation, idle/recording/transcribing state updates and the update menu item driven by UpdateState.
+- electron/src/tray.ts — tray icon creation, idle/recording/transcribing state updates and the update menu item driven by UpdateState; Expand August item and compact tooltip timer (AUG-156).
 - electron/src/hotkey.ts — global record hotkey registration, validation and persistence.
 - electron/src/sessionWatcher.ts — polls GET /api/sessions to detect state transitions for notifications.
 - electron/src/updater.ts — electron-updater wiring against GitHub Releases; exposes UpdateState, checkNow/installNow/start controls and the update notifications (AUG-141).
