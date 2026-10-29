@@ -22,6 +22,7 @@
 - The old Integration section with a single Praxis path is gone; Praxis projects are managed on the Projects tab.
 - The Projects tab is a master-detail page (list left, editor right) that autosaves every edit on blur; there is no Add form or project cards.
 - Settings modal width is min(600px, 100%).
+- Settings modal is top-anchored, not vertically centered (AUG-159): `.settings-backdrop` uses `place-items: start center` with `padding-top: 7.5vh` (5vh at ≤768px), so switching tabs only moves the bottom edge; re-centering brings back the "jumping" top edge.
 - Theme toggle remains in localStorage and is explicitly excluded from the preferences system.
 - migrateLegacyPreferences() in server/src/services/preferencesStore.ts moves a legacy server/src/data/user-preferences.json to server/data/ once on server start.
 - Runtime preferences must never live under server/src or be tracked in git; the path comes from config.dataDir.
