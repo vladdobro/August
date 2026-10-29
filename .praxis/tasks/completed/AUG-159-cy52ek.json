@@ -1,0 +1,19 @@
+{
+  "id": "AUG-159-cy52ek",
+  "assignee": "jarvis.json",
+  "priority": "medium",
+  "status": "completed",
+  "title": "[AUG-159] Fix Settings modal jumping height when switching tabs",
+  "why_we_need_this": "При переключении между вкладками Settings (General, Audio, Transcription, Projects, Compact mode) высота всего модального окна постоянно меняется под размер контента каждой вкладки. Это визуально раздражает — окно «прыгает». Нужно зафиксировать верхнюю границу окна (позиция top стабильна), а вниз пусть подстраивается под контент вкладки.",
+  "acceptance_criteria": "- [ ] Верхняя граница (top) модального окна Settings не сдвигается при переключении вкладок\n- [ ] Высота окна адаптируется к содержимому текущей вкладки только вниз (растёт/сужается от нижнего края)\n- [ ] Переключение между всеми 5 вкладками (General, Audio, Transcription, Projects, Compact mode) не вызывает визуального «прыжка» верхней части окна\n- [ ] Работает одинаково на Windows и macOS",
+  "important_constraints": "Компонент: `@client/src/components/SettingsModal.tsx` и его CSS. Модальное окно сейчас, вероятно, центрировано вертикально — нужно закрепить его от верха (например, фиксированный top + margin-top вместо vertical centering). Анимация высоты не обязательна, но плавный переход (transition на height/max-height) допустим.\n\n## ✅ Итог (2026-10-30)\n**Что сделано:**\n- Окно Settings закреплено сверху: при смене вкладок двигается только нижний край.\n- Отступ сверху 7.5vh (≤768px — 5vh); max-height 85vh / 90vh не менялись, окно помещается в экран.\n- Вкладка Projects (фиксированная высота 85vh) тоже начинается с того же top.\n**Как:** только CSS — `.settings-backdrop` с `place-items: center` → `place-items: start center` + `padding-top`. TSX не трогали; классы используются только SettingsModal. Без platform-веток, одинаково на Windows/macOS. Анимацию высоты не добавляли (не требовалась).\n**Файлы:** @client/src/App.css, @project-context/preferences/README.md (правило «не центрировать снова»).\n**PR / коммиты:** f545501 в master (не запушено).\n**Грабли:** нет. `tsc --noEmit` чистый; визуальная проверка всех 5 вкладок в приложении в сессии не делалась.\n**Хвосты:** нет.",
+  "labels": [
+    "ui",
+    "settings",
+    "polish"
+  ],
+  "on_hold_reason": "",
+  "contextRouterIncluded": true,
+  "created_at": 1793305627786,
+  "column_entered_at": 1793308816692
+}
