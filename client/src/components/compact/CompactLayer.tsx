@@ -13,7 +13,7 @@ import {
 } from '../../services/compact';
 import { compactStore } from '../../services/compactStore';
 import { DockSquare, DockStrip } from './DockWidgets';
-import { GHOST_CHANNEL, type GhostCommand, type GhostMessage, type GhostState } from './ghostProtocol';
+import { GHOST_CHANNEL, GHOST_LINES, type GhostCommand, type GhostMessage, type GhostState } from './ghostProtocol';
 
 interface CompactLayerProps {
   preferences: UserPreferences;
@@ -63,6 +63,7 @@ const CompactLayer: React.FC<CompactLayerProps> = (props) => {
       const result = await window.august!.setCompactMode!({
         shape: shapeForWidget(w),
         stripWidth: c.stripWidth,
+        captionHeight: c.captionHeight,
         alwaysOnTop: c.alwaysOnTop,
       });
       if (!result.ok) {
@@ -221,6 +222,7 @@ const CompactLayer: React.FC<CompactLayerProps> = (props) => {
       if (ev.type === 'expand') void expand();
       else if (ev.type === 'toggle') toggle();
       else if (ev.type === 'strip-width') propsRef.current.onPreferenceChange({ compactStripWidth: ev.width });
+      else if (ev.type === 'caption-height') propsRef.current.onPreferenceChange({ compactCaptionHeight: ev.height });
     });
     return () => { off?.(); };
   }, [supported, expand, toggle]);
@@ -235,7 +237,7 @@ const CompactLayer: React.FC<CompactLayerProps> = (props) => {
       phase: phaseRef.current === 'done' ? 'done' : 'compact',
       recording: s.recording,
       live: s.live,
-      lines: s.lines.slice(-3),
+      lines: s.lines.slice(-GHOST_LINES),
       lineCount: s.lines.length,
       showCount: kind === 'indicator' && s.live,
       liveStatus: s.liveStatus,

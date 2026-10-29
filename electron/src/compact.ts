@@ -7,9 +7,14 @@ export type CompactShape = 'none' | 'strip' | 'square' | 'caption' | 'coin';
 export interface CompactRequest {
   shape: CompactShape;
   stripWidth?: number;
+  captionHeight?: number;
   alwaysOnTop?: boolean;
 }
-export type CompactEvent = { type: 'expand' } | { type: 'toggle' } | { type: 'strip-width'; width: number };
+export type CompactEvent =
+  | { type: 'expand' }
+  | { type: 'toggle' }
+  | { type: 'strip-width'; width: number }
+  | { type: 'caption-height'; height: number };
 
 type GhostShape = 'caption' | 'coin';
 type CoinCorner = 'top-left' | 'top-right' | 'bottom-left' | 'bottom-right';
@@ -22,7 +27,10 @@ const SQUARE_MARGIN = 12;
 const COIN = 56;
 const COIN_MARGIN = 16;
 const CAPTION_MAX_W = 760;
+// Ghost Caption height is user-resizable from its inner edge (prefs compactCaptionHeight, same range on the server).
 const CAPTION_H = 112;
+const CAPTION_MIN_H = 72;
+const CAPTION_MAX_H = 480;
 const CAPTION_MARGIN = 24;
 // Must equal createWindow's minWidth/minHeight in main.ts.
 const FULL_MIN_W = 960;
@@ -39,6 +47,10 @@ export function parseCompactRequest(value: unknown): CompactRequest | null {
   if (rec.stripWidth !== undefined) {
     if (typeof rec.stripWidth !== 'number' || !Number.isFinite(rec.stripWidth)) return null;
     req.stripWidth = rec.stripWidth;
+  }
+  if (rec.captionHeight !== undefined) {
+    if (typeof rec.captionHeight !== 'number' || !Number.isFinite(rec.captionHeight)) return null;
+    req.captionHeight = rec.captionHeight;
   }
   if (rec.alwaysOnTop !== undefined) {
     if (typeof rec.alwaysOnTop !== 'boolean') return null;
@@ -92,9 +104,11 @@ export class CompactController {
   private ghost: BrowserWindow | null = null;
   private ghostShape: GhostShape | null = null;
   private captionEdge: 'top' | 'bottom' = 'bottom';
+  private captionHeight = CAPTION_H;
   private coinCorner: CoinCorner = 'bottom-right';
   private applying = false;
   private drag: { cursor: Point; bounds: Rectangle } | null = null;
+  private resize: { cursor: Point; bounds: Rectangle } | null = null;
 
   constructor(private readonly opts: CompactControllerOptions) {
     const win = opts.window;
@@ -158,6 +172,9 @@ export class CompactController {
         }
         case 'caption':
         case 'coin': {
+          if (req.shape === 'caption' && req.captionHeight !== undefined) {
+            this.captionHeight = clamp(Math.round(req.captionHeight), CAPTION_MIN_H, CAPTION_MAX_H);
+          }
           applyOnTop(win, false);
           win.hide();
           this.ensureGhost(req.shape, wa);
@@ -228,6 +245,30 @@ export class CompactController {
     this.drag = null;
   }
 
+  /// Caption height drag from the inner edge (the one facing the middle of the screen): the outer edge stays put.
+  /// The final height goes to the renderer as a caption-height event so it is saved to preferences.
+  ghostCaptionResize(phase: 'start' | 'move' | 'end'): void {
+    const ghost = this.ghost;
+    if (!ghost || ghost.isDestroyed() || this.ghostShape !== 'caption') return;
+    if (phase === 'start') {
+      this.resize = { cursor: screen.getCursorScreenPoint(), bounds: ghost.getBounds() };
+      return;
+    }
+    if (!this.resize) return;
+    const start = this.resize.bounds;
+    const wa = screen.getDisplayMatching(start).workArea;
+    const dy = screen.getCursorScreenPoint().y - this.resize.cursor.y;
+    const max = Math.min(CAPTION_MAX_H, wa.height - 2 * CAPTION_MARGIN);
+    const height = clamp(Math.round(this.captionEdge === 'bottom' ? start.height - dy : start.height + dy), CAPTION_MIN_H, max);
+    const y = this.captionEdge === 'bottom' ? start.y + start.height - height : start.y;
+    ghost.setBounds({ x: start.x, y, width: start.width, height });
+    if (phase === 'end') {
+      this.resize = null;
+      this.captionHeight = height;
+      this.opts.sendEvent({ type: 'caption-height', height });
+    }
+  }
+
   dispose(): void {
     this.destroyGhost();
   }
@@ -282,7 +323,7 @@ export class CompactController {
   private ghostBounds(shape: GhostShape, wa: Rectangle, size?: { width: number; height: number }): Rectangle {
     if (shape === 'caption') {
       const width = Math.min(CAPTION_MAX_W, Math.round(wa.width * 0.8));
-      const height = CAPTION_H;
+      const height = Math.min(this.captionHeight, wa.height - 2 * CAPTION_MARGIN);
       const x = wa.x + Math.round((wa.width - width) / 2);
       const y = this.captionEdge === 'top' ? wa.y + CAPTION_MARGIN : wa.y + wa.height - height - CAPTION_MARGIN;
       return { x, y, width, height };
@@ -358,5 +399,6 @@ export class CompactController {
     this.ghost = null;
     this.ghostShape = null;
     this.drag = null;
+    this.resize = null;
   }
 }

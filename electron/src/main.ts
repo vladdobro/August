@@ -473,6 +473,11 @@ function registerIpc(): void {
     if (phase === 'start' || phase === 'move' || phase === 'end') compact.ghostDrag(phase);
   });
 
+  ipcMain.on('august:ghost-caption-resize', (e, phase: unknown) => {
+    if (!compact?.isGhostSender(e.sender)) return;
+    if (phase === 'start' || phase === 'move' || phase === 'end') compact.ghostCaptionResize(phase);
+  });
+
   // Sidebar ≡ menu update item (AUG-157). null = no updater (unpackaged build), the renderer hides the item.
   ipcMain.handle('august:get-update-state', () => (updater ? updateState : null));
   ipcMain.on('august:check-for-updates', () => updater?.checkNow());

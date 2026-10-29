@@ -37,6 +37,7 @@ const ALLOWED_KEYS = new Set([
   'compactAlwaysOnTop',
   'compactExpandOn',
   'compactStripWidth',
+  'compactCaptionHeight',
   'compactHintSeen',
 ]);
 

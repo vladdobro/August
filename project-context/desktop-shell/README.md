@@ -59,7 +59,7 @@ A desktop shell exists so non-technical users get a one-click install with no te
 - The preload API surface (`window.august`) is defined in client/src/desktop.d.ts and implemented in electron/src/preload.cts; the two must change together.
 - Every renderer call to window.august must be guarded, because the browser build has no bridge.
 - The renderer owns MediaRecorder; the shell only forwards toggle requests (august:toggle-recording) and receives recording state (august:recording-state) for the tray. Compact state is also renderer-owned: main only applies shapes requested via august:set-compact-mode and forwards expand/strip-width events (AUG-156).
-- New bridge methods for Compact Mode are optional in desktop.d.ts and mirrored in preload.cts; ghost-only IPC (august:ghost-ignore-mouse, ghost-resize, ghost-drag) is accepted only from the ghost window's webContents (AUG-156).
+- New bridge methods for Compact Mode are optional in desktop.d.ts and mirrored in preload.cts; ghost-only IPC (august:ghost-ignore-mouse, ghost-resize, ghost-drag, ghost-caption-resize) is accepted only from the ghost window's webContents (AUG-156).
 - minWidth 960 / minHeight 600 are lowered only while compact and restored on expand (AUG-156).
 - august:reveal-session takes only a session ID; the renderer never sends filesystem paths to the main process.
 - The main process resolves the session folder as <AUGUST_DATA_DIR or repo server/data>/sessions/<id>, mirroring server/src/config.ts.
@@ -140,7 +140,8 @@ A desktop shell exists so non-technical users get a one-click install with no te
 - The renderer requests a shape with setCompactMode({ shape, stripWidth?, alwaysOnTop? }) over august:set-compact-mode.
 - Main sends events to the renderer over august:compact-event: expand, toggle, strip-width.
 - The renderer reports errors over august:compact-issue: interrupted, capture-lost.
-- Ghost-only channels are august:ghost-ignore-mouse, august:ghost-resize and august:ghost-drag; main accepts them only from the ghost webContents.
+- Ghost-only channels are august:ghost-ignore-mouse, august:ghost-resize, august:ghost-drag and august:ghost-caption-resize; main accepts them only from the ghost webContents.
+- Caption height: setCompactMode accepts captionHeight (from prefs compactCaptionHeight). ghostCaptionResize(start|move|end) resizes from the inner edge keeping the docked edge fixed, clamps to 72–480 and to the work area minus margins, and on end sends a caption-height event so the renderer PATCHes compactCaptionHeight. Edge snapping after a move keeps the chosen height.
 - Updater channels (AUG-157): august:get-update-state (invoke; null when there is no updater), august:check-for-updates and august:install-update (send), and the push august:update-state from main on every state change. The bridge methods getUpdateState/checkForUpdates/installUpdate/onUpdateState are optional in desktop.d.ts; DesktopUpdateState there mirrors UpdateState in updater.ts.
 - On the first compact, main snapshots the bounds (normal bounds when maximized or full-screen) and the maximized flag; it leaves full-screen and maximized first.
 - Strip: minimum size drops to 280×240, window docks to the right edge of the current display workArea at full height, width 280–520.

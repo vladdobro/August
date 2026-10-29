@@ -25,9 +25,13 @@ export interface DesktopRevealResult {
 }
 
 export type DesktopCompactShape = 'none' | 'strip' | 'square' | 'caption' | 'coin';
-export interface DesktopCompactRequest { shape: DesktopCompactShape; stripWidth?: number; alwaysOnTop?: boolean; }
+export interface DesktopCompactRequest { shape: DesktopCompactShape; stripWidth?: number; captionHeight?: number; alwaysOnTop?: boolean; }
 export interface DesktopCompactResult { ok: boolean; shape: DesktopCompactShape; error?: string; }
-export type DesktopCompactEvent = { type: 'expand' } | { type: 'toggle' } | { type: 'strip-width'; width: number };
+export type DesktopCompactEvent =
+  | { type: 'expand' }
+  | { type: 'toggle' }
+  | { type: 'strip-width'; width: number }
+  | { type: 'caption-height'; height: number };
 export type DesktopCompactIssue = 'interrupted' | 'capture-lost';
 
 // Mirror of UpdateState in electron/src/updater.ts (the state machine lives only in main). 'error' renders like 'idle'.
@@ -66,6 +70,8 @@ export interface AugustDesktopApi {
   ghostSetIgnoreMouse?(ignore: boolean): void;
   ghostResize?(size: { width: number; height: number }): void;
   ghostDrag?(phase: DesktopGhostDragPhase): void;
+  // Ghost Caption only: height drag from the inner edge; main sends the final height back as a caption-height event.
+  ghostCaptionResize?(phase: DesktopGhostDragPhase): void;
 }
 
 declare global {

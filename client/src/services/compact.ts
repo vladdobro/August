@@ -13,6 +13,7 @@ export function compactPrefs(p: UserPreferences) {
     alwaysOnTop: p.compactAlwaysOnTop ?? DEFAULT_PREFERENCES.compactAlwaysOnTop,
     expandOn: p.compactExpandOn ?? DEFAULT_PREFERENCES.compactExpandOn,
     stripWidth: p.compactStripWidth ?? DEFAULT_PREFERENCES.compactStripWidth,
+    captionHeight: p.compactCaptionHeight ?? DEFAULT_PREFERENCES.compactCaptionHeight,
     hintSeen: p.compactHintSeen ?? DEFAULT_PREFERENCES.compactHintSeen,
   };
 }

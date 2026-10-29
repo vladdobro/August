@@ -60,6 +60,9 @@ const api = {
   ghostDrag: (phase: string) => {
     ipcRenderer.send('august:ghost-drag', phase);
   },
+  ghostCaptionResize: (phase: string) => {
+    ipcRenderer.send('august:ghost-caption-resize', phase);
+  },
 };
 
 contextBridge.exposeInMainWorld('august', api);

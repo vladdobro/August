@@ -3,6 +3,8 @@ import type { LiveLine, LiveStatus } from '../LiveTranscriptPanel';
 /// BroadcastChannel shared by the main window (CompactLayer) and the ghost window (GhostApp).
 /// Both load from the same origin, so no IPC is needed for lines and commands.
 export const GHOST_CHANNEL = 'august-compact';
+/// Lines sent to the ghost window: enough to fill the tallest caption (480 px) with the newest text at the bottom.
+export const GHOST_LINES = 40;
 
 export type GhostWidget = 'ghost-caption' | 'ghost-coin';
 
@@ -11,7 +13,7 @@ export interface GhostState {
   phase: 'compact' | 'done';
   recording: boolean;
   live: boolean;
-  // Last 3 lines only; the full list stays in the main window.
+  // Last GHOST_LINES lines only (teleprompter scroll in Ghost Caption); the full list stays in the main window.
   lines: LiveLine[];
   lineCount: number;
   showCount: boolean;

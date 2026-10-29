@@ -1,4 +1,4 @@
-import React, { useCallback, useEffect, useRef, useState } from 'react';
+import React, { useCallback, useEffect, useLayoutEffect, useRef, useState } from 'react';
 import { formatClock } from '../../services/compact';
 import { GHOST_CHANNEL, statusTag, type GhostCommand, type GhostMessage, type GhostState, type GhostWidget } from './ghostProtocol';
 
@@ -22,6 +22,9 @@ const GhostCaption: React.FC<GhostViewProps> = ({ state, send }) => {
   const [leftHover, setLeftHover] = useState(false);
   const [confirming, setConfirming] = useState(false);
   const [dragging, setDragging] = useState(false);
+  const [edgeHover, setEdgeHover] = useState(false);
+  const [resizing, setResizing] = useState(false);
+  const linesRef = useRef<HTMLDivElement>(null);
 
   const paused = state.liveStatus === 'paused';
   const interrupted = state.liveStatus === 'interrupted';
@@ -29,7 +32,11 @@ const GhostCaption: React.FC<GhostViewProps> = ({ state, send }) => {
   const lost = state.captureLost;
   const alert = interrupted || lost || done;
   const tag = statusTag(state.liveStatus, state.live);
-  const interactive = alert || confirming || leftHover || dragging;
+  const interactive = alert || confirming || leftHover || dragging || edgeHover || resizing;
+  // The resize handle sits on the inner edge: top when the caption is docked at the bottom of the screen, and vice versa.
+  // availTop (Chromium) is the display's top in virtual-screen coordinates, so a secondary monitor resolves correctly.
+  const scr = window.screen as Screen & { availTop?: number };
+  const dockedBottom = window.screenY + window.innerHeight / 2 >= (scr.availTop ?? 0) + scr.availHeight / 2;
 
   // Click-through unless something clickable is showing or hovered.
   useEffect(() => {
@@ -52,6 +59,37 @@ const GhostCaption: React.FC<GhostViewProps> = ({ state, send }) => {
     window.august?.ghostDrag?.('end');
   };
 
+  const onResizeDown = (e: React.PointerEvent<HTMLDivElement>) => {
+    e.stopPropagation();
+    e.currentTarget.setPointerCapture(e.pointerId);
+    setResizing(true);
+    window.august?.ghostCaptionResize?.('start');
+  };
+  const onResizeMove = () => {
+    if (resizing) window.august?.ghostCaptionResize?.('move');
+  };
+  const endResize = (e: React.PointerEvent<HTMLDivElement>) => {
+    if (!resizing) return;
+    if (e.currentTarget.hasPointerCapture(e.pointerId)) e.currentTarget.releasePointerCapture(e.pointerId);
+    setResizing(false);
+    window.august?.ghostCaptionResize?.('end');
+  };
+
+  // Teleprompter: the newest text is always in view. New or growing lines scroll smoothly; a height change snaps.
+  useLayoutEffect(() => {
+    const el = linesRef.current;
+    if (!el) return;
+    const smooth = !window.matchMedia('(prefers-reduced-motion: reduce)').matches;
+    el.scrollTo({ top: el.scrollHeight, behavior: smooth ? 'smooth' : 'auto' });
+  }, [state.lines, state.lineCount]);
+  useEffect(() => {
+    const el = linesRef.current;
+    if (!el) return;
+    const observer = new ResizeObserver(() => { el.scrollTop = el.scrollHeight; });
+    observer.observe(el);
+    return () => observer.disconnect();
+  }, []);
+
   const handleEnd = () => {
     if (state.skipStopConfirmation) send('end');
     else setConfirming(true);
@@ -67,6 +105,19 @@ const GhostCaption: React.FC<GhostViewProps> = ({ state, send }) => {
       onMouseLeave={() => setHovered(false)}
       onClick={done ? () => send('expand') : undefined}
     >
+      {!done && (
+        <div
+          className={`ghost-caption-resize ghost-caption-resize--${dockedBottom ? 'top' : 'bottom'}${resizing ? ' ghost-caption-resize--active' : ''}`}
+          onMouseEnter={() => setEdgeHover(true)}
+          onMouseLeave={() => setEdgeHover(false)}
+          onPointerDown={onResizeDown}
+          onPointerMove={onResizeMove}
+          onPointerUp={endResize}
+          onPointerCancel={endResize}
+          title="Drag to resize"
+          aria-hidden="true"
+        />
+      )}
       <div
         className="ghost-caption-left"
         onMouseEnter={() => setLeftHover(true)}
@@ -127,7 +178,7 @@ const GhostCaption: React.FC<GhostViewProps> = ({ state, send }) => {
         )}
       </div>
 
-      <div className="ghost-caption-lines">
+      <div className="ghost-caption-lines" ref={linesRef}>
         {lines.length === 0 && !done && <div className="ghost-line ghost-line--empty">Waiting for speech…</div>}
         {lines.map((line, i) => (
           <div

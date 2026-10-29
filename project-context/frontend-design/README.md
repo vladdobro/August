@@ -428,7 +428,9 @@ Dark mode borders use necron green rgba instead of forest green rgba — all bor
 - Dock Strip lines use a 3px speaker bar (Me accent, Them --compact-them) with older lines fading, scan lines and a ↓ LIVE jump button.
 - Dock Strip footer is [ PAUSE ] [ END ]; END shows inline "END RECORDING?" confirmation and respects skipStopConfirmation.
 - Dock Square: tag MIC + SYS or MIC, ▤ N counter, 28px tabular timer, 12 level bars without dB numbers, full-width [ STOP ] on the bottom edge with inline confirmation.
-- Ghost Caption: translucent ribbon showing the last 3 lines, timer and status on the left, [⤢] [⏸] [■] on hover only.
+- Ghost Caption: translucent ribbon in teleprompter mode — it receives the last 40 live lines, never clips a line (no line-clamp) and auto-scrolls to the newest text (smooth; instant under reduced motion, and on height change), with a 16 px top fade; timer and status on the left, [⤢] [⏸] [■] on hover only.
+- Ghost Caption height is user-resizable (resize caption, teleprompter): a 6 px handle on the inner edge (top when docked at the bottom, bottom when docked at the top) shows a 48×2 px accent bar on hover; the drag runs in main from the cursor position and the result is saved as compactCaptionHeight (72–480, default 112).
+- Bug fixed: a growing live line used to stop at the frame edge because each line was clamped to 2 rows and only 3 lines reached the ghost; the main window kept transcribing correctly.
 - Ghost Caption is click-through outside its controls and snaps Top or Bottom after a vertical drag.
 - Ghost Coin: 56px, hover expands to [ PAUSE ] [ END ] [ OPEN ], right-click shows inline END? [ YES ] [ NO ], and a free drag snaps to the nearest corner.
 - Errors never auto-expand: an interrupted live stream shows a red header with [ RETRY ] [ OPEN ]; a lost capture shows CAPTURE LOST with [ OPEN AUGUST ].
