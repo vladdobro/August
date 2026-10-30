@@ -1,9 +1,18 @@
 import React, { useCallback, useEffect, useRef, useState } from 'react';
 import type { LiveStatus, Speaker } from '../services/liveTranscriptionClient';
 
+export interface LiveLinePart {
+  id?: string;
+  text: string;
+  correctedAt?: number;
+  /// AUG-164: text as recognized, before the first online correction; shown on hover.
+  original?: string;
+}
+
 export interface LiveLine {
   speaker: Speaker;
   text: string;
+  parts?: LiveLinePart[];
 }
 
 export type { LiveStatus };
@@ -134,7 +143,21 @@ const LiveTranscriptPanel: React.FC<LiveTranscriptPanelProps> = ({
               <span className={`live-line-speaker live-line-speaker--${line.speaker.toLowerCase()}`}>
                 {line.speaker}:
               </span>
-              <span className="live-line-text">{line.text}</span>
+              <span className="live-line-text">
+                {line.parts && line.parts.length > 0
+                  ? line.parts.map((p, j) => (
+                    <React.Fragment key={`${p.id ?? j}-${p.correctedAt ?? 0}`}>
+                      {j > 0 && ' '}
+                      <span
+                        className={p.correctedAt ? 'live-line-part live-line-part--corrected' : 'live-line-part'}
+                        data-original={p.correctedAt && p.original ? p.original : undefined}
+                      >
+                        {p.text}
+                      </span>
+                    </React.Fragment>
+                  ))
+                  : line.text}
+              </span>
             </div>
           ))}
         </div>

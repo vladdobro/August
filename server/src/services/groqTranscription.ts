@@ -30,15 +30,18 @@ export class GroqRateLimitError extends Error {
 }
 
 export class GroqApiError extends Error {
-  constructor(message: string) {
+  /// True when retrying cannot help (no key, or the key is rejected with 401); other errors are transient (AUG-164).
+  readonly fatal: boolean;
+  constructor(message: string, fatal = false) {
     super(message);
     this.name = 'GroqApiError';
+    this.fatal = fatal;
   }
 }
 
 export async function transcribeWithGroq(wavPath: string, language: string): Promise<string> {
   if (!config.groqApiKey) {
-    throw new GroqApiError('GROQ_API_KEY not configured');
+    throw new GroqApiError('GROQ_API_KEY not configured', true);
   }
 
   if (!rateLimiter.canProceed()) {
@@ -70,7 +73,7 @@ export async function transcribeWithGroq(wavPath: string, language: string): Pro
       throw new GroqRateLimitError();
     }
     const body = await response.text().catch(() => '');
-    throw new GroqApiError(`Groq API error ${response.status}: ${body}`);
+    throw new GroqApiError(`Groq API error ${response.status}: ${body}`, response.status === 401);
   }
 
   const text = await response.text();

@@ -1,4 +1,4 @@
-import type { CaptureCapabilities, CorrectionStatus, CorrectionsFile, HealthStatus, LlmModelId, LlmModelInfo, LlmStatus, ModelSetupStatus, ServerCapture, SessionMetadata, StorageSummary, TranscriptionLanguage } from './types';
+import type { CaptureCapabilities, CorrectionStatus, CorrectionsFile, HealthStatus, LlmModelId, LlmModelInfo, LlmStatus, GroqTextStatus, ModelSetupStatus, ServerCapture, SessionMetadata, StorageSummary, TranscriptionLanguage } from './types';
 
 export interface UploadProgress {
   loaded: number;
@@ -59,6 +59,25 @@ export async function disableLlm(): Promise<LlmStatus> {
 export async function retryLlmDownload(): Promise<LlmStatus> {
   const res = await fetch(`${API_BASE}/llm/download`, { method: 'POST' });
   return handleJsonResponse<LlmStatus>(res);
+}
+
+export async function fetchGroqTextStatus(): Promise<GroqTextStatus> {
+  const res = await fetch(`${API_BASE}/groq-text/status`);
+  return handleJsonResponse<GroqTextStatus>(res);
+}
+
+export async function enableGroqText(): Promise<GroqTextStatus> {
+  const res = await fetch(`${API_BASE}/groq-text/enable`, {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({ accept: true }),
+  });
+  return handleJsonResponse<GroqTextStatus>(res);
+}
+
+export async function disableGroqText(): Promise<GroqTextStatus> {
+  const res = await fetch(`${API_BASE}/groq-text/disable`, { method: 'POST' });
+  return handleJsonResponse<GroqTextStatus>(res);
 }
 
 export async function browseLlmFolder(): Promise<{ path: string | null }> {

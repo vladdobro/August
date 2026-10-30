@@ -14,6 +14,7 @@ import praxisRouter from './routes/praxis.js';
 import preferencesRouter from './routes/preferences.js';
 import captureRouter from './routes/capture.js';
 import llmRouter from './routes/llm.js';
+import groqTextRouter from './routes/groqText.js';
 import { setupLiveTranscription } from './services/liveTranscription.js';
 import { checkFfmpegAvailable, FFMPEG_MISSING_MESSAGE, fileExists, probeGpuBackend } from './services/whisper.js';
 import { gpuState } from './services/gpuBackend.js';
@@ -82,6 +83,7 @@ export async function startServer(options: StartServerOptions = {}): Promise<Run
   app.use('/api/preferences', preferencesRouter);
   app.use('/api/capture', captureRouter);
   app.use('/api/llm', llmRouter);
+  app.use('/api/groq-text', groqTextRouter);
 
   const isDev = process.env.NODE_ENV !== 'production';
 

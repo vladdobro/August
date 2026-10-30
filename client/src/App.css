@@ -1264,6 +1264,122 @@ body {
   word-break: break-word;
 }
 
+/* AUG-163: suggested meaning fix under a transcript line (amber = needs attention, green = top action) */
+.correction-card {
+  margin: -8px 0 4px 84px;
+  padding: 8px 10px;
+  border: 1px solid var(--border-color);
+  border-left: 3px solid var(--status-uploading);
+  border-radius: 0;
+  background: var(--card-bg);
+  font-size: 14px;
+  line-height: 1.6;
+}
+.corrections-bar {
+  position: sticky;
+  top: 0;
+  z-index: 2;
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+  margin: 0 0 12px 84px;
+  padding: 8px 10px;
+  border: 1px solid var(--border-color);
+  border-left: 3px solid var(--status-uploading);
+  border-radius: 0;
+  background: var(--main-bg); /* --card-bg is translucent; sticky bar needs an opaque fill */
+}
+.corrections-bar-text {
+  font-family: var(--font-terminal);
+  font-size: 12px;
+  color: var(--text-secondary);
+  text-transform: uppercase;
+  letter-spacing: 0.04em;
+}
+.correction-diff {
+  display: grid;
+  grid-template-columns: auto 1fr;
+  gap: 4px 10px;
+  align-items: baseline;
+}
+.correction-label {
+  font-family: var(--font-terminal);
+  font-size: 10px;
+  letter-spacing: 0.04em;
+  text-transform: uppercase;
+  color: var(--text-secondary);
+}
+.correction-old,
+.correction-new {
+  color: var(--text-primary);
+  word-break: break-word;
+}
+.correction-del {
+  text-decoration: line-through;
+  color: var(--status-failed);
+  opacity: 0.75;
+  background: none;
+}
+.correction-ins {
+  text-decoration: none;
+  color: var(--status-completed);
+  font-weight: 600;
+  background: none;
+}
+.correction-actions {
+  display: flex;
+  gap: 8px;
+  margin-top: 8px;
+}
+.correction-btn {
+  padding: 4px 12px;
+  border: 1px solid var(--text-secondary);
+  border-radius: 0;
+  background: transparent;
+  color: var(--text-secondary);
+  font-family: var(--font-terminal);
+  font-size: 12px;
+  cursor: pointer;
+  transition: background 0.15s, color 0.15s;
+}
+.correction-btn:hover:not(:disabled) {
+  background: var(--text-secondary);
+  color: var(--main-bg);
+}
+.correction-btn--accept {
+  border-color: var(--status-completed);
+  color: var(--status-completed);
+}
+.correction-btn--accept:hover:not(:disabled) {
+  background: var(--status-completed);
+  color: var(--main-bg);
+}
+.correction-btn:disabled {
+  opacity: 0.5;
+  cursor: not-allowed;
+}
+.correction-state {
+  margin: -8px 0 4px 84px;
+  font-family: var(--font-terminal);
+  font-size: 11px;
+  color: var(--text-secondary);
+}
+.correction-undo {
+  padding: 0;
+  border: none;
+  border-radius: 0;
+  background: none;
+  color: var(--text-secondary);
+  font: inherit;
+  text-decoration: underline;
+  cursor: pointer;
+}
+.correction-undo:disabled {
+  opacity: 0.5;
+  cursor: not-allowed;
+}
+
 /* ========== Recording Indicator ========== */
 .recording-indicator {
   display: flex;
@@ -4572,6 +4688,48 @@ body {
 
 .live-line-text {
   color: var(--sidebar-text);
+}
+
+/* AUG-164: a live chunk fixed by online text correction stays in the status yellow; hover shows the original
+   (title). On arrival the underline flashes for ~2 s so the change is noticed. */
+.live-line-part--corrected {
+  position: relative;
+  color: var(--status-uploading);
+  cursor: help;
+  text-decoration: underline dotted var(--status-uploading);
+  text-underline-offset: 3px;
+  animation: live-line-corrected 2s ease-out;
+}
+
+/* Own tooltip instead of title: Electron shows native titles late or not at all. Below the text so the top line is not clipped. */
+.live-line-part--corrected[data-original]:hover::after {
+  content: 'Original: ' attr(data-original);
+  position: absolute;
+  left: 0;
+  top: calc(100% + 4px);
+  z-index: 5;
+  width: max-content;
+  max-width: min(480px, 80vw);
+  padding: 6px 10px;
+  background: var(--card-bg);
+  border: 1px solid var(--status-uploading);
+  border-radius: 0;
+  box-shadow: var(--card-shadow);
+  color: var(--text-primary);
+  font-size: 13px;
+  line-height: 1.4;
+  white-space: normal;
+  text-decoration: none;
+  pointer-events: none;
+}
+
+@keyframes live-line-corrected {
+  0%, 60% {
+    box-shadow: inset 0 -2px 0 var(--status-uploading);
+  }
+  100% {
+    box-shadow: inset 0 -2px 0 transparent;
+  }
 }
 
 .live-panel-jump {

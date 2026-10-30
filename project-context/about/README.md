@@ -20,12 +20,12 @@ August exists to remove repetitive manual work from a manager's day: writing up 
 - Meeting transcription: converting recorded or live meeting audio into text and structured notes.
 - Video processing: ingesting recorded video and extracting the information a manager needs from it (summaries, key moments).
 - Photo screening: reviewing a batch of images to surface relevant ones and filter out noise.
-- Self-hosted AI: all transcription, video, and image inference runs on open-source models hosted on infrastructure we control, not third-party AI APIs. Transcription currently runs via whisper.cpp (whisper-cli.exe) called locally by the server.
+- Local-first AI: all transcription, video, image and text inference runs on open-source models on the user's machine by default; a cloud engine (today Groq) is used only inside features the user explicitly opts into after a consent screen. Transcription currently runs via whisper.cpp (whisper-cli.exe) called locally by the server.
 
 ## Invariants
 
 - August is a web application (React + Node.js), not a desktop or mobile-native app, for the MVP.
-- All AI inference (transcription, video, photo analysis) runs on self-hosted open-source models — never sent to third-party AI APIs.
+- Rule: everything is local unless the user decides otherwise; opt-in cloud features are off by default, need the user's own API credential, and never upgrade to a paid tier silently.
 - Sessions are stored as file-based folders for the MVP — no PostgreSQL yet, and no auth yet; both are planned (see project-context/roadmap/README.md).
 
 ## Route-Specific Constraints

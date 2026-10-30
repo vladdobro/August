@@ -26,7 +26,8 @@ const MIN_SPEECH_MS = 200;
 const PROCESSOR_BUFFER_SIZE = 4096;
 
 interface LiveTranscriptionCallbacks {
-  onTranscript: (speaker: Speaker, text: string) => void;
+  onTranscript: (speaker: Speaker, text: string, id?: string) => void;
+  onCorrection?: (id: string, text: string) => void;
   onStatusChange: (status: LiveStatus) => void;
   onError: (message: string) => void;
   onWarning: (message: string) => void;
@@ -183,7 +184,9 @@ export class LiveTranscriptionClient {
       try {
         const msg = JSON.parse(event.data);
         if (msg.type === 'transcript' && typeof msg.text === 'string') {
-          this.callbacks.onTranscript(msg.speaker === 'Me' ? 'Me' : 'Them', msg.text);
+          this.callbacks.onTranscript(msg.speaker === 'Me' ? 'Me' : 'Them', msg.text, typeof msg.id === 'string' ? msg.id : undefined);
+        } else if (msg.type === 'correction' && typeof msg.id === 'string' && typeof msg.text === 'string') {
+          this.callbacks.onCorrection?.(msg.id, msg.text);
         } else if (msg.type === 'error') {
           this.callbacks.onError(msg.message || 'Live transcription error');
           this.callbacks.onStatusChange('interrupted');

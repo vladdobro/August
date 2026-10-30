@@ -14,6 +14,8 @@ export interface ChatCompletionRequest {
   logprobs?: boolean;
   topLogprobs?: number;
   stop?: string[];
+  /// Reasoning models only (Groq gpt-oss, AUG-164); omitted for llama-server.
+  reasoningEffort?: 'low' | 'medium' | 'high';
   timeoutMs?: number;
   signal?: AbortSignal;
 }
@@ -82,6 +84,7 @@ export function buildChatCompletionBody(req: ChatCompletionRequest, defaultModel
     max_tokens: req.maxTokens,
     temperature: req.temperature,
     stop: req.stop,
+    reasoning_effort: req.reasoningEffort,
   };
   if (req.logprobs) {
     body.logprobs = true;

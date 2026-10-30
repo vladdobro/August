@@ -32,6 +32,7 @@ const ALLOWED_KEYS = new Set([
   'autoDeleteWav',
   'autoDeleteWavThreshold',
   'llmCorrections',
+  'batchCorrectionEngine',
   'compactEnabled',
   'compactMode',
   'compactIndicatorWidget',
@@ -75,6 +76,9 @@ router.patch('/', async (req, res) => {
   }
   if ('llmCorrections' in patch) {
     patch.llmCorrections = patch.llmCorrections === true;
+  }
+  if ('batchCorrectionEngine' in patch) {
+    if (patch.batchCorrectionEngine !== 'local' && patch.batchCorrectionEngine !== 'groq') delete patch.batchCorrectionEngine;
   }
   if ('autoDeleteWavThreshold' in patch) {
     const n = Number(patch.autoDeleteWavThreshold);

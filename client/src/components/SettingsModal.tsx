@@ -2,13 +2,15 @@ import React, { useEffect, useRef, useState } from 'react';
 import type { UserPreferences } from '../services/preferences';
 import { DEFAULT_PREFERENCES, isSystemCaptureUsable, resolveSystemAudioSource } from '../services/preferences';
 import { compactPrefs } from '../services/compact';
-import { switchEngine, CUDA_PROGRESS_URL, fetchLlmModels, fetchLlmStatus, enableLlm, disableLlm, retryLlmDownload, browseLlmFolder, setLlmLocation } from '../api';
-import type { CaptureCapabilities, HealthStatus, LlmModelId, LlmModelInfo, LlmStatus, SystemAudioSource } from '../types';
+import { switchEngine, CUDA_PROGRESS_URL, fetchLlmModels, fetchLlmStatus, enableLlm, disableLlm, retryLlmDownload, browseLlmFolder, setLlmLocation, fetchGroqTextStatus, enableGroqText, disableGroqText } from '../api';
+import type { CaptureCapabilities, GroqTextStatus, HealthStatus, LlmModelId, LlmModelInfo, LlmStatus, SystemAudioSource } from '../types';
 import { formatGb, formatRamGb, qualityLabel, subscribeLlmProgress } from '../services/llm';
 import type { DesktopSettings } from '../desktop';
 import { acceleratorFromKeyboardEvent, formatAccelerator } from '../services/desktop';
 import SettingsDropdown from './SettingsDropdown';
 import PraxisProjectsPage from './PraxisProjectsPage';
+import GroqKeyModal from './GroqKeyModal';
+import GroqTextConsentModal from './GroqTextConsentModal';
 
 interface SettingsModalProps {
   preferences: UserPreferences;
@@ -23,6 +25,8 @@ interface SettingsModalProps {
   cudaStatus?: HealthStatus['cudaStatus'];
   onHealthRefresh: () => void;
   isTranscribing: boolean;
+  groqAvailable: boolean;
+  onGroqKeySaved: () => void;
   initialTab?: 'general' | 'audio' | 'transcription' | 'projects' | 'compact';
 }
 
@@ -39,6 +43,8 @@ const SettingsModal: React.FC<SettingsModalProps> = ({
   cudaStatus,
   onHealthRefresh,
   isTranscribing,
+  groqAvailable,
+  onGroqKeySaved,
   initialTab,
 }) => {
   const [engineSwitching, setEngineSwitching] = useState(false);
@@ -95,6 +101,19 @@ const SettingsModal: React.FC<SettingsModalProps> = ({
     }
   };
 
+  // Opt-in online text correction via Groq (AUG-164). Off until the user accepts the consent.
+  const [groqText, setGroqText] = useState<GroqTextStatus | null>(null);
+  const [groqConsentOpen, setGroqConsentOpen] = useState(false);
+  const [groqKeyOpen, setGroqKeyOpen] = useState(false);
+  const [groqTextBusy, setGroqTextBusy] = useState(false);
+  const [groqTextError, setGroqTextError] = useState<string | null>(null);
+
+  useEffect(() => {
+    let cancelled = false;
+    void fetchGroqTextStatus().then((status) => { if (!cancelled) setGroqText(status); }).catch(() => {});
+    return () => { cancelled = true; };
+  }, [groqAvailable]);
+
   // Desktop shell (Electron) settings — the section renders only when window.august exists.
   const desktop = window.august ?? null;
   const [desktopSettings, setDesktopSettings] = useState<DesktopSettings | null>(null);
@@ -146,11 +165,11 @@ const SettingsModal: React.FC<SettingsModalProps> = ({
 
   useEffect(() => {
     const handleEsc = (e: KeyboardEvent) => {
-      if (e.key === 'Escape') onClose();
+      if (e.key === 'Escape' && !groqConsentOpen && !groqKeyOpen) onClose();
     };
     window.addEventListener('keydown', handleEsc);
     return () => window.removeEventListener('keydown', handleEsc);
-  }, [onClose]);
+  }, [onClose, groqConsentOpen, groqKeyOpen]);
 
   const language = preferences.language ?? DEFAULT_PREFERENCES.language;
   const micDeviceId = preferences.micDeviceId ?? DEFAULT_PREFERENCES.micDeviceId;
@@ -182,6 +201,7 @@ const SettingsModal: React.FC<SettingsModalProps> = ({
   const autoDeleteWav = preferences.autoDeleteWav ?? DEFAULT_PREFERENCES.autoDeleteWav;
   const autoDeleteWavThreshold = preferences.autoDeleteWavThreshold ?? DEFAULT_PREFERENCES.autoDeleteWavThreshold;
   const llmCorrections = preferences.llmCorrections ?? DEFAULT_PREFERENCES.llmCorrections;
+  const batchCorrectionEngine = preferences.batchCorrectionEngine ?? DEFAULT_PREFERENCES.batchCorrectionEngine;
   const [thresholdDraft, setThresholdDraft] = useState<number>(autoDeleteWavThreshold);
   useEffect(() => { setThresholdDraft(autoDeleteWavThreshold); }, [autoDeleteWavThreshold]);
   const commitThreshold = () => { if (thresholdDraft !== autoDeleteWavThreshold) onPreferenceChange({ autoDeleteWavThreshold: thresholdDraft }); };
@@ -646,6 +666,46 @@ const SettingsModal: React.FC<SettingsModalProps> = ({
                 </>
               );
             })()}
+            {groqText && (
+              <>
+                <div className="settings-row">
+                  <span className="settings-label">Online text correction (Groq)</span>
+                  <label className="settings-toggle">
+                    <input
+                      type="checkbox"
+                      checked={groqText.enabled || groqConsentOpen || groqKeyOpen}
+                      disabled={groqTextBusy}
+                      onChange={(e) => {
+                        setGroqTextError(null);
+                        if (e.target.checked) { setGroqConsentOpen(true); return; }
+                        setGroqTextBusy(true);
+                        void disableGroqText().then(setGroqText).catch((err) => setGroqTextError((err as Error).message || 'Something went wrong.')).finally(() => setGroqTextBusy(false));
+                      }}
+                    />
+                    <span className="settings-toggle-label">{groqText.enabled ? 'On' : 'Off'}</span>
+                  </label>
+                </div>
+                <div className="settings-hint">Fixes live transcript lines a few seconds after they appear. After a recording, doubtful lines get a suggested fix to accept or reject; the original transcript is never changed.</div>
+                {groqText.enabled && llmStatus?.enabled && llmCorrections && (
+                  <div className="settings-row">
+                    <label className="settings-label">Fixes after recording by</label>
+                    <SettingsDropdown
+                      value={batchCorrectionEngine}
+                      options={[
+                        { value: 'local', label: 'Local model' },
+                        { value: 'groq', label: 'Groq' },
+                      ]}
+                      onChange={(v) => onPreferenceChange({ batchCorrectionEngine: v === 'groq' ? 'groq' : 'local' })}
+                    />
+                  </div>
+                )}
+                {groqText.consentStale && <div className="settings-hint settings-hint--warn">The Groq key changed. Turn this on again to confirm.</div>}
+                {groqText.enabled && groqText.blocked && (
+                  <div className="settings-hint settings-hint--warn">Groq is not reachable from your network, so corrections are skipped. A VPN may help.</div>
+                )}
+                {groqTextError && !groqConsentOpen && <div className="settings-hint settings-hint--warn">{groqTextError}</div>}
+              </>
+            )}
           </div>
           )}
 
@@ -898,6 +958,32 @@ const SettingsModal: React.FC<SettingsModalProps> = ({
           </button>
           <button className="settings-btn" onClick={onClose}>Close</button>
         </div>
+      </div>
+      <div onClick={(e) => e.stopPropagation()}>
+        {groqConsentOpen && !groqKeyOpen && groqText && (
+          <GroqTextConsentModal
+            groqAvailable={groqText.groqAvailable}
+            busy={groqTextBusy}
+            error={groqTextError}
+            onCancel={() => { setGroqConsentOpen(false); setGroqTextError(null); }}
+            onAddKey={() => setGroqKeyOpen(true)}
+            onAccept={() => {
+              setGroqTextBusy(true);
+              setGroqTextError(null);
+              void enableGroqText()
+                .then((s) => { setGroqText(s); setGroqConsentOpen(false); })
+                .catch((err) => setGroqTextError((err as Error).message || 'Something went wrong.'))
+                .finally(() => setGroqTextBusy(false));
+            }}
+          />
+        )}
+        {groqKeyOpen && (
+          <GroqKeyModal
+            groqAvailable={groqText?.groqAvailable ?? groqAvailable}
+            onClose={() => setGroqKeyOpen(false)}
+            onSaved={() => { onGroqKeySaved(); void fetchGroqTextStatus().then(setGroqText).catch(() => {}); }}
+          />
+        )}
       </div>
     </div>
   );

@@ -452,6 +452,8 @@ const App: React.FC = () => {
           cudaStatus={healthStatus?.cudaStatus}
           onHealthRefresh={() => checkHealth().then(setHealthStatus).catch(() => {})}
           isTranscribing={sessions.some(s => s.status === 'transcribing' || s.status === 'preparing')}
+          groqAvailable={healthStatus?.groqAvailable ?? false}
+          onGroqKeySaved={refreshHealth}
         />
       )}
       {shouldEnableAgentation && <Agentation endpoint={agentationEndpoint} />}

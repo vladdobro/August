@@ -1,0 +1,19 @@
+{
+  "id": "AUG-161-bheefn",
+  "assignee": "storm.json",
+  "priority": "medium",
+  "status": "to_review",
+  "title": "[AUG-161] Брейншторм: семантический confidence и пост-обработка транскрипций",
+  "why_we_need_this": "Текущий confidenceScore (0–100) в confidenceScore.ts считается исключительно по акустическим сигналам whisper (no_speech_prob, avg_logprob, duration coverage). Он не видит бессмыслицу в тексте — высокий score может стоять у транскрипции, которая после перевода превращается в набор слов. Нужен дешёвый способ: (1) оценивать осмысленность текста семантически, (2) улучшать качество текста после транскрипции/перевода без дорогих API-вызовов. Задача — собрать и оценить подходы, не реализовывать.",
+  "acceptance_criteria": "- [ ] Описан текущий baseline: что именно считает confidenceScore.ts, почему он слеп к семантике\n- [ ] Собраны подходы к дешёвому семантическому confidence (perplexity через маленькую LM, n-gram coherence, embedding similarity между сегментами, language model scoring)\n- [ ] Собраны подходы к пост-обработке текста (lightweight LM correction, перефразирование бессмысленных фрагментов, контекстная склейка обрывочных сегментов)\n- [ ] Для каждого подхода оценены: стоимость (CPU/RAM/latency/деньги), сложность интеграции\n- [ ] Отдельный трек: облачные варианты — Groq (у них есть LLM inference, не только whisper), другие дешёвые hosted LM API для scoring/correction текста\n- [ ] Отдельный трек: локальные варианты — TinyLlama, phi-3-mini, ONNX-модели, classical NLP (perplexity, n-gram)\n- [ ] Для облачных: оценка latency, pricing per 1K tokens, privacy implications\n- [ ] Итог: ranked shortlist из 3–5 реалистичных подходов с trade-off матрицей (local vs cloud, cost, quality, complexity)",
+  "important_constraints": "- Архитектурное ограничение: «Do not introduce a third-party transcription or AI API call» — но это про транскрипцию; для семантического анализа уже готового текста ограничение мягче (прецедент: Groq hosted whisper для live)\n- Рассмотреть ОБА трека: локальные решения (zero cost, offline) И облачные (Groq, другие дешёвые inference API для маленьких LM)\n- Платформы: Windows x64 и macOS arm64/x64\n- Текущий whisper: large-v3-turbo-q8_0 (~874 MB) — бюджет на дополнительную локальную модель ограничен\n- Groq уже интегрирован для live transcription (server/src/services/groqTranscription.ts) — можно переиспользовать инфраструктуру\n- Это исследование, не реализация — результат = документ с оценкой подходов",
+  "labels": [
+    "research",
+    "transcription",
+    "confidence"
+  ],
+  "on_hold_reason": "",
+  "contextRouterIncluded": true,
+  "created_at": 1793314809722,
+  "column_entered_at": 1793322355274
+}

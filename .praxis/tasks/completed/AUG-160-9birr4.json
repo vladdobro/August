@@ -1,0 +1,18 @@
+{
+  "id": "AUG-160-9birr4",
+  "assignee": "jarvis.json",
+  "priority": "medium",
+  "status": "completed",
+  "title": "[AUG-160] Deprecate hamburger menu, consolidate into ControlsPanel",
+  "why_we_need_this": "В приложении две идентичные панели меню: hamburger (≡) в левом сайдбаре и ControlsPanel в правом. Это дублирование запутывает пользователя и увеличивает площадь поддержки. Нужно оставить одну точку входа — ControlsPanel, а hamburger убрать.",
+  "acceptance_criteria": "- [ ] \"Check for Updates\" (и связанные состояния: Checking, Downloading, Restart to Update) перенесён в ControlsPanel\n- [ ] Hamburger menu (.sidebar-menu, .sidebar-menu-trigger) полностью удалён из UI\n- [ ] Все пункты, которые были только в hamburger и отсутствовали в ControlsPanel, перенесены в ControlsPanel (ревизия обоих списков)\n- [ ] Тестирование: ControlsPanel содержит все действия, которые ранее были доступны из обоих меню\n- [ ] Compact Mode (dock strip / ghost caption) работает корректно без hamburger\n- [ ] Десктоп-апдейтер (electron-updater) по-прежнему работает через ControlsPanel\n- [ ] Веб-версия (без Electron) не показывает \"Check for Updates\"",
+  "important_constraints": "- ControlsPanel уже содержит: New session, Settings, Archive, API Keys, Diagnostics\n- Hamburger содержит: Settings, Archive, Check for Updates — проверить полный список перед удалением\n- \"Check for Updates\" — десктоп-only функция (window.august.checkForUpdates), в веб-версии не должна появляться\n- Sidebar header (\"August\" title) остаётся, убирается только кнопка ≡ и выпадающее меню\n- Compact Mode (AUG-156) тоже использует sidebar — проверить что не сломается\n\n## ✅ Итог (2026-10-30)\n**Что сделано:**\n- Hamburger ≡ (.sidebar-menu, .sidebar-menu-trigger) удалён из шапки сайдбара; остались лого (New session) и заголовок \"August\" (About).\n- ControlsPanel — единственное меню; последним пунктом добавлен desktop-only пункт обновления (↻): Check for Updates → Checking… / Downloading vX (N%)… (disabled) → Restart to Update to vX.\n- Пункт показывается только если window.august.getUpdateState вернул не null — в веб-версии и unpackaged-запуске его нет.\n- Diagnostics / Archive / Keys / Settings уже были в ControlsPanel; пасхалка \"tooltip_missing\" (Rickroll) удалена по решению пользователя.\n**Как:** логика подписки на updater (getUpdateState + onUpdateState) перенесена из SessionList в ControlsPanel без изменений; main-процесс и трей не трогали. Busy-состояния — .controls-item:disabled. Стили .sidebar-menu-dropdown / .sidebar-menu-item сохранены: их переиспользует контекстное меню сессии (Show in Explorer/Finder).\n**Файлы:** @client/src/components/ControlsPanel.tsx, @client/src/components/SessionList.tsx, @client/src/App.tsx, @client/src/App.css; context: @project-context/frontend-design/README.md, @project-context/desktop-shell/README.md, @project-context/preferences/README.md, @project-context/architecture/README.md\n**PR / коммиты:** без PR, прямо в master: cbcf418 (AUG-160), 78cf7d7 (bump 0.0.42); релиз v0.0.42 собран workflow Release desktop app (run 40982288766, mac + win success, 9 ассетов).\n**Грабли:** сабагент при удалении dark-правила :disabled оставил лишнюю «}» в App.css — tsc прошёл, упал только vite build. После правок CSS всегда гонять vite build, не только tsc.\n**Хвосты:** UI вручную не прокликан (Compact Mode, пункт обновления в packaged-сборке) — проверено только кодом и сборкой.",
+  "labels": [
+    "ui",
+    "cleanup"
+  ],
+  "on_hold_reason": "",
+  "contextRouterIncluded": true,
+  "created_at": 1793314614119,
+  "column_entered_at": 1793322811576
+}

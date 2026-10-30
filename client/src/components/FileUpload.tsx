@@ -267,15 +267,27 @@ const FileUpload: React.FC<FileUploadProps> = ({ onUploaded, onRecordingChange, 
       setLiveActive(true);
 
       const client = new LiveTranscriptionClient({
-        onTranscript: (speaker, text) => {
+        onTranscript: (speaker, text, id) => {
           setLiveLines((prev) => {
+            const part = { id, text };
             const last = prev.length > 0 ? prev[prev.length - 1] : null;
             if (last && last.speaker === speaker) {
               const updated = [...prev];
-              updated[updated.length - 1] = { speaker, text: `${last.text} ${text}` };
+              updated[updated.length - 1] = { speaker, text: `${last.text} ${text}`, parts: [...(last.parts ?? [{ text: last.text }]), part] };
               return updated;
             }
-            return [...prev, { speaker, text }];
+            return [...prev, { speaker, text, parts: [part] }];
+          });
+        },
+        // AUG-164: online text correction replaces a settled chunk in place (memory only — never saved).
+        onCorrection: (id, text) => {
+          setLiveLines((prev) => {
+            const idx = prev.findIndex((l) => l.parts?.some((p) => p.id === id));
+            if (idx < 0) return prev;
+            const parts = prev[idx].parts!.map((p) => (p.id === id ? { ...p, text, correctedAt: Date.now(), original: p.original ?? p.text } : p));
+            const updated = [...prev];
+            updated[idx] = { ...prev[idx], parts, text: parts.map((p) => p.text).join(' ') };
+            return updated;
           });
         },
         onStatusChange: setLiveStatus,

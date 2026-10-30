@@ -34,6 +34,8 @@ export interface UserPreferences {
   autoDeleteWavThreshold?: number;
   // AUG-163: let the local model suggest meaning fixes for suspicious lines (accepted one by one in the transcript view)
   llmCorrections?: boolean;
+  // AUG-164: who fixes flagged lines when both the local model and Online text correction (Groq) are on
+  batchCorrectionEngine?: 'local' | 'groq';
   // Compact Mode (AUG-156)
   compactEnabled?: boolean;
   compactMode?: CompactModePreference;
@@ -70,6 +72,7 @@ export const DEFAULT_PREFERENCES: Required<UserPreferences> = {
   autoDeleteWav: false,
   autoDeleteWavThreshold: 70,
   llmCorrections: false,
+  batchCorrectionEngine: 'local',
   compactEnabled: true,
   compactMode: 'follow',
   compactIndicatorWidget: 'dock-square',

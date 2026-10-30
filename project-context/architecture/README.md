@@ -3,10 +3,11 @@
 ## TL;DR
 - August web app is a React + Vite client talking to a Node.js/Express + TypeScript server over REST.
 - Speech-to-text runs locally via whisper-cli (whisper.cpp) on Windows x64 and macOS arm64/x64, never a third-party AI API; an opt-in local language model (llama-server, AUG-162) is the second local inference engine.
-- Local language model (AUG-162): server/src/services/llmServer.ts starts llama-server on 127.0.0.1 with a free port on the first request, stops it after 10 idle minutes (LLM_IDLE_SHUTDOWN_MINUTES) and kills it when the server stops; /api/llm/* (models, status, enable, disable, download, progress SSE, test) drives it and server/src/services/llmClient.ts is the provider-agnostic OpenAI-compatible chat/completions client (logprobs supported) to be reused for Groq.
+- Local language model (AUG-162): server/src/services/llmServer.ts starts llama-server on 127.0.0.1 with a free port on the first request, stops it after 10 idle minutes (LLM_IDLE_SHUTDOWN_MINUTES) and kills it when the server stops; /api/llm/* (models, status, enable, disable, download, progress SSE, test) drives it and server/src/services/llmClient.ts is the provider-agnostic OpenAI-compatible chat/completions client (logprobs supported), also used by groqText for Groq (AUG-164).
+- Groq text client (AUG-164): server/src/services/groqText.ts calls Groq openai/gpt-oss-20b through llmClient, free tier only, with its own 30 RPM / 6,000 TPM limiter separate from whisper's 20 RPM; any limit, 429 or error is skipped with a log line, never shown to the user and never upgraded to a paid tier. It runs only after the user's consent (/api/groq-text).
 - Sessions are stored as folders on disk for the MVP — no PostgreSQL yet, no auth yet.
 - Session CRUD includes create, list, get, delete, and rename (PATCH title update) via the REST API; the Archive page (AUG-150) adds GET /api/sessions/storage (disk usage), DELETE /api/sessions/:id/audio (strip audio, keep transcript) and POST /api/sessions/:id/redownload.
-- Also known as: Archive page, storage usage, disk usage, delete audio, free space, session cleanup, re-download audio (AUG-150), auto-delete WAV, confidence score, automatic cleanup (AUG-152), local language model, local LLM, llama-server, llm client (AUG-162), transcript.corrected.json, corrected transcript, batch semantic pass (AUG-163).
+- Also known as: Archive page, storage usage, disk usage, delete audio, free space, session cleanup, re-download audio (AUG-150), auto-delete WAV, confidence score, automatic cleanup (AUG-152), local language model, local LLM, llama-server, llm client (AUG-162), Groq text client, groqText, online text correction, createGroqTextClient, Groq batch corrections, resolveCorrectionEngine, batchCorrectionEngine (AUG-164), transcript.corrected.json, corrected transcript, batch semantic pass (AUG-163).
 - session.json carries confidenceScore (0–100), confidenceDetail and wavAutoDeletedAt; GET /api/sessions/storage entries gain wavAutoDeleted and files[] gain auto: true for WAVs removed by the confidence rule (AUG-152).
 - Session folder (AUG-163): transcript.corrected.json holds the local model's meaning-fix suggestions and the user's accept/reject decisions; transcript.corrected.md is transcript.md with only the accepted fixes applied, regenerated on every decision; transcript.md is never modified by corrections; both files count as kind 'transcript' in GET /api/sessions/storage and are removed when a retranscription writes a new transcript.
 - Transcription runs as a background child process; the client polls session status every 5 seconds.
@@ -56,15 +57,18 @@ Give any agent working on the codebase a map of the client/server split, how a s
 - confidenceScore (component): part of the August server; computes the 0–100 transcription confidence that the sessions route stores and the auto-delete rule compares against the threshold (AUG-152).
 - ArchivePage (component): part of the August client; page that uses the storage, delete-audio and redownload endpoints (AUG-150).
 - llmServer (component): part of the August server; owns the llama-server child process lifecycle (AUG-162).
-- llmClient (component): part of the August server; used by llmServer callers and semanticCheck for OpenAI-compatible chat/completions and raw /completions with an optional llama.cpp GBNF grammar (AUG-162, AUG-163).
+- llmClient (component): part of the August server; used by llmServer callers, groqText and semanticCheck for OpenAI-compatible chat/completions and raw /completions with an optional llama.cpp GBNF grammar (AUG-162, AUG-163, AUG-164).
 - llmInstaller (component): part of the August server; llmServer depends on it for installed binaries and models (AUG-162).
 - llm route (component): part of the August server; depends on llmServer and llmInstaller (AUG-162).
-- semanticCheck (component): part of the August server; depends on llmServer and whisper.withBatchSlot (AUG-163).
+- groqText (component): part of the August server; depends on llmClient and preferencesStore (AUG-164).
+- groqText route (component): part of the August server; depends on groqText (AUG-164).
+- liveTextCorrection (component): part of the August server; depends on groqText; used by liveTranscription (AUG-164).
+- semanticCheck (component): part of the August server; depends on llmServer and whisper.withBatchSlot (AUG-163) and on groqText for Groq batch corrections (AUG-164).
 
 ## Invariants
 
-- All AI inference runs locally — speech-to-text via whisper.cpp and the opt-in language model via llama-server (AUG-162) — never sent to a third-party AI API.
-- Every session is stored as a folder (audio file + session.json + transcript.md) — never a database row for the MVP.
+- All AI inference runs locally — speech-to-text via whisper.cpp and the opt-in language model via llama-server (AUG-162) — except where the user explicitly opts into Groq (live whisper engine; Online text correction after consent, AUG-164), always on the free tier.
+- Every session is stored as a folder (audio file + session.json + transcript.md, plus optional transcript.corrected.json / transcript.corrected.md from AUG-163 meaning corrections) — never a database row for the MVP.
 - Transcription always runs in the background (child process) — the API responds immediately and the client polls for status, never blocking on transcription.
 - FileUpload must never be unmounted while recording is active — MediaRecorder and AudioContext state lives in React refs and is destroyed on unmount.
 - App.tsx lifts `isRecording` from FileUpload via `onRecordingChange` callback to keep FileUpload mounted (hidden via display:none) when navigating to diagnostics or other views.
@@ -194,6 +198,29 @@ Give any agent working on the codebase a map of the client/server split, how a s
 - POST /api/llm/test sends a fixed prompt and returns {reply, latencyMs, totalMs}; it returns 409 when the model is off or not downloaded.
 - Ports, PIDs and paths are logged as "[llm] ..." and never sent to the UI.
 
+### Groq text client (AUG-164)
+
+- groqText.ts calls Groq through llmClient with baseURL https://api.groq.com/openai/v1, model openai/gpt-oss-20b, temperature 0 and a 15 s timeout.
+- Model history: llama-3.1-8b-instant (the task's original choice) was removed from Groq by 2026-10 (404 model_not_found); openai/gpt-oss-20b gave the best fixes in a side-by-side check against qwen/qwen3.8-27b.
+- gpt-oss-20b is a reasoning model: requests send reasoning_effort 'low' (llmClient field reasoningEffort) and add 512 tokens of max_tokens headroom, because hidden reasoning tokens count against max_tokens and TPM; without it short answers are cut off.
+- Region block: Groq answers 403 to requests from blocked regions. After 3 consecutive 403s with no success in between, GET /api/groq-text/status returns blocked: true and Settings shows "Groq is not reachable from your network…"; any success resets it (in memory only).
+- Dev-mode caveat: the tsx dev server uses Node's built-in fetch, which ignores HTTPS_PROXY, so behind a VPN proxy every Groq call (text and live whisper) gets 403; start it with NODE_USE_ENV_PROXY=1. The packaged app uses Electron net.fetch, which honors the system proxy (AUG-138).
+- The client is built per call because GROQ_API_KEY can change at runtime.
+- Its own TextRateLimiter keeps a sliding 60 s window with GROQ_TEXT_RPM = 30 and GROQ_TEXT_TPM = 6,000 (free tier; verify at console.groq.com/settings/limits), separate from whisper-large-v3's 20 RPM.
+- The token estimate is chars/3.
+- Skip reasons: 'rate-budget' when the limiter budget is exhausted, 'rate-limited' on HTTP 429 (plus a 60 s cooldown), 'error' on any other failure, 'unparseable' on bad JSON.
+- correctSegments never throws; it logs "[groqText] skipped: <reason>" without transcript text or key, shows no error to the user and never switches tier.
+- CORRECTION_SYSTEM_PROMPT allows fixing only misrecognized words, spelling and obvious punctuation; it forbids adding, removing, reordering, summarizing or translating, keeps the language and returns text unchanged when unsure.
+- The prompt exchanges a JSON array of {id, text} in both directions.
+- acceptCorrection rejects a correction when it is empty or unchanged, when the word count changes by more than max(2, 25 %), or when the char length ratio is outside 0.6–1.6.
+- server/src/routes/groqText.ts mounts GET /api/groq-text/status, POST /enable and POST /disable; consent rules live in project-context/preferences/README.md.
+- groqTextState() is active only while groqTextEnabled is true, a key is set and the consent fingerprint matches the current key.
+- Live usage: LiveTextCorrector (liveTextCorrection.ts) is created per WebSocket connection only when isGroqTextActive() at connect time; details live in project-context/transcription/live-transcription/README.md.
+- Batch corrections on Groq (AUG-164): semanticCheck.resolveCorrectionEngine picks who fixes flagged lines — the local model needs llmCorrections, Groq needs Online text correction with a valid consent; both on → preference batchCorrectionEngine ('local' default); neither → no corrections.
+- On Groq, the AUG-163 suggestCorrections runs unchanged (same prompt, same acceptSuggestion guard, transcript.corrected.json, Accept/Reject diff UI) with createGroqTextClient({ waitForBudgetMs: 60_000 }) as its LlmClient; the corrections file records model 'groq/openai/gpt-oss-20b'.
+- createGroqTextClient (groqText.ts) wraps every Groq text request in the free-tier limiter: over budget, a 429 or any failure is logged as skipped and thrown as GroqTextSkipError, so only that line is dropped; after a 429 the rest of that client's calls are skipped; complete() always throws (perplexity scoring stays local).
+- Groq batch corrections run outside the batch slot (network call); perplexity scoring still needs the local model, without it only text-statistics flags are corrected.
+
 ### Session storage & audio deletion (AUG-150, AUG-152)
 
 - The Archive page is a standalone page opened from the ControlsPanel item "Archive" (state showArchive in App.tsx), not a Settings tab.
@@ -223,6 +250,10 @@ Give any agent working on the codebase a map of the client/server split, how a s
 - server/src/services/llmClient.ts — createLlmClient (chat, complete), buildChatCompletionBody, parseChatCompletionResponse, LlmClientError (AUG-162, AUG-163).
 - server/src/routes/llm.ts — /api/llm models, status, enable, disable, download, progress (SSE), test (AUG-162).
 - client/src/services/llm.ts — size formatting, progress SSE subscription, Diagnostics node state (AUG-162).
+- server/src/services/groqText.ts — Groq openai/gpt-oss-20b text client: TextRateLimiter, correctSegments, acceptCorrection guard, groqTextState (AUG-164); createGroqTextClient, GroqTextSkipError (AUG-164).
+- server/src/services/liveTextCorrection.ts — LiveTextCorrector: periodic correction of settled live chunks via groqText (AUG-164).
+- server/src/routes/groqText.ts — GET /api/groq-text/status, POST /enable, POST /disable consent endpoints (AUG-164).
+- client/src/components/GroqTextConsentModal.tsx — consent modal for the Online text correction toggle (AUG-164).
 - server/src/services/whisper.ts — whisper-cli child_process invocation (runWhisper) and JSON output parsing.
 - server/assets/wordlists/ — en.txt / ru.txt frequency word lists for textStats OOV, shipped via electron-builder files `server/assets/**/*` (AUG-163).
 - server/src/services/transcriptMerger.ts — filtering, dedup, and join logic that turns raw segments into a transcript.
@@ -256,7 +287,7 @@ No Agentation MCP server or backend scripts are configured — only the frontend
 
 ## Route-Specific Constraints
 
-- Do not introduce a third-party transcription or AI API call anywhere in this stack — all inference must go through whisper-cli or the local llama-server (AUG-162); the Groq free tier is the only cloud exception and stays opt-in.
+- Do not introduce a third-party transcription or AI API call anywhere in this stack — all inference must go through whisper-cli or the local llama-server (AUG-162); the Groq free tier is the only cloud exception and stays opt-in: live whisper engine and Online text correction (consent required, AUG-164); never a paid tier.
 - Do not assume a database exists — session persistence is file-based until PostgreSQL is introduced (see project-context/roadmap/README.md).
 - Do not assume authenticated requests — no auth is implemented yet; all endpoints are open for the MVP.
 - Detailed transcription pipeline rules (whisper flags, TranscriptMerger constants, session lifecycle states) live in project-context/transcription/README.md, not here.

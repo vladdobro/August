@@ -124,6 +124,16 @@ export interface LlmLocation {
   freeBytes: number | null;
 }
 
+export interface GroqTextStatus {
+  enabled: boolean;
+  consentAt: string | null;
+  consentStale: boolean;
+  groqAvailable: boolean;
+  model: string;
+  /// AUG-164: Groq keeps refusing requests from this network (region block); corrections are skipped meanwhile.
+  blocked: boolean;
+}
+
 export interface LlmStatus {
   enabled: boolean;
   modelId: LlmModelId;

@@ -15,6 +15,11 @@
 // the browser tap) and are queued as speaker Them. Detach never stops the
 // capture; stopCapture() ends the tee, whose onEnd flushes the last partial
 // window here before the WAV is finalized.
+//
+// AUG-164: when the user opted into online text correction (Settings, consent
+// stored in preferences), each transcript frame carries an id and a
+// LiveTextCorrector pushes { type: 'correction', id, text } frames for settled
+// chunks; still nothing is persisted.
 
 import { randomUUID } from 'node:crypto';
 import type { Server as HttpServer } from 'node:http';
@@ -28,6 +33,8 @@ import { FILLER_ONLY_TEXTS, isHallucination, normalize, stripCreditHallucination
 import { transcribeWithGroq, GroqRateLimitError, GroqApiError } from './groqTranscription.js';
 import { attachLiveSink, CaptureError, type LiveSinkHandle } from './systemCapture.js';
 import { LivePcmFeeder, parseLiveControlFrame, SAMPLE_RATE } from './liveChunking.js';
+import { isGroqTextActive } from './groqText.js';
+import { LiveTextCorrector } from './liveTextCorrection.js';
 
 type Speaker = 'Me' | 'Them';
 
@@ -157,6 +164,17 @@ export function setupLiveTranscription(server: HttpServer): void {
       }
     };
 
+    let corrector: LiveTextCorrector | null = null;
+    void isGroqTextActive().then((active) => {
+      if (!active || stopped) return;
+      corrector = new LiveTextCorrector((id, text) => send({ type: 'correction', id, text }));
+      corrector.start();
+    }).catch(() => {});
+    const stopCorrector = () => {
+      corrector?.stop();
+      corrector = null;
+    };
+
     const processQueue = async () => {
       if (processing) return;
       processing = true;
@@ -185,9 +203,16 @@ export function setupLiveTranscription(server: HttpServer): void {
                   send({ type: 'warning', message: 'Groq rate limit — falling back to local whisper' });
                   groqFallbackWarned = true;
                 }
-              } else {
+              } else if (groqErr instanceof GroqApiError && groqErr.fatal) {
+                // No key or the key is rejected: retrying cannot help, stay local for this connection.
                 send({ type: 'warning', message: 'Groq unavailable — switching to local whisper' });
                 engine = 'local';
+              } else {
+                // AUG-164: a flaky network/VPN (403, 5xx, connection error) only costs this chunk; the next one tries Groq again.
+                if (!groqFallbackWarned) {
+                  send({ type: 'warning', message: 'Groq did not respond — this part was transcribed locally' });
+                  groqFallbackWarned = true;
+                }
               }
               text = await transcribeChunk(wavPath, chunk.language);
             }
@@ -200,7 +225,9 @@ export function setupLiveTranscription(server: HttpServer): void {
           if (!isLikelyFiller(text)) {
             const cleaned = stripCreditHallucination(text);
             if (cleaned.length > 0 && !isLikelyFiller(cleaned)) {
-              send({ type: 'transcript', speaker: chunk.speaker, text: cleaned });
+              const id = randomUUID();
+              send({ type: 'transcript', id, speaker: chunk.speaker, text: cleaned });
+              corrector?.add(id, cleaned);
             }
           }
         } catch (err) {
@@ -211,6 +238,7 @@ export function setupLiveTranscription(server: HttpServer): void {
               message: 'Live transcription interrupted — too many consecutive failures',
             });
             stopped = true;
+            stopCorrector();
           }
         } finally {
           fs.unlink(wavPath).catch(() => {});
@@ -271,6 +299,7 @@ export function setupLiveTranscription(server: HttpServer): void {
           stopped = true;
           queue.length = 0;
           detachCapture();
+          stopCorrector();
           break;
         case 'pause':
           paused = true;
@@ -292,6 +321,7 @@ export function setupLiveTranscription(server: HttpServer): void {
       stopped = true;
       queue.length = 0;
       detachCapture();
+      stopCorrector();
     });
   });
 }

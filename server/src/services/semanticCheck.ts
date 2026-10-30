@@ -3,7 +3,8 @@ import { computeConfidence, type ConfidenceInput, type ConfidenceResult } from '
 import type { LlmClient } from './llmClient.js';
 import { llmInstallState, readLlmSettings } from './llmInstaller.js';
 import { LlmUnavailableError, withLocalLlm } from './llmServer.js';
-import { readPreferences } from './preferencesStore.js';
+import { createGroqTextClient, GROQ_TEXT_MODEL, groqTextState } from './groqText.js';
+import { readPreferences, type PreferencesRecord } from './preferencesStore.js';
 import { tokenizeWords } from './textStats.js';
 import { withBatchSlot } from './whisper.js';
 
@@ -41,6 +42,20 @@ async function localModelReady(): Promise<boolean> {
     return false;
   }
 }
+
+export type CorrectionEngine = 'local' | 'groq';
+
+/// AUG-164: who fixes flagged lines. The local model needs llmCorrections; Groq needs Online text correction with a valid
+/// consent. Both on → prefs.batchCorrectionEngine ('local' by default); otherwise whichever is on; neither → null.
+export function resolveCorrectionEngine(prefs: PreferencesRecord, localReady: boolean): CorrectionEngine | null {
+  const local = localReady && prefs.llmCorrections === true;
+  const groq = groqTextState(prefs).enabled;
+  if (local && groq) return prefs.batchCorrectionEngine === 'groq' ? 'groq' : 'local';
+  return local ? 'local' : groq ? 'groq' : null;
+}
+
+/// Model id recorded in transcript.corrected.json when Groq produced the suggestions.
+export const GROQ_CORRECTION_MODEL = `groq/${GROQ_TEXT_MODEL}`;
 
 /// JSON string escapes are valid GBNF; control characters are flattened to spaces first.
 export function gbnfLiteral(s: string): string {
@@ -276,8 +291,16 @@ export interface SemanticPassInput {
 export interface SemanticPassResult {
   confidence: ConfidenceResult;
   corrections: CorrectionItem[] | null;
-  /// Local model id used by the pass; null when it did not run.
+  /// Model that produced the corrections (local model id, or GROQ_CORRECTION_MODEL); for the local pass also when only scoring ran; null when nothing ran.
   model: string | null;
+}
+
+/// AUG-164: same targets, prompt and acceptSuggestion guard as the local path, on Groq's free tier. Never throws: a
+/// skipped request (limit, 429, network) only drops that line.
+async function suggestGroqCorrections(input: SemanticPassInput, confidence: ConfidenceResult): Promise<CorrectionItem[]> {
+  const targets = buildCorrectionTargets(input.tracks, input.utterances, confidence.detail.semantic?.segments ?? []);
+  if (targets.length === 0) return [];
+  return suggestCorrections(createGroqTextClient({ waitForBudgetMs: 60_000 }), targets, input.isCancelled);
 }
 
 /// Computes the confidence score including the semantic term. Never throws: any local-model failure falls back to the
@@ -289,8 +312,14 @@ export async function runSemanticPass(input: SemanticPassInput): Promise<Semanti
     audioDurationSec: input.audioDurationSec,
     language: input.language,
   };
-  if (!(await localModelReady())) {
-    return { confidence: computeConfidence(base), corrections: null, model: null };
+  const localReady = await localModelReady();
+  const engine = resolveCorrectionEngine(await readPreferences(), localReady);
+  if (!localReady) {
+    const confidence = computeConfidence(base);
+    if (engine !== 'groq' || input.isCancelled?.()) return { confidence, corrections: null, model: null };
+    const corrections = await suggestGroqCorrections(input, confidence);
+    console.log(`[session ${input.sessionId}] semantic: groq corrections ${corrections.length}`);
+    return { confidence, corrections, model: GROQ_CORRECTION_MODEL };
   }
 
   let corrections: CorrectionItem[] | null = null;
@@ -300,13 +329,16 @@ export async function runSemanticPass(input: SemanticPassInput): Promise<Semanti
       model = modelId;
       const ppl = await scorePerplexity(client, input.tracks, modelId, input.isCancelled);
       const result = computeConfidence({ ...base, perplexity: ppl });
-      const prefs = await readPreferences();
-      if (prefs.llmCorrections === true && !input.isCancelled?.()) {
+      if (engine === 'local' && !input.isCancelled?.()) {
         const targets = buildCorrectionTargets(input.tracks, input.utterances, result.detail.semantic?.segments ?? []);
         corrections = targets.length > 0 ? await suggestCorrections(client, targets, input.isCancelled) : [];
       }
       return result;
     }));
+    if (engine === 'groq' && !input.isCancelled?.()) {
+      corrections = await suggestGroqCorrections(input, confidence);
+      model = GROQ_CORRECTION_MODEL;
+    }
     const sem = confidence.detail.semantic;
     const sum = sem?.perplexity;
     const segs = sem?.segments ?? [];
@@ -321,10 +353,11 @@ export async function runSemanticPass(input: SemanticPassInput): Promise<Semanti
   } catch (err) {
     const message = err instanceof LlmUnavailableError || err instanceof Error ? err.message : String(err);
     console.warn(`[session ${input.sessionId}] semantic check skipped: ${message}`);
-    return {
-      confidence: computeConfidence({ ...base, perplexity: { perTrack: [], flagged: [], error: message } }),
-      corrections: null,
-      model: null,
-    };
+    const fallback = computeConfidence({ ...base, perplexity: { perTrack: [], flagged: [], error: message } });
+    if (engine === 'groq' && !input.isCancelled?.()) {
+      const groqItems = await suggestGroqCorrections(input, fallback);
+      return { confidence: fallback, corrections: groqItems, model: GROQ_CORRECTION_MODEL };
+    }
+    return { confidence: fallback, corrections: null, model: null };
   }
 }

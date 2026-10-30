@@ -9,10 +9,15 @@
 - A binary WebSocket protocol encodes speaker identity, language, and Float32 PCM in each frame.
 - ChunkAccumulator uses 4 s windows with 1 s overlap and a frame-based speech gate (hasEnoughSpeech) before sending, to local whisper or Groq (AUG-127).
 - The server queues at most 6 chunks per connection; 3 consecutive failures trigger interrupted status.
-- Groq fallback: rate limit (20 req/min) falls back to local whisper per-chunk; API errors switch engine to local permanently for that connection.
+- Groq fallback: rate limits (20 req/min) and transient errors (403 region/VPN, 5xx, network) fall back to local whisper for that chunk only, the next chunk tries Groq again; only a missing or rejected key (401) switches the connection to local permanently (AUG-164).
 - Key files: server/src/services/liveTranscription.ts, server/src/services/groqTranscription.ts, client/src/services/liveTranscriptionClient.ts.
 - Key files also include server/src/services/liveChunking.ts (server ChunkAccumulator, LivePcmFeeder, control-frame parser) and attachLiveSink in server/src/services/systemCapture.ts.
-- Post-recording full-file transcription remains local whisper only — Groq is exclusively a live mode option.
+- Key files also include server/src/services/liveTextCorrection.ts and server/src/services/groqText.ts (AUG-164).
+- Post-recording full-file transcription remains local whisper only — Groq whisper is exclusively a live mode option.
+- Online text correction (AUG-164, opt-in with consent): when Settings → Transcription → Online text correction (Groq) is on, settled live chunks go to Groq openai/gpt-oss-20b.
+- Settled chunks are at least 8 s old, never the newest, sent every 12 s, and replaced in place with a 2 s yellow flash.
+- Live corrections are never persisted, and Groq limits or errors skip silently.
+- Also known as: online text correction, live text correction, Groq LLM correction, groqText (AUG-164).
 - Live transcript fills the whole main area while visible (AUG-154): a 48px top bar holds the rec dot + timer, status, Pause/Resume (yellow), Copy All (green), Clear All (red frame), Stop Live (red frame), End Recording (red filled) and × hide; the circuit diagram is hidden (not unmounted) behind it.
 - Stop and Clear All require a confirmation dialog ("Are you sure?") before executing.
 - Live local chunks run whisper-cli with Silero VAD (vad: true in transcribeChunk); a chunk with no detected speech emits no line (AUG-127).
@@ -56,7 +61,7 @@ Document the mechanics of the live transcription mode — how audio is captured 
 - Server WebSocket handler: server/src/services/liveTranscription.ts upgrades HTTP connections at /api/live-transcribe using the ws library.
 - Server-side transcription: each chunk is written as a temporary 16kHz mono 16-bit WAV file in server/data/live-tmp/, routed to either local whisper-cli or Groq based on the connection's engine setting, then the temp files are deleted.
 - Filler and hallucination filtering: the server reuses FILLER_ONLY_TEXTS, isHallucination, and normalize from transcriptMerger.ts to filter live chunks identically to the batch pipeline.
-- JSON control messages: the client sends {type: "config", engine}, {type: "pause"}, {type: "resume"}, {type: "stop"} as text frames; the server sends {type: "transcript", speaker, text}, {type: "warning", message}, and {type: "error", message} back.
+- JSON control messages: the client sends {type: "config", engine}, {type: "pause"}, {type: "resume"}, {type: "stop"} as text frames; the server sends {type: "transcript", id, speaker, text}, {type: "correction", id, text} (AUG-164), {type: "warning", message}, and {type: "error", message} back.
 - attach-capture control frame (AUG-113): the client sends {type: "attach-capture", captureId, language} as a text frame right after the config frame when the recording uses a server capture; the server replies {type: "capture-attached", captureId} or a {type: "warning"} ("System audio not attached (...) — live transcript continues with the microphone only") when the captureId is unknown, already stopped, not started with live: true, or already attached.
 - Server PCM tee: POST /api/capture/start { live: true } adds a second ffmpeg output (-f s16le -ac 1 -ar 16000 pipe:1) next to the unchanged WAV; systemCapture.ts drains stdout from spawn and forwards bytes to at most one CaptureLiveSink.
 - LivePcmFeeder (server/src/services/liveChunking.ts) converts the s16le bytes to Float32 (carrying an odd trailing byte between chunks) and feeds a server-side ChunkAccumulator with the same 64000/16000/0.006 constants as the browser one; full windows are queued as speaker Them on the same per-connection queue and engine as mic chunks.
@@ -68,6 +73,24 @@ Document the mechanics of the live transcription mode — how audio is captured 
 - Panel hide/reopen: closing the panel (×) sets liveHidden=true, hiding it without stopping the WebSocket or clearing lines. A pulsing LIVE badge appears in the recording info bar; clicking it sets liveHidden=false, reopening the panel with all accumulated lines intact. A separate Stop Live button in the top bar calls handleLiveStop to fully terminate the live client.
 - Line coalescing: consecutive transcript results from the same speaker append to the previous line rather than creating a new line.
 - HTTP server upgrade: server/src/index.ts creates an http.Server wrapping the Express app, passes it to setupLiveTranscription() for WebSocket upgrade handling, then calls httpServer.listen().
+
+### Online text correction (AUG-164)
+
+- LiveTextCorrector (server/src/services/liveTextCorrection.ts) is created per WebSocket connection only when isGroqTextActive() at connect time.
+- Toggling Online text correction mid-session takes effect on the next live session.
+- It applies to both live engines (local and Groq whisper); the Settings toggle is the opt-in.
+- Every 12 s (LIVE_CORRECTION_INTERVAL_MS) it takes up to 8 chunks at least 8 s old (LIVE_SETTLE_MS), never the newest chunk, oldest first.
+- Skipped batches are retried on the next tick until chunks are 90 s old (LIVE_MAX_AGE_MS), then dropped.
+- Server transcript frames carry an id; corrections are sent as {type: "correction", id, text}.
+- Client LiveLine has parts[] ({id, text, correctedAt}); a speaker line still merges consecutive chunks.
+- A correction replaces one part in place and the line text is rebuilt.
+- The correction unit is one chunk (a part of a line), not a whole merged speaker line.
+- The corrected part stays in var(--status-uploading) with a dotted underline; hovering shows the recognized original in a CSS tooltip (data-original + ::after, "Original: …"; native title is unreliable in Electron; kept in LiveLinePart.original); the underline flashes for 2 s on arrival (CSS animation live-line-corrected); no dialog.
+- Corrected text goes through Groq openai/gpt-oss-20b via groqText; consent, limits and skip reasons are documented in the architecture and preferences routes.
+
+## Components
+
+- LiveTextCorrector (component): part of liveTranscription; depends on groqText (AUG-164).
 
 ## Invariants
 
@@ -81,7 +104,7 @@ Document the mechanics of the live transcription mode — how audio is captured 
 - The server drops queued chunks beyond MAX_QUEUE_LENGTH (6) to prevent backpressure buildup.
 - Three consecutive whisper-cli failures on a connection trigger an error message and interrupted status.
 - Groq rate-limit fallback is per-chunk: the engine stays 'groq' and retries Groq on the next chunk after falling back to local for one chunk.
-- Groq API errors (missing key, HTTP 500, network failures) permanently switch the connection's engine to 'local' for the remainder of the session.
+- Groq API errors: a missing key or HTTP 401 (GroqApiError.fatal) permanently switches the connection's engine to 'local'; any other error (403, 5xx, network) is transient — that chunk is transcribed locally, the next one goes to Groq again, and one warning 'Groq did not respond — this part was transcribed locally' is shown per connection (AUG-164).
 - A warning message ({type: "warning"}) is sent to the client on first rate-limit fallback and on permanent engine switch — not on every fallback chunk.
 - The client reports onMicUnavailable when the mic stream is null or has no audio tracks — the panel shows "Them only" notice.
 - Pause/resume is bidirectional: the client stops feeding chunks to the accumulator AND sends a JSON control message so the server can skip any queued work.
@@ -98,7 +121,8 @@ Document the mechanics of the live transcription mode — how audio is captured 
 
 ## Route-Specific Constraints
 
-- Live audio chunks may be sent to the Groq Whisper API only when the user explicitly selects the Groq engine — this is an opt-in toggle, never a default.
+- Data goes to Groq only through an explicit user choice: live audio only when the user selects the Groq engine, transcript text only when the user turned on Online text correction and accepted its consent (AUG-164). Neither is a default.
+- Live corrections apply in place without dialogs and are never saved; transcript.md is built only by the batch path (AUG-164).
 - Post-recording transcription remains strictly local whisper-cli — Groq is never used for full-file transcription (25MB limit makes it impractical).
 - The Groq API key (GROQ_API_KEY) is read from environment variables only — never hardcoded or committed.
 - The binary frame format is alignment-sensitive: Float32 samples are written sample-by-sample via DataView to avoid TypedArray 4-byte alignment issues with variable-length headers.
@@ -119,3 +143,6 @@ Document the mechanics of the live transcription mode — how audio is captured 
 - server/src/routes/health.ts — exposes groqAvailable flag in health endpoint response.
 - server/src/services/liveChunking.ts — ChunkAccumulator, speech gate (speechDurationMs/hasEnoughSpeech), PCM feeder, control-frame parser; tests in liveChunking.test.ts.
 - server/src/services/systemCapture.ts — live PCM tee (LIVE_TEE_ARGS, CaptureLiveSink, attachLiveSink) for server-fed Them audio.
+- server/src/services/liveTextCorrection.ts — LiveTextCorrector: per-connection batching of settled chunks, retry/drop by age, correction frames (AUG-164).
+- server/src/services/groqText.ts — Groq openai/gpt-oss-20b text client with its own rate limiter and correction guard (AUG-164).
+- client/src/components/GroqTextConsentModal.tsx — consent modal shown when the Online text correction toggle is turned on (AUG-164).

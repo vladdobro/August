@@ -56,14 +56,14 @@ The routing system is a recursive tree with no depth limit. The flow is always: 
 # Project terminology
 
 - Application: the React frontend and Node.js/Express backend code that runs deterministically with no AI involvement — auth, data storage, routing, and UI. When a requirement states "Application must do X", the standard codebase handles X with no LLM or agent participation.
-- Agent / Copilot / LLM: the self-hosted AI models (speech-to-text, vision) that process meeting audio, video, and photos. When a requirement states "Agent must do X" or "the model must do X", it means the self-hosted AI pipeline handles X, never a third-party AI API.
+- Agent / Copilot / LLM: the AI models (speech-to-text, text LLM, vision) that process meeting audio, video, photos and transcripts. When a requirement states "Agent must do X" or "the model must do X", it means the local self-hosted pipeline handles X by default; a cloud engine handles X only inside a feature the user has explicitly switched on.
 
 # Mandatory Execution Rules
 
 - Always start context gathering from this file.
 - Never guess or hallucinate business logic. You must navigate to the relevant route directory and read its sub-router (README.md) to acquire the correct context.
 - Traverse the routing tree recursively. Every route directory may contain a README.md sub-router that declares its own child routes. Follow each relevant route downward, reading sub-routers at every level, until you reach the granularity required for the task. There is no depth limit; the hierarchy branches as deep as the project requires.
-- PROJECT SPECIFIC RULE: Meeting recordings, video, photos, and transcripts must never be sent to a third-party AI API — all AI inference (transcription, video processing, photo screening) must run on self-hosted open-source models within our own infrastructure.
+- PROJECT SPECIFIC RULE: Everything is local unless the user decides otherwise. All AI inference (transcription, text correction, action-item extraction, video processing, photo screening) runs on self-hosted open-source models by default. Recordings, transcripts and derived text leave the machine only through a feature the user has explicitly opted into (today: the Groq live engine; planned: Groq text correction and action items), after a consent screen that names the recipient and what it may do with the data. Such features are off by default, require the user's own API credential, and are never enabled silently or upgraded to a paid tier by the app.
 - Load Selectively: Open ONLY the specific documentation directories strictly required for your task/role. Do not load the entire project context.
 - UPDATE TRIGGER (CRITICAL): If your task changes the fundamental business logic, data structure, or rules of a route, OR produces any important finding (architectural constraint, bug root cause with systemic implications, technical behavior that future agents must know to avoid mistakes), you MUST update the corresponding route documentation in project-context/ to reflect this new reality.
 - Avoid files more than 500 strings in size for better performance and reliability.
