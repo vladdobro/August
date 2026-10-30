@@ -15,7 +15,7 @@
 - Praxis integration: POST /api/praxis/send creates a task directly in a target PraxisOS project's .praxis/tasks/new/ directory from a session transcript. POST /api/praxis/browse opens the OS native folder picker dialog so users can select the project path visually.
 - Multi-project Praxis (AUG-142): registered projects live in the praxisProjects preference and the export prompt resolves project, then default, then built-in.
 - User preferences persist in server/data/user-preferences.json via GET/PATCH/DELETE /api/preferences endpoints.
-- Settings modal is accessible from the sidebar menu; preferences auto-save on control changes in FileUpload.
+- Settings modal is accessible from ControlsPanel (the sidebar menu was removed in AUG-160); preferences auto-save on control changes in FileUpload.
 - App.tsx uses a single unified render — no early returns that unmount the layout; FileUpload stays mounted (hidden) during active recording to preserve MediaRecorder state.
 - Recording crash recovery: audio chunks auto-save to IndexedDB every 30 seconds; on reload, recovered audio is offered for upload via a recovery banner.
 - Desktop shell (AUG-114): an Electron app in electron/ embeds the Express server in-process; rules live in project-context/desktop-shell/README.md.
@@ -168,7 +168,7 @@ Give any agent working on the codebase a map of the client/server split, how a s
 
 ### Session storage & audio deletion (AUG-150, AUG-152)
 
-- The Archive page is a standalone page opened from the sidebar menu item "Archive" (state showArchive in App.tsx), not a Settings tab.
+- The Archive page is a standalone page opened from the ControlsPanel item "Archive" (state showArchive in App.tsx), not a Settings tab.
 - GET /api/sessions/storage returns { sessionsDir, totalBytes, sessions[] } with per-session source (recording | upload | link | platform), totalBytes, audioBytes, audioDeleted, wavAutoDeleted (AUG-152) and files[] (name, bytes, kind, note, deleted, auto).
 - The storage route is registered before GET /:id so "storage" is never parsed as a session id.
 - File kind is audio | transcript | meta | other; file note is original | converted | boosted.

@@ -2,7 +2,6 @@ import React, { useEffect, useLayoutEffect, useRef, useState } from 'react';
 import type { HealthStatus, SessionMetadata, SessionStatus } from '../types';
 import AboutModal from './AboutModal';
 import ConfidenceBadge from './ConfidenceBadge';
-import type { DesktopUpdateState } from '../desktop';
 
 interface SessionListProps {
   sessions: SessionMetadata[];
@@ -13,10 +12,6 @@ interface SessionListProps {
   onUndoDelete: () => void;
   onRename: (id: string, title: string) => void;
   onNewSession: () => void;
-  onDiagnostics: () => void;
-  onArchive: () => void;
-  onKeysAndTokens: () => void;
-  onSettings: () => void;
   gpuBackend?: HealthStatus['gpuBackend'];
   isTranscribing: boolean;
 }
@@ -73,18 +68,10 @@ const SessionList: React.FC<SessionListProps> = ({
   onUndoDelete,
   onRename,
   onNewSession,
-  onDiagnostics,
-  onArchive,
-  onKeysAndTokens,
-  onSettings,
   gpuBackend,
   isTranscribing,
 }) => {
-  const [menuOpen, setMenuOpen] = useState(false);
-  // Desktop updater state (AUG-157); null hides the menu item (browser build, unpackaged shell).
-  const [updateState, setUpdateState] = useState<DesktopUpdateState | null>(null);
   const [showAbout, setShowAbout] = useState(false);
-  const menuRef = useRef<HTMLDivElement>(null);
   const [contextMenu, setContextMenu] = useState<{ sessionId: string; x: number; y: number } | null>(null);
   const contextMenuRef = useRef<HTMLDivElement>(null);
   // Desktop shell only: the plain browser build keeps its native context menu.
@@ -100,29 +87,6 @@ const SessionList: React.FC<SessionListProps> = ({
   const listRef = useRef<HTMLDivElement>(null);
   const chipsRef = useRef<HTMLDivElement>(null);
   const [rayLines, setRayLines] = useState<{ x1: number; y1: number; x2: number; y2: number }[]>([]);
-
-  useEffect(() => {
-    if (!menuOpen) return;
-    const handleClick = (e: MouseEvent) => {
-      if (menuRef.current && !menuRef.current.contains(e.target as Node)) {
-        setMenuOpen(false);
-      }
-    };
-    document.addEventListener('mousedown', handleClick);
-    return () => document.removeEventListener('mousedown', handleClick);
-  }, [menuOpen]);
-
-  useEffect(() => {
-    const api = window.august;
-    if (!api?.getUpdateState) return;
-    let pushed = false;
-    let alive = true;
-    const off = api.onUpdateState?.((s) => { pushed = true; setUpdateState(s); });
-    api.getUpdateState()
-      .then((s) => { if (alive && !pushed) setUpdateState(s); })
-      .catch(() => {});
-    return () => { alive = false; off?.(); };
-  }, []);
 
   useEffect(() => {
     if (!contextMenu) return;
@@ -276,7 +240,6 @@ const SessionList: React.FC<SessionListProps> = ({
   const handleItemContextMenu = (e: React.MouseEvent, session: SessionMetadata) => {
     if (!desktop || editingId === session.id) return;
     e.preventDefault();
-    setMenuOpen(false);
     setContextMenu({ sessionId: session.id, x: e.clientX, y: e.clientY });
   };
 
@@ -290,22 +253,6 @@ const SessionList: React.FC<SessionListProps> = ({
   };
 
   const hasFilters = searchQuery || activeFilters.size > 0;
-
-  const updateItem = (() => {
-    const u = updateState;
-    if (!u) return null;
-    switch (u.phase) {
-      case 'checking':
-        return { label: 'Checking for Updates…', disabled: true, onClick: undefined };
-      case 'downloading':
-        return { label: `Downloading Update v${u.version} (${u.percent}%)…`, disabled: true, onClick: undefined };
-      case 'ready':
-        return { label: `Restart to Update to v${u.version}`, disabled: false, onClick: () => { setMenuOpen(false); window.august?.installUpdate?.(); } };
-      default:
-        // idle and error: the menu stays open so the label switches to "Checking…" in place.
-        return { label: 'Check for Updates', disabled: false, onClick: () => window.august?.checkForUpdates?.() };
-    }
-  })();
 
   return (
     <div className="session-list">
@@ -327,97 +274,6 @@ const SessionList: React.FC<SessionListProps> = ({
             </svg>
           </button>
           <h1 className="app-title app-title--clickable" onClick={() => setShowAbout(true)}>August</h1>
-          <div className="sidebar-menu" ref={menuRef}>
-            <button
-              type="button"
-              className="sidebar-menu-trigger"
-              onClick={() => setMenuOpen(v => !v)}
-              aria-label="Menu"
-              aria-expanded={menuOpen}
-            >
-              <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round">
-                <line x1="4" y1="6" x2="20" y2="6" />
-                <line x1="4" y1="12" x2="20" y2="12" />
-                <line x1="4" y1="18" x2="20" y2="18" />
-              </svg>
-            </button>
-            {menuOpen && (
-              <div className="sidebar-menu-dropdown">
-                <button
-                  type="button"
-                  className="sidebar-menu-item sidebar-menu-item--1"
-                  onClick={() => { setMenuOpen(false); onDiagnostics(); }}
-                >
-                  <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
-                    <circle cx="12" cy="12" r="3" />
-                    <path d="M12 1v4M12 19v4M4.22 4.22l2.83 2.83M16.95 16.95l2.83 2.83M1 12h4M19 12h4M4.22 19.78l2.83-2.83M16.95 7.05l2.83-2.83" />
-                  </svg>
-                  Diagnostics
-                </button>
-                <button
-                  type="button"
-                  className="sidebar-menu-item sidebar-menu-item--2"
-                  onClick={() => { setMenuOpen(false); onArchive(); }}
-                >
-                  <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
-                    <rect x="3" y="3" width="18" height="5" rx="0" />
-                    <path d="M5 8v12h14V8M10 12h4" />
-                  </svg>
-                  Archive
-                </button>
-                <button
-                  type="button"
-                  className="sidebar-menu-item sidebar-menu-item--3"
-                  onClick={() => { setMenuOpen(false); onKeysAndTokens(); }}
-                >
-                  <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
-                    <rect x="3" y="11" width="18" height="11" rx="0" />
-                    <path d="M7 11V7a5 5 0 0110 0v4" />
-                  </svg>
-                  Keys & Tokens
-                </button>
-                <button
-                  type="button"
-                  className="sidebar-menu-item sidebar-menu-item--4"
-                  onClick={() => { setMenuOpen(false); onSettings(); }}
-                >
-                  <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
-                    <circle cx="12" cy="12" r="3" />
-                    <path d="M19.4 15a1.65 1.65 0 0 0 .33 1.82l.06.06a2 2 0 0 1 0 2.83 2 2 0 0 1-2.83 0l-.06-.06a1.65 1.65 0 0 0-1.82-.33 1.65 1.65 0 0 0-1 1.51V21a2 2 0 0 1-2 2 2 2 0 0 1-2-2v-.09A1.65 1.65 0 0 0 9 19.4a1.65 1.65 0 0 0-1.82.33l-.06.06a2 2 0 0 1-2.83 0 2 2 0 0 1 0-2.83l.06-.06A1.65 1.65 0 0 0 4.68 15a1.65 1.65 0 0 0-1.51-1H3a2 2 0 0 1-2-2 2 2 0 0 1 2-2h.09A1.65 1.65 0 0 0 4.6 9a1.65 1.65 0 0 0-.33-1.82l-.06-.06a2 2 0 0 1 0-2.83 2 2 0 0 1 2.83 0l.06.06A1.65 1.65 0 0 0 9 4.68a1.65 1.65 0 0 0 1-1.51V3a2 2 0 0 1 2-2 2 2 0 0 1 2 2v.09a1.65 1.65 0 0 0 1 1.51 1.65 1.65 0 0 0 1.82-.33l.06-.06a2 2 0 0 1 2.83 0 2 2 0 0 1 0 2.83l-.06.06A1.65 1.65 0 0 0 19.4 9a1.65 1.65 0 0 0 1.51 1H21a2 2 0 0 1 2 2 2 2 0 0 1-2 2h-.09a1.65 1.65 0 0 0-1.51 1z" />
-                  </svg>
-                  Settings
-                </button>
-                {updateItem && (
-                  <button
-                    type="button"
-                    className="sidebar-menu-item sidebar-menu-item--5"
-                    onClick={updateItem.onClick}
-                    disabled={updateItem.disabled}
-                  >
-                    <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="miter">
-                      <path d="M21 12a9 9 0 1 1-2.64-6.36" />
-                      <polyline points="21 3 21 9 15 9" />
-                    </svg>
-                    {updateItem.label}
-                  </button>
-                )}
-                <a
-                  className="sidebar-menu-item sidebar-menu-item--6"
-                  href="https://youtu.be/dQw4w9WgXcQ"
-                  target="_blank"
-                  rel="noopener noreferrer"
-                  onClick={() => setMenuOpen(false)}
-                >
-                  <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
-                    <circle cx="12" cy="12" r="10" />
-                    <line x1="12" y1="8" x2="12" y2="12" />
-                    <line x1="12" y1="16" x2="12.01" y2="16" />
-                  </svg>
-                  tooltip_missing
-                </a>
-              </div>
-            )}
-          </div>
         </div>
       </div>
 

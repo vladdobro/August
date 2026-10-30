@@ -2697,32 +2697,6 @@ body {
   gap: 10px;
 }
 
-.sidebar-menu {
-  position: relative;
-  top: 3px;
-}
-
-.sidebar-menu-trigger {
-  width: 28px;
-  height: 28px;
-  display: flex;
-  align-items: center;
-  justify-content: center;
-  background: transparent;
-  color: var(--sidebar-text-muted);
-  border: 1px solid transparent;
-  border-radius: 0;
-  cursor: pointer;
-  padding: 0;
-  transition: color 0.15s ease, border-color 0.15s ease;
-}
-
-.sidebar-menu-trigger:hover,
-.sidebar-menu-trigger[aria-expanded="true"] {
-  color: var(--sidebar-text);
-  border-color: var(--sidebar-border);
-}
-
 .sidebar-menu-dropdown {
   position: absolute;
   top: calc(100% + 8px);
@@ -2770,8 +2744,6 @@ body {
 }
 
 .sidebar-menu-item--1 { animation-delay: 0.04s; }
-.sidebar-menu-item--2 { animation-delay: 0.12s; }
-.sidebar-menu-item--3 { animation-delay: 0.20s; }
 
 @keyframes sidebar-menu-fade-in {
   from { opacity: 0; transform: translateX(-8px); }
@@ -4637,16 +4609,6 @@ body {
   color: var(--necron-300);
 }
 
-:root[data-theme='dark'] .sidebar-menu-trigger {
-  color: var(--necron-500);
-}
-
-:root[data-theme='dark'] .sidebar-menu-trigger:hover,
-:root[data-theme='dark'] .sidebar-menu-trigger[aria-expanded="true"] {
-  color: var(--necron-300);
-  border-color: var(--necron-600);
-}
-
 :root[data-theme='dark'] .sidebar-menu-dropdown {
   background: var(--necron-900);
   border-color: var(--necron-700);
@@ -4660,10 +4622,6 @@ body {
 
 :root[data-theme='dark'] .sidebar-menu-item:hover {
   color: var(--necron-900);
-}
-:root[data-theme='dark'] .sidebar-menu-item:disabled,
-:root[data-theme='dark'] .sidebar-menu-item:disabled:hover {
-  color: var(--text-secondary);
 }
 
 :root[data-theme='dark'] .live-panel-notice {
@@ -6184,11 +6142,6 @@ body {
   background: var(--accent-light);
 }
 
-.sidebar-menu-trigger:focus-visible {
-  outline: 2px solid var(--accent);
-  outline-offset: 2px;
-}
-
 .sidebar-menu-item:focus-visible {
   outline: 2px solid var(--accent);
   outline-offset: -2px;
@@ -6314,30 +6267,6 @@ body {
 button:hover:not(:disabled):not(.sidebar-menu-item):not(.export-menu-item):not(.retranscribe-menu-item):not(.settings-dropdown-item),
 .mode-ring-arc:hover:not(.mode-ring-arc--local):not(.mode-ring-arc--groq) {
   animation: btn-target-pulse 1.2s ease-in-out infinite;
-}
-
-/* ========== Sidebar Menu — 4th/5th item ========== */
-.sidebar-menu-item--4 { animation-delay: 0.28s; }
-.sidebar-menu-item--5 { animation-delay: 0.36s; }
-.sidebar-menu-item--6 { animation-delay: 0.44s; }
-
-/* Busy updater states (AUG-157): visible but inert, no hover fill or pulse. */
-.sidebar-menu-item:disabled {
-  color: var(--text-secondary);
-  cursor: default;
-}
-.sidebar-menu-item:disabled:hover {
-  background: none;
-  color: var(--text-secondary);
-  animation-name: sidebar-menu-fade-in;
-  animation-duration: 0.25s;
-  animation-timing-function: ease;
-  animation-fill-mode: forwards;
-  animation-iteration-count: 1;
-}
-.sidebar-menu-item:disabled:hover svg {
-  opacity: 0.7;
-  stroke: currentColor;
 }
 
 /* ========== Settings Modal ========== */
@@ -7579,6 +7508,10 @@ span.archive-path:hover { text-decoration: none; color: var(--text-primary); }
 .controls-text { display: flex; flex-direction: column; gap: 2px; min-width: 0; }
 .controls-label { font-size: 13px; font-weight: 600; }
 .controls-desc { font-size: 11px; color: var(--text-secondary); font-family: var(--font-terminal); }
+/* Busy updater states (AUG-157/160): visible but inert, no hover accent. */
+.controls-item:disabled { cursor: default; color: var(--text-secondary); }
+.controls-item:disabled:hover { border-color: var(--border-color); }
+.controls-item:disabled .controls-icon { border-color: var(--text-secondary); color: var(--text-secondary); }
 
 .pin-toggles { position: fixed; bottom: 16px; left: 50%; transform: translateX(-50%); z-index: 45; display: flex; gap: 4px; padding: 4px; border: 1px solid var(--border-color); background: var(--card-bg); backdrop-filter: blur(12px); }
 .pin-btn { padding: 6px 14px; font-family: var(--font-terminal); font-size: 11px; font-weight: 700; letter-spacing: 0.06em; text-transform: uppercase; border: 1px solid transparent; border-radius: 0; background: transparent; color: var(--text-secondary); cursor: pointer; transition: color 0.15s ease, border-color 0.15s ease, background 0.15s ease; }

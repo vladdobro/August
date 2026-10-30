@@ -18,7 +18,7 @@
 - Native notifications fire on transcribing → completed/failed transitions detected by the main process polling GET /api/sessions every 5 seconds, and on recording start/stop while the window is hidden.
 - Auto-update uses electron-updater against GitHub Releases (vladdobro/August); Windows nsis and macOS zip targets update, msi and dmg do not.
 - The tray update item mirrors updater state: Check for Updates… → Checking… → Downloading (N%) → "Restart to Update to x.y.z" (AUG-141).
-- The sidebar ≡ menu has the same update item (update menu, AUG-157): "Check for Updates" (idle/error) → "Checking for Updates…" and "Downloading Update v{version} ({percent}%)…" (disabled) → "Restart to Update to v{version}" (calls installNow). It is hidden in the browser build and in unpackaged desktop runs (no updater).
+- ControlsPanel has the same update item (update menu, AUG-157; moved from the removed sidebar ≡ menu in AUG-160): "Check for Updates" (idle/error) → "Checking for Updates…" and "Downloading Update v{version} ({percent}%)…" (disabled) → "Restart to Update to v{version}" (calls installNow). It is hidden in the browser build and in unpackaged desktop runs (no updater).
 - A manual tray check always notifies the outcome (up to date, downloading, error); background checks notify only when a download is ready.
 - "Restart to Update" calls quitAndInstall(silent, forceRun) so the NSIS installer relaunches August; quitting instead installs silently without relaunch.
 - A per-machine ("all users") Windows install triggers a UAC prompt during every silent update; that prompt is the installer elevating, not a hang.
@@ -35,7 +35,7 @@
 - The Archive page opens the sessions data dir via window.august.revealSessionsDir() over august:reveal-sessions-dir; main calls shell.openPath(sessionsDir()) and takes no path from the renderer (AUG-150). The method is optional in desktop.d.ts; the browser build shows the path as text.
 - Compact Mode (AUG-156): CompactController (electron/src/compact.ts) resizes the main window to a right-edge Dock Strip or a 180×180 Dock Square, or hides it behind a frameless transparent always-on-top ghost window (Ghost Caption / Ghost Coin) loading the same app URL with ?ghost=caption|coin; setCompactMode({ shape: 'none' }) restores the saved bounds, maximized flag and the 960×600 minimum.
 - Always-on-top diverges: macOS setAlwaysOnTop(on, 'floating') + setVisibleOnAllWorkspaces(on, { visibleOnFullScreen: true }); Windows setAlwaysOnTop(on) only.
-- Also known as: reveal sessions folder, open data directory (AUG-150), Compact Mode, dock strip, dock square, ghost window, ghost caption, ghost coin, setCompactMode (AUG-156), nsis update data loss, data-backup, KeepsUserData, customRemoveFiles (AUG-158).
+- Also known as: reveal sessions folder, open data directory (AUG-150), Compact Mode, dock strip, dock square, ghost window, ghost caption, ghost coin, setCompactMode (AUG-156), nsis update data loss, data-backup, KeepsUserData, customRemoveFiles (AUG-158), update item in ControlsPanel (AUG-160).
 - Key files: electron/build/installer.nsh, electron/src/main.ts, electron/src/compact.ts, electron/src/preload.cts, electron/src/tray.ts, electron/src/hotkey.ts, electron/src/sessionWatcher.ts, electron/src/updater.ts, electron/electron-builder.yml, server/src/app.ts, client/src/desktop.d.ts.
 
 This route documents how August's Electron desktop shell embeds the existing web app instead of replacing it.
@@ -90,7 +90,7 @@ A desktop shell exists so non-technical users get a one-click install with no te
 - App and tray icons use square corners by design (brand rule: no border radius).
 - The updater starts checking only after the tray exists (updater.start() in main.ts) so the first "checking" state reaches the menu.
 - updater.ts routes electron-updater's logger to console.log/warn/error with a [updater] prefix; log.ts mirrors console.info too, because electron-updater logs at info level and those lines were missing from main.log before AUG-141.
-- A failed update check never clears a 'ready' (downloaded) state; the error state is transient and the tray and sidebar menu show it as idle.
+- A failed update check never clears a 'ready' (downloaded) state; the error state is transient and the tray and the ControlsPanel update item show it as idle.
 - main.ts keeps the updater and the last UpdateState at module level so IPC registered before the updater exists can answer; updater onState fans out to the tray and to the renderer (AUG-157).
 - electron-updater runs the Windows installer as `<pending>.exe --updated /S` from %LOCALAPPDATA%/august-updater/pending; Cyrillic user paths work there.
 - electron-builder's ${isUpdated} test needs the StdUtils plugin dir, which may be declared after the custom installer.nsh include; top-level functions in installer.nsh must test --updated with FileFunc ${GetParameters}/${GetOptions} instead.

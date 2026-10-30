@@ -410,10 +410,6 @@ const App: React.FC = () => {
               onUndoDelete={handleUndoDelete}
               onRename={handleRename}
               onNewSession={openNewSession}
-              onDiagnostics={openDiagnostics}
-              onArchive={openArchive}
-              onKeysAndTokens={openKeys}
-              onSettings={openSettings}
               gpuBackend={healthStatus?.gpuBackend}
               isTranscribing={sessions.some(s => s.status === 'transcribing' || s.status === 'preparing')}
             />

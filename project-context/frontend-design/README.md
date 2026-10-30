@@ -6,7 +6,7 @@
 - Light mode uses muted sage/stone grays (#c4cec8, #d0d8d3) — no white backgrounds or bright greens allowed.
 - Dark mode accent is gauss green (#00c876); light mode accent is deep forest green (#0a7b50).
 - All theme-dependent colors use CSS variables; dark mode overrides use :root[data-theme='dark'] selectors.
-- Layout is transcript-first (AUG-154): main content always takes 100% width; SessionList lives in a left overlay and ControlsPanel (New session, Settings, Archive, API Keys, Diagnostics) in a right glass overlay, opened by the always-visible bottom pin bar ([ Sessions / Controls ]), Ctrl/Cmd+1 / Ctrl/Cmd+2, or 8px edge-hover zones (200ms); Esc, backdrop click or the toggle closes them. Only one overlay is open at a time; state is not persisted.
+- Layout is transcript-first (AUG-154): main content always takes 100% width; SessionList lives in a left overlay and ControlsPanel (New session, Settings, Archive, API Keys, Diagnostics, plus a desktop-only update item) in a right glass overlay, opened by the always-visible bottom pin bar ([ Sessions / Controls ]), Ctrl/Cmd+1 / Ctrl/Cmd+2, or 8px edge-hover zones (200ms); Esc, backdrop click or the toggle closes them. Only one overlay is open at a time; state is not persisted.
 - Sidebar uses V3 Bracketed design with [ bracket — node — bracket ] rows, hex grid background, orbital-circle filter chips with connecting rays, and "planet parade" layout.
 - Sidebar header shows the clickable August logo left of the title; clicking it creates a new session.
 - FileUpload uses a circuit-node radial layout with SVG connection lines and positioned circular control nodes.
@@ -18,9 +18,9 @@
 - Chronometer Ring (Tomb Amber palette) replaces the shimmer bar during transcription with an animated SVG countdown and phase transitions.
 - Diagnostics page uses W40K CRT terminal aesthetic: monospace font stack, 0 border-radius, scan-line overlays, staggered fade-in animations.
 - Font stacks are defined as CSS custom properties: --font-gothic (UnifrakturMaguntia, reserved for future decorative use), --font-terminal (Cascadia Code stack), and the system UI font.
-- Terminal font (--font-terminal) applies to diagnostics page, sidebar menu items, and code blocks — never use hardcoded font-family for terminal fonts.
+- Terminal font (--font-terminal) applies to diagnostics page, session context menu items, and code blocks — never use hardcoded font-family for terminal fonts.
 - Titles use system UI font; page headings use accent gradient, modal titles use var(--accent).
-- Sidebar menu (.sidebar-menu) opens a staggered fade-in dropdown from the header, next to the "August" title.
+- ControlsPanel is the only app menu (AUG-160): the sidebar hamburger (≡) menu was removed; the sidebar header keeps only the logo (New session) and the "August" title (About).
 - Brutalist angular design: 0 border-radius (90-degree corners) on all major elements — cards, buttons, inputs, modals, dropdowns. Only status badges (999px pill) and circuit nodes (50% circle) are rounded.
 - Color utility schema: top priority = green filled buttons + light green bold text (#a0e2c0); high = yellow filled buttons + green bold text; normal = unfilled green/yellow buttons (80/20 split); low = white/green text, not bold; situational = red for alerts/close.
 - Buttons: primary uses accent bg with #e0e8e3 text and 0 border-radius; ghost uses transparent bg with border; both hover with translateY(-1px).
@@ -31,10 +31,10 @@
 - All animations and transitions disabled under prefers-reduced-motion: reduce.
 - Responsive: 720px shrinks circuit nodes and paddings (no vertical sidebar stack — the sidebar is an overlay of width min(320px, 88vw)); 640px lets the live top bar wrap; 600px shrinks chronometer.
 - Sidebar footer shows a GPU/CPU indicator strip; green for GPU, yellow for CPU fallback, with an Idle/Transcribing sublabel.
-- Archive page (AUG-150) is a standalone page from the sidebar ≡ menu (not a Settings tab): storage card, CRT scan-line session list with select-all, expandable per-file breakdown, sticky bulk bar and in-app blur-backdrop confirm dialogs; red only on destructive buttons.
+- Archive page (AUG-150) is a standalone page from ControlsPanel (not a Settings tab): storage card, CRT scan-line session list with select-all, expandable per-file breakdown, sticky bulk bar and in-app blur-backdrop confirm dialogs; red only on destructive buttons.
 - Confidence badge (.confidence-badge, AUG-152): terminal-font 10px outline chip with 0 radius and a 5px square marker; green ≥ 80 (--status-completed), amber 60–79 (--status-uploading), red < 60 (--status-failed); shown in the sidebar session meta and the transcript header for completed sessions only.
 - Compact Mode (AUG-156, implemented; designed in AUG-155): 300 ms after a recording starts, the desktop app collapses to a widget chosen in Settings → Compact mode — Variant A in the same window (Dock Strip for the transcript, Dock Square for the indicator) or Variant B as a ghost overlay with August in the tray (Ghost Caption / Ghost Coin); it restores on End Recording or stays as DONE until clicked.
-- Also known as: Bold Layout, transcript-first layout, overlay panels, pin bar, panel layout, layout overlays (AUG-154), Compact Mode, compact layout, dock strip, timer square, Ghost HUD, auto-collapse on recording (AUG-155), Ghost Caption, Ghost Coin, Dock Square, Compact mode settings tab, CompactLayer (AUG-156), Archive page, storage page, delete audio UI, bulk delete (AUG-150), confidence badge, auto-deleted label, threshold slider (AUG-152).
+- Also known as: Bold Layout, transcript-first layout, overlay panels, pin bar, panel layout, layout overlays (AUG-154), Compact Mode, compact layout, dock strip, timer square, Ghost HUD, auto-collapse on recording (AUG-155), Ghost Caption, Ghost Coin, Dock Square, Compact mode settings tab, CompactLayer (AUG-156), Archive page, storage page, delete audio UI, bulk delete (AUG-150), confidence badge, auto-deleted label, threshold slider (AUG-152), hamburger menu, ≡ menu, sidebar menu, update menu (removed AUG-160 → ControlsPanel).
 
 The frontend design system defines the Necron-themed visual language, color tokens, theme switching, and component styling rules for the August web app.
 
@@ -81,10 +81,10 @@ The Necron palette (all values defined in :root of App.css):
 | Token | Hex | Usage |
 |---|---|---|
 | --necron-950 | #040806 | Near-black, page bg (dark), sidebar bg |
-| --necron-900 | #0a110d | Dark bg, sidebar menu dropdown bg |
+| --necron-900 | #0a110d | Dark bg, session context menu bg |
 | --necron-850 | #101c17 | Sidebar hover bg, diagnostics hint popup bg |
 | --necron-800 | #16261e | Sidebar active bg, progress track bg |
-| --necron-700 | #1e3429 | Borders (diagnostics), sidebar menu border |
+| --necron-700 | #1e3429 | Borders (diagnostics), session context menu border |
 | --necron-600 | #28453a | Accent hover (light mode), proceed button borders |
 | --necron-500 | #2d6b4f | Muted text, status-completed (light), hint triggers |
 | --necron-400 | #0a7b50 | Primary accent (light mode), deep forest green |
@@ -190,7 +190,7 @@ Text transform conventions:
 - capitalize: status badges
 - none (default): body text, titles, transcript text
 
-Monospace (--font-terminal) is mandatory for: code blocks, diagnostics page, search inputs, dropzone text, praxis path input, sidebar menu items.
+Monospace (--font-terminal) is mandatory for: code blocks, diagnostics page, search inputs, dropzone text, praxis path input, session context menu items.
 JetBrains Mono is used exclusively for chronometer timer digits (loaded from Google Fonts).
 System UI font for all other text (titles, buttons, body).
 Do NOT use --font-gothic (UnifrakturMaguntia) — it is loaded but reserved due to readability concerns.
@@ -559,23 +559,23 @@ Three font stacks are defined as CSS custom properties in :root of App.css.
 Gothic display font: var(--font-gothic) — 'UnifrakturMaguntia', cursive — loaded from Google Fonts in index.html, reserved for future decorative use (too stylized for headings).
 Terminal/diagnostic font: var(--font-terminal) — 'Cascadia Code', 'Fira Code', 'Consolas', monospace — used wherever a CRT/terminal aesthetic is needed.
 Default UI font: the system font stack inherited from the browser (used for titles, labels, body text, general UI).
-Terminal font applies to: diagnostics page text (.diag-subtitle, .diag-section-desc, .diag-info-line, .diag-hint-popup, .diag-node-status, .diag-skip-warning), sidebar menu items (.sidebar-menu-item), and code blocks.
+Terminal font applies to: diagnostics page text (.diag-subtitle, .diag-section-desc, .diag-info-line, .diag-hint-popup, .diag-node-status, .diag-skip-warning), session context menu items (.sidebar-menu-item), and code blocks.
 JetBrains Mono (Google Fonts) is used exclusively for Chronometer Ring timer digits.
 New terminal-styled components must use var(--font-terminal), not hardcode the font-family stack.
 Gothic font (--font-gothic) is available but not currently applied — too stylized for heading readability.
 
-### Sidebar Menu
+### Controls Panel Menu (AUG-160)
 
-The sidebar header contains a hamburger menu button (.sidebar-menu-trigger) next to the "August" title.
-Clicking the trigger opens a dropdown (.sidebar-menu-dropdown) with angular styling (0 border-radius, necron-900 background, necron-700 border).
-Menu items appear with staggered slide-in animation (.sidebar-menu-item--1 at 0.04s, --2 at 0.12s, --3 at 0.20s, --4 at 0.28s, --5 at 0.36s) via sidebar-menu-fade-in keyframes.
-Menu closes on click-outside via a mousedown document listener registered only while open.
-Current menu items in order: Diagnostics (opens diagnostics page), Archive (opens the Archive page, AUG-150), Keys & Tokens, Settings, then the external link.
-Menu z-index (1000) requires the header z-index (20) to be above the filters section below.
+ControlsPanel (client/src/components/ControlsPanel.tsx) is the single app menu; the sidebar hamburger (.sidebar-menu, .sidebar-menu-trigger) was removed in AUG-160 to end the duplicate menu.
+Items in order: New session, Settings, Archive, API Keys, Diagnostics, then the desktop-only update item (glyph ↻).
+The update item renders only when window.august.getUpdateState resolves non-null; the browser build and unpackaged desktop runs never show it.
+Update labels: "Check for Updates" (idle/error) → "Checking for Updates…" and "Downloading Update v{version} ({percent}%)…" (disabled) → "Restart to Update to v{version}".
+Busy states use .controls-item:disabled: secondary text color, default cursor, no accent border on hover.
+The former hamburger-only "tooltip_missing" external link was dropped.
 
 ### Archive Page (AUG-150)
 
-The Archive page is opened from the sidebar menu item "Archive"; component client/src/components/ArchivePage.tsx, all classes prefixed archive-.
+The Archive page is opened from the ControlsPanel item "Archive"; component client/src/components/ArchivePage.tsx, all classes prefixed archive-.
 The page title uses the accent gradient linear-gradient(135deg, #00c876, #2dd690) with background-clip text.
 Session row grid: 20px 18px minmax(0,1fr) 92px 56px 76px with gap 10px.
 Source labels: MIC (accent), FILE (text-primary), YT/VIDEO (status-failed red), LINK (status-uploading yellow).
@@ -591,15 +591,15 @@ TranscriptView shows the ".transcript-audio-deleted" line "Audio deleted — tra
 ### Session Context Menu
 
 Right-clicking a .session-item opens a context menu at the cursor (desktop shell only; the browser build keeps the native menu).
-The context menu reuses .sidebar-menu-dropdown and .sidebar-menu-item with the .session-context-menu modifier (position: fixed, left/top inline, clamped to the viewport).
+The context menu reuses .sidebar-menu-dropdown and .sidebar-menu-item with the .session-context-menu modifier (position: fixed, left/top inline, clamped to the viewport). Only the --1 stagger delay remains; the --2..--6 delays left with the hamburger (AUG-160).
 The single item label is "Show in Finder" on macOS, "Show in Explorer" on Windows, "Show in File Manager" elsewhere.
 The context menu closes on mousedown outside, Escape, scroll, resize, window blur, and after the action.
-Only one context menu exists at a time; opening it closes the sidebar hamburger menu.
+Only one context menu exists at a time.
 Right-click is ignored on the session currently being renamed.
 
 ### Diagnostics Page (SetupGuide)
 
-The diagnostics page (.diag-page) renders when components are missing or when triggered from the sidebar menu.
+The diagnostics page (.diag-page) renders when components are missing or when triggered from ControlsPanel.
 It uses a W40K CRT terminal aesthetic: angular corners (0 border-radius), monospace terminal font, necron palette.
 A 45°-rotated Necron symbol SVG logo (.diag-logo) is centered at the top.
 Circuit-node layout: three absolutely positioned circles connected by animated dashed SVG lines with percentage-based coordinates.
@@ -702,7 +702,7 @@ Status badge colors (uploading, transcribing, completed, failed) must remain dis
 - client/src/components/TranscriptView.tsx — Transcript display, export dropdown with copy/download options; includes the ChronoRing local component for transcription ETA countdown.
 - client/src/components/FileUpload.tsx — Circuit-node radial layout for recording and upload controls
 - client/src/components/OverlayLayer.tsx — edge triggers, backdrop, left/right overlay panels and the bottom pin bar (AUG-154)
-- client/src/components/ControlsPanel.tsx — right overlay list: New session, Settings, Archive, API Keys, Diagnostics with active-item highlight (AUG-154)
+- client/src/components/ControlsPanel.tsx — right overlay list and the only app menu: New session, Settings, Archive, API Keys, Diagnostics, desktop-only update item, with active-item highlight (AUG-154, AUG-160)
 - client/src/components/SessionList.tsx — Sidebar with V3 Bracketed session items, hex grid SVG, orbital-circle filter chips, August logo New Session button
 - client/src/components/RecordingModePicker.tsx — Radial expanding mode picker (DEFAULT / LIVE inner ring, LOCAL / GROQ outer right-side sub-arcs) rendered inside circuit-diagram with SVG connection lines
 - client/src/components/PraxisModal.tsx — Modal with project chips (SettingsDropdown above 5 projects), an always-visible path input with browse, a prompt note, task creation from a session transcript, and session rename sync.

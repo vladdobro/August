@@ -17,7 +17,7 @@
 - Settings never shows probe internals (method, dB levels, stderr); self-test detail stays in the server log and npm run capture:check.
 - Under System Audio Source the modal prints at most one plain-language line: direct capture unavailable, or a Windows test-before-a-call warning.
 - FileUpload auto-saves language, mic, and system audio preferences on change via PATCH /api/preferences.
-- The Settings modal displays and edits all preferences, accessible from the sidebar hamburger menu.
+- The Settings modal displays and edits all preferences, accessible from the ControlsPanel Settings item (right overlay; the sidebar hamburger was removed in AUG-160).
 - The Settings modal has five tabs: General (Interface, Confirmations, Desktop), Audio (Recording), Transcription, Projects, and Compact mode (AUG-156).
 - The old Integration section with a single Praxis path is gone; Praxis projects are managed on the Projects tab.
 - The Projects tab is a master-detail page (list left, editor right) that autosaves every edit on blur; there is no Add form or project cards.
@@ -50,7 +50,7 @@ Eliminate repeated manual re-configuration every app session. Before this system
 - Compact strip width slider uses the same draft-then-commit pattern as the confidence slider; the main process also PATCHes compactStripWidth (via the renderer's strip-width event) when the user resizes the Dock Strip within 280–520 (AUG-156).
 - Auto-save: when the user changes language, mic, or system audio in FileUpload, a PATCH request fires immediately.
 - Load on startup: App.tsx calls GET /api/preferences on mount and distributes values as props.
-- Settings modal: full CRUD UI for all preferences, opened from the sidebar menu gear icon.
+- Settings modal: full CRUD UI for all preferences, opened from the ControlsPanel Settings item (⚙).
 - Projects tab (client/src/components/PraxisProjectsPage.tsx) is master-detail: a 210px listbox on the left, an editor on the right, each scrolling independently.
 - The Settings card gets settings-card--projects (85vh) and settings-body--projects (no padding, no outer scroll) while the Projects tab is open.
 - The list pins "Default settings" first (badge "custom" when praxisDefaultPrompt is set), then one item per project; "+ Add project" under the list opens new mode.
