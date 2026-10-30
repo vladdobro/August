@@ -3,6 +3,8 @@
 // and downloads a pinned, SHA256-verified static ffmpeg + ffprobe build into
 // the same folder (AUG-115) so the app never depends on a PATH install.
 // It also downloads a pinned, SHA256-verified yt-dlp (AUG-149) into the same folder for YouTube/video-site links.
+// It also downloads the pinned llama-server for the opt-in local language model (AUG-162) into server/data/llm/bin/;
+// models are never downloaded by setup.
 // On Windows it also bundles the Khronos Vulkan loader (vulkan-1.dll, AUG-117) next to whisper-cli,
 // because the release build imports it statically and cannot start without it.
 // On macOS it also builds audiotee (Core Audio tap helper, AUG-118) from a pinned source commit with
@@ -22,6 +24,8 @@ import path from 'node:path';
 
 import {
   WHISPER_CPP_VERSION,
+  LLAMA_CPP_VERSION,
+  config,
   WHISPER_CUDA_BUILD,
   WHISPER_VAD_MODEL,
   WHISPER_BIN_ROOT,
@@ -33,6 +37,8 @@ import {
   type WhisperPlatformDir,
 } from '../config.js';
 import { downloadToFile, isOfflineError } from '../services/download.js';
+import { installLlamaBuild } from '../services/llmInstaller.js';
+import { llamaBuildInstalled } from '../services/llmPaths.js';
 import { checkFfmpegAvailable, FFMPEG_MISSING_MESSAGE, fileExists } from '../services/whisper.js';
 
 const PORTABLE_CMAKE = {
@@ -540,6 +546,23 @@ async function setupVadModel(targetDir: string): Promise<void> {
   await fs.rename(partPath, target);
 }
 
+/// Pre-downloads the CPU/Metal llama-server for the current platform (AUG-162). Non-fatal: the optional local language
+/// model downloads it on demand when the user turns it on. Never downloads a model or the CUDA variant.
+async function setupLlamaServer(platformDir: WhisperPlatformDir): Promise<void> {
+  try {
+    if (await llamaBuildInstalled(config.llmRoot, platformDir)) {
+      console.log(`✔ llama-server ${LLAMA_CPP_VERSION} already present`);
+      return;
+    }
+    console.log(`Downloading llama-server ${LLAMA_CPP_VERSION} (optional local language model)...`);
+    const lastStep = { value: -1 };
+    await installLlamaBuild(platformDir, { onProgress: logProgressPercent('llama-server download', lastStep) });
+    console.log('✔ llama-server ready');
+  } catch (err) {
+    console.warn(`⚠ llama-server setup failed (${(err as Error)?.message || err}) — the optional local language model downloads it when you turn it on.`);
+  }
+}
+
 async function main(): Promise<void> {
   const platformDir = whisperPlatformDir();
   if (!platformDir) {
@@ -574,6 +597,7 @@ async function main(): Promise<void> {
     usedBuildDir = true;
   }
   await setupVadModel(targetDir);
+  await setupLlamaServer(platformDir);
 
   // CUDA variant for GPU-NVIDIA (AUG-130): download on dev machines for testing.
   // Packaged builds download on demand if the user chose GPU-NVIDIA at install time.

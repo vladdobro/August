@@ -602,10 +602,12 @@ Right-click is ignored on the session currently being renamed.
 The diagnostics page (.diag-page) renders when components are missing or when triggered from ControlsPanel.
 It uses a W40K CRT terminal aesthetic: angular corners (0 border-radius), monospace terminal font, necron palette.
 A 45°-rotated Necron symbol SVG logo (.diag-logo) is centered at the top.
-Circuit-node layout: three absolutely positioned circles connected by animated dashed SVG lines with percentage-based coordinates.
-Node colors are fixed fills: Whisper (yellow, rgba(212,170,60,0.25)), GGML (red, rgba(212,80,80,0.22)), FFmpeg (yellow, rgba(212,170,60,0.25)).
-Only checkmark icons use green (#00c876) — circle fills keep their assigned color even when operational.
-FFmpeg node renders only on Windows (isMac detection via navigator.userAgent).
+Component status is a Service | Status table (.diag-table, AUG-162; the earlier circle-node circuit was removed): rows Whisper Engine, GGML Model, FFmpeg (both platforms) and Language Model (optional tag), each with a HintPopup.
+Status tones: ok green (Operational / Downloaded, sleeping / Loaded in memory), warn yellow (installed but off), progress pulsing yellow (downloading, moving, waking), danger red (not installed / not downloaded / folder not available); each row gets a 3 px tone-coloured inset edge, red and yellow rows a faint tinted background; the marker is an 8 px square, never a circle.
+.diag-hint-popup resets white-space, text-transform, letter-spacing and font-weight because it sits inside nowrap uppercase table header cells.
+The Language Model section shows progress / Retry / Test while on; while off it shows a one-line description and a "Turn on…" button that opens Settings on the Transcription tab (SettingsModal initialTab), where enabling still requires the download confirmation.
+The page polls GET /api/llm/status every 3 s and refetches when Settings closes, so changes made in Settings show without a Refresh button.
+Short windows (max-height 860px / 720px) tighten .circuit-layout gaps and shrink .circuit-diagram to 400 / 320 px so the link row on New Transcription stays above the fixed pin bar.
 Adaptive reveal logic: GPU button when whisper missing, direct download when only model missing, staggered fade-in via diag-reveal--1/2/3 classes.
 Proceed button uses W40K CRT styling: metallic frame, arrow pseudo-elements, scan-line overlay, necron palette gradient.
 Refresh and Skip buttons share a horizontal row (.diag-actions) with equal flex:1 width. Skip turns red on hover.
@@ -716,4 +718,4 @@ Status badge colors (uploading, transcribing, completed, failed) must remain dis
 - client/src/components/compact/ghostProtocol.ts — BroadcastChannel 'august-compact' message types between main and ghost windows (AUG-156)
 - client/src/services/compact.ts — compact widget resolution rule and auto-Live helper (AUG-156)
 - client/src/services/compactStore.ts — useSyncExternalStore snapshot and actions published by FileUpload (AUG-156)
-- client/src/components/SetupGuide.tsx — Diagnostics page with circuit-node layout, W40K CRT aesthetic, adaptive GPU/model reveal logic
+- client/src/components/SetupGuide.tsx — Diagnostics page with the Service | Status table, W40K CRT aesthetic, adaptive GPU/model reveal logic, Language Model section (AUG-162)

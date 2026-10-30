@@ -11,6 +11,7 @@ import {
   Menu,
   net,
   Notification,
+  screen,
   session,
   shell,
 } from 'electron';
@@ -21,6 +22,7 @@ import { installFileLogger } from './log.js';
 import { startSessionWatcher } from './sessionWatcher.js';
 import { DEFAULT_RECORD_HOTKEY, SettingsStore } from './settings.js';
 import { AppTray } from './tray.js';
+import { fitWindowState, readWindowState, WINDOW_MIN_SIZE, writeWindowState } from './windowState.js';
 import { setupAutoUpdater, type UpdateState } from './updater.js';
 
 const __dirname = path.dirname(fileURLToPath(import.meta.url));
@@ -291,12 +293,24 @@ async function revealSessionsDir(): Promise<{ ok: boolean; error?: string }> {
   return error ? { ok: false, error } : { ok: true };
 }
 
+// First-launch window size: tall enough that the bottom [ SESSIONS / CONTROLS ] pin bar never covers the link row on the
+// New Transcription screen. Clamped to the primary display work area for small screens. Later launches reopen the
+// size and position the user left (window-state.json).
+const DEFAULT_WINDOW_SIZE = { width: 1280, height: 866 };
+
 function createWindow(appUrl: string): BrowserWindow {
+  const userData = app.getPath('userData');
+  const saved = fitWindowState(readWindowState(userData), screen.getAllDisplays().map((d) => d.workArea));
+  const workArea = screen.getPrimaryDisplay().workAreaSize;
   const win = new BrowserWindow({
-    width: 1280,
-    height: 820,
-    minWidth: 960,
-    minHeight: 600,
+    ...(saved
+      ? { x: saved.x, y: saved.y, width: saved.width, height: saved.height }
+      : {
+          width: Math.min(DEFAULT_WINDOW_SIZE.width, workArea.width),
+          height: Math.min(DEFAULT_WINDOW_SIZE.height, workArea.height),
+        }),
+    minWidth: WINDOW_MIN_SIZE.width,
+    minHeight: WINDOW_MIN_SIZE.height,
     show: false,
     title: 'August',
     backgroundColor: '#0a110d',
@@ -318,10 +332,34 @@ function createWindow(appUrl: string): BrowserWindow {
   });
 
   win.once('ready-to-show', () => {
+    if (saved?.maximized) win.maximize();
     if (!smokeTest) win.show();
   });
+
+  // Remember the normal (non-compact, non-maximized) bounds. While compact the window is a strip/square, so the
+  // bounds saved before entering compact are stored instead.
+  const saveWindowState = () => {
+    if (win.isDestroyed() || win.isMinimized()) return;
+    const snap = compact && compact.shape !== 'none' ? compact.normalSnapshot : null;
+    if (compact && compact.shape !== 'none' && !snap) return;
+    const maximized = snap ? snap.maximized : win.isMaximized();
+    const bounds = snap ? snap.bounds : (maximized || win.isFullScreen() ? win.getNormalBounds() : win.getBounds());
+    writeWindowState(userData, { ...bounds, maximized });
+  };
+  let saveTimer: ReturnType<typeof setTimeout> | null = null;
+  const scheduleSave = () => {
+    if (saveTimer) clearTimeout(saveTimer);
+    saveTimer = setTimeout(saveWindowState, 500);
+  };
+  win.on('resized', scheduleSave);
+  win.on('moved', scheduleSave);
+  win.on('maximize', scheduleSave);
+  win.on('unmaximize', scheduleSave);
+  app.on('before-quit', saveWindowState);
+
   // Close = hide to tray. Quit is explicit (tray menu, Cmd+Q, app.quit()).
   win.on('close', (e) => {
+    saveWindowState();
     if (!isQuitting) {
       e.preventDefault();
       win.hide();

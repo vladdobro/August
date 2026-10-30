@@ -2,10 +2,11 @@
 
 ## TL;DR
 - August web app is a React + Vite client talking to a Node.js/Express + TypeScript server over REST.
-- Speech-to-text runs locally via whisper-cli (whisper.cpp) on Windows x64 and macOS arm64/x64, never a third-party AI API.
+- Speech-to-text runs locally via whisper-cli (whisper.cpp) on Windows x64 and macOS arm64/x64, never a third-party AI API; an opt-in local language model (llama-server, AUG-162) is the second local inference engine.
+- Local language model (AUG-162): server/src/services/llmServer.ts starts llama-server on 127.0.0.1 with a free port on the first request, stops it after 10 idle minutes (LLM_IDLE_SHUTDOWN_MINUTES) and kills it when the server stops; /api/llm/* (models, status, enable, disable, download, progress SSE, test) drives it and server/src/services/llmClient.ts is the provider-agnostic OpenAI-compatible chat/completions client (logprobs supported) to be reused for Groq.
 - Sessions are stored as folders on disk for the MVP — no PostgreSQL yet, no auth yet.
 - Session CRUD includes create, list, get, delete, and rename (PATCH title update) via the REST API; the Archive page (AUG-150) adds GET /api/sessions/storage (disk usage), DELETE /api/sessions/:id/audio (strip audio, keep transcript) and POST /api/sessions/:id/redownload.
-- Also known as: Archive page, storage usage, disk usage, delete audio, free space, session cleanup, re-download audio (AUG-150), auto-delete WAV, confidence score, automatic cleanup (AUG-152).
+- Also known as: Archive page, storage usage, disk usage, delete audio, free space, session cleanup, re-download audio (AUG-150), auto-delete WAV, confidence score, automatic cleanup (AUG-152), local language model, local LLM, llama-server, llm client (AUG-162).
 - session.json carries confidenceScore (0–100), confidenceDetail and wavAutoDeletedAt; GET /api/sessions/storage entries gain wavAutoDeleted and files[] gain auto: true for WAVs removed by the confidence rule (AUG-152).
 - Transcription runs as a background child process; the client polls session status every 5 seconds.
 - Dev mode: server on port 3001 redirects non-API requests to Vite dev server on port 5173; open 5173 for the latest UI.
@@ -53,10 +54,14 @@ Give any agent working on the codebase a map of the client/server split, how a s
 - sessionManager (component): part of the August server; owns session folder lifecycle, storage sizing, audio deletion (AUG-150) and derived-WAV auto-deletion (AUG-152).
 - confidenceScore (component): part of the August server; computes the 0–100 transcription confidence that the sessions route stores and the auto-delete rule compares against the threshold (AUG-152).
 - ArchivePage (component): part of the August client; page that uses the storage, delete-audio and redownload endpoints (AUG-150).
+- llmServer (component): part of the August server; owns the llama-server child process lifecycle (AUG-162).
+- llmClient (component): part of the August server; used by llmServer callers for OpenAI-compatible chat/completions (AUG-162).
+- llmInstaller (component): part of the August server; llmServer depends on it for installed binaries and models (AUG-162).
+- llm route (component): part of the August server; depends on llmServer and llmInstaller (AUG-162).
 
 ## Invariants
 
-- All AI inference runs locally via whisper.cpp — never sent to a third-party AI API.
+- All AI inference runs locally — speech-to-text via whisper.cpp and the opt-in language model via llama-server (AUG-162) — never sent to a third-party AI API.
 - Every session is stored as a folder (audio file + session.json + transcript.md) — never a database row for the MVP.
 - Transcription always runs in the background (child process) — the API responds immediately and the client polls for status, never blocking on transcription.
 - FileUpload must never be unmounted while recording is active — MediaRecorder and AudioContext state lives in React refs and is destroyed on unmount.
@@ -166,6 +171,26 @@ Give any agent working on the codebase a map of the client/server split, how a s
 - The template enforces merge-don't-replace for route updates — new information merges into existing records, never overwrites them.
 - Exported tasks are always assigned to assistant.json unconditionally.
 
+### Local language model engine (AUG-162)
+
+- llmServer.ts spawns llama-server with `-m <model> --host 127.0.0.1 --port <free port> -ngl <n> -c 4096 -np 1 --no-webui --alias <modelId>`; on Windows the binary and model go through toSafePath.
+- Readiness is GET /health returning 200 within 180 s; a slower start fails.
+- Candidate order: CUDA or Metal with -ngl 99 first, then CPU with -ngl 0 when the GPU start exits before ready (retried once).
+- withLocalLlm(fn) is the entry point for later features: it ensures the server, builds the llmClient and re-arms the idle timer.
+- The idle timer stops llama-server after LLM_IDLE_SHUTDOWN_MINUTES = 10 and never fires while withLocalLlm() calls are in flight.
+- Everything is gated by llmEnabled === true in user-preferences.json, read on each use; with it off nothing downloads and llama-server never spawns.
+- Stop triggers: idle timeout, disable, model change, /engine/switch, DELETE /api/preferences, server close, process exit, and SIGINT/SIGTERM in the CLI entry.
+- Disabling while the model loads stops llama-server once it is ready.
+- A pid file <dataDir>/llama-server.pid (independent of a removable model folder; the legacy <llmRoot>/llama-server.pid is still read once) lets the next start kill an orphan, only after tasklist (Windows) or ps (macOS) confirms the pid is llama-server.
+- The local LLM root (bin/ + models/) is user-chosen: POST /api/llm/browse-folder opens the native picker, POST /api/llm/location {path|null} moves the files in the background (phase 'moving' on GET /api/llm/progress) and GET /api/llm/status carries location {root, isDefault, pinned, available, freeBytes} (AUG-162).
+- GET /api/llm/models returns id, label, quality, diskBytes and ramBytes per model.
+- GET /api/llm/status returns {enabled, modelId, supported, install 'missing'|'ready', runtime 'stopped'|'starting'|'running', download}.
+- POST /api/llm/enable takes {modelId}; POST /api/llm/disable turns the model off.
+- POST /api/llm/download retries the install and returns 409 when the model is off.
+- GET /api/llm/progress is an SSE stream of download progress, like /engine/cuda-progress.
+- POST /api/llm/test sends a fixed prompt and returns {reply, latencyMs, totalMs}; it returns 409 when the model is off or not downloaded.
+- Ports, PIDs and paths are logged as "[llm] ..." and never sent to the UI.
+
 ### Session storage & audio deletion (AUG-150, AUG-152)
 
 - The Archive page is a standalone page opened from the ControlsPanel item "Archive" (state showArchive in App.tsx), not a Settings tab.
@@ -189,8 +214,12 @@ Give any agent working on the codebase a map of the client/server split, how a s
 
 ## Key files
 
-- server/src/app.ts — startServer(): Express app, route wiring, HTTP+WebSocket listen, returns the bound port.
-- server/src/index.ts — CLI entry; calls startServer() and exits on failure.
+- server/src/app.ts — startServer(): Express app, route wiring, orphaned llama-server cleanup, HTTP+WebSocket listen, background CUDA → whisper model → local LLM download chain, returns the bound port; close() stops llama-server first.
+- server/src/index.ts — CLI entry; calls startServer(), exits on failure, and kills llama-server on SIGINT/SIGTERM.
+- server/src/services/llmServer.ts — ensureLlmServer, withLocalLlm, stopLlmServer, killLlmServerSync, cleanupOrphanedLlmServer, idle timer (AUG-162).
+- server/src/services/llmClient.ts — createLlmClient, buildChatCompletionBody, parseChatCompletionResponse, LlmClientError (AUG-162).
+- server/src/routes/llm.ts — /api/llm models, status, enable, disable, download, progress (SSE), test (AUG-162).
+- client/src/services/llm.ts — size formatting, progress SSE subscription, Diagnostics node state (AUG-162).
 - server/src/services/whisper.ts — whisper-cli child_process invocation (runWhisper) and JSON output parsing.
 - server/src/services/transcriptMerger.ts — filtering, dedup, and join logic that turns raw segments into a transcript.
 - server/src/services/confidenceScore.ts — computeConfidence: 0–100 confidence from whisper segment probabilities, merger drops and audio coverage (AUG-152).
@@ -223,7 +252,7 @@ No Agentation MCP server or backend scripts are configured — only the frontend
 
 ## Route-Specific Constraints
 
-- Do not introduce a third-party transcription or AI API call anywhere in this stack — all inference must go through whisper-cli.
+- Do not introduce a third-party transcription or AI API call anywhere in this stack — all inference must go through whisper-cli or the local llama-server (AUG-162); the Groq free tier is the only cloud exception and stays opt-in.
 - Do not assume a database exists — session persistence is file-based until PostgreSQL is introduced (see project-context/roadmap/README.md).
 - Do not assume authenticated requests — no auth is implemented yet; all endpoints are open for the MVP.
 - Detailed transcription pipeline rules (whisper flags, TranscriptMerger constants, session lifecycle states) live in project-context/transcription/README.md, not here.

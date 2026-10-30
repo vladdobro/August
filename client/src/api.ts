@@ -1,4 +1,4 @@
-import type { CaptureCapabilities, HealthStatus, ModelSetupStatus, ServerCapture, SessionMetadata, StorageSummary, TranscriptionLanguage } from './types';
+import type { CaptureCapabilities, HealthStatus, LlmModelId, LlmModelInfo, LlmStatus, ModelSetupStatus, ServerCapture, SessionMetadata, StorageSummary, TranscriptionLanguage } from './types';
 
 export interface UploadProgress {
   loaded: number;
@@ -31,6 +31,57 @@ export async function switchEngine(engine: 'cpu' | 'cuda'): Promise<{ ok: boolea
 }
 
 export const CUDA_PROGRESS_URL = `${API_BASE}/engine/cuda-progress`;
+
+export async function fetchLlmModels(): Promise<LlmModelInfo[]> {
+  const res = await fetch(`${API_BASE}/llm/models`);
+  return handleJsonResponse<LlmModelInfo[]>(res);
+}
+
+export async function fetchLlmStatus(): Promise<LlmStatus> {
+  const res = await fetch(`${API_BASE}/llm/status`);
+  return handleJsonResponse<LlmStatus>(res);
+}
+
+export async function enableLlm(modelId: LlmModelId): Promise<LlmStatus> {
+  const res = await fetch(`${API_BASE}/llm/enable`, {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({ modelId }),
+  });
+  return handleJsonResponse<LlmStatus>(res);
+}
+
+export async function disableLlm(): Promise<LlmStatus> {
+  const res = await fetch(`${API_BASE}/llm/disable`, { method: 'POST' });
+  return handleJsonResponse<LlmStatus>(res);
+}
+
+export async function retryLlmDownload(): Promise<LlmStatus> {
+  const res = await fetch(`${API_BASE}/llm/download`, { method: 'POST' });
+  return handleJsonResponse<LlmStatus>(res);
+}
+
+export async function browseLlmFolder(): Promise<{ path: string | null }> {
+  const res = await fetch(`${API_BASE}/llm/browse-folder`, { method: 'POST' });
+  return handleJsonResponse<{ path: string | null }>(res);
+}
+
+/// Moves the model files to <path>/August LLM; null = back to the default folder.
+export async function setLlmLocation(path: string | null): Promise<LlmStatus> {
+  const res = await fetch(`${API_BASE}/llm/location`, {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({ path }),
+  });
+  return handleJsonResponse<LlmStatus>(res);
+}
+
+export async function testLlm(): Promise<{ ok: boolean; reply: string; latencyMs: number; totalMs: number }> {
+  const res = await fetch(`${API_BASE}/llm/test`, { method: 'POST' });
+  return handleJsonResponse<{ ok: boolean; reply: string; latencyMs: number; totalMs: number }>(res);
+}
+
+export const LLM_PROGRESS_URL = `${API_BASE}/llm/progress`;
 
 export async function fetchSessions(): Promise<SessionMetadata[]> {
   const res = await fetch(`${API_BASE}/sessions`);

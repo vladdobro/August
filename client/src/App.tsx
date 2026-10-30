@@ -38,6 +38,7 @@ const App: React.FC = () => {
   const [showGroqKeyModal, setShowGroqKeyModal] = useState(false);
   const [preferences, setPreferences] = useState<UserPreferences>({});
   const [showSettings, setShowSettings] = useState(false);
+  const [settingsTab, setSettingsTab] = useState<'transcription' | undefined>(undefined);
   const [audioDevices, setAudioDevices] = useState<MediaDeviceInfo[]>([]);
   const [captureCapabilities, setCaptureCapabilities] = useState<CaptureCapabilities | null>(null);
   // Desktop shell (Electron) only: a pending "toggle recording" request from the global hotkey or tray.
@@ -357,6 +358,8 @@ const App: React.FC = () => {
                 health={diagHealth!}
                 onRefresh={refreshHealth}
                 onDismiss={() => { setSetupDismissed(true); setShowDiagnostics(false); }}
+                onOpenLlmSettings={() => { setSettingsTab('transcription'); setShowSettings(true); }}
+                settingsOpen={showSettings}
               />
             </>
           )}
@@ -441,7 +444,8 @@ const App: React.FC = () => {
           captureCapabilities={captureCapabilities}
           onPreferenceChange={handlePreferenceChange}
           onReset={handlePreferencesReset}
-          onClose={() => setShowSettings(false)}
+          onClose={() => { setShowSettings(false); setSettingsTab(undefined); }}
+          initialTab={settingsTab}
           gpuBackend={healthStatus?.gpuBackend}
           gpuEngine={healthStatus?.gpuEngine}
           nvidiaGpu={healthStatus?.nvidiaGpu}

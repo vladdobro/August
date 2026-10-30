@@ -8,6 +8,7 @@ import {
   sanitizeCompactPreferences,
   migratePraxisProjects,
 } from '../services/preferencesStore.js';
+import { stopLlmServer } from '../services/llmServer.js';
 
 const router = Router();
 
@@ -91,6 +92,8 @@ router.delete('/', async (_req, res) => {
   } catch {
     // file didn't exist, that's fine
   }
+  // AUG-162: a reset turns the local language model off.
+  void stopLlmServer('preferences reset');
   res.json({});
 });
 

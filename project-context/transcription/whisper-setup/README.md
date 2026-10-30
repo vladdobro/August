@@ -36,6 +36,10 @@
 - The startup probe flips GpuState to cpu when the ggml_vulkan device banner is absent, so /api/health reports gpuBackend 'cpu' with no retry.
 - The no-banner CPU flip applies to Vulkan builds only; Metal runs never print the banner and never flip (AUG-125).
 - npm run setup downloads the SHA256-pinned Silero VAD model ggml-silero-v5.1.2.bin into whisper/bin/<platform>/ on every platform (AUG-125).
+- npm run setup also downloads the SHA256-pinned CPU llama-server (llama.cpp LLAMA_CPP_VERSION b11630) for the opt-in local language model into server/data/llm/bin/<platform>/ — not next to whisper-cli, because llama.cpp's ggml*.dll share names with whisper's but differ in version; setup never downloads an LLM model (AUG-162).
+- Local language model binaries and models live under one LLM root (bin/<variant>/, models/) and download on demand only while llmEnabled is on; a build counts as installed only when its .llama-version marker equals LLAMA_CPP_VERSION (AUG-162).
+- The Windows CUDA llama-server build reuses cudart64_12.dll, cublas64_12.dll and cublasLt64_12.dll from the whisper CUDA build; Metal is automatic on Apple Silicon; Vulkan is used only through LLAMA_SERVER_PATH in .env (AUG-162).
+- Also known as: whisper setup, npm run setup, model download, CUDA engine download, llama-server download, local LLM install (AUG-162).
 
 One-sentence description: How whisper-cli, the bundled ffmpeg/ffprobe and the whisper model get installed per platform, and how the client learns about download progress.
 
@@ -108,6 +112,19 @@ Explain the setup, binary-distribution, and model-download mechanics behind tran
 - FFMPEG_MISSING_MESSAGE leads with npm run setup (bundled download) and lists brew/winget manual install only as a fallback; the diagnostics "Install FFmpeg" section mirrors this on both platforms.
 - .env loading: config.ts loads the repo-root .env via dotenv before computing config, so WHISPER_BIN_PATH and WHISPER_MODEL_PATH overrides in .env are honored.
 
+### Local language model install (AUG-162)
+
+- LLAMA_CPP_BUILDS in config.ts pins four SHA256-verified assets for llama.cpp b11630, one per variant.
+- win-x64 is llama-b11630-bin-win-cpu-x64.zip (~20 MB); win-x64-cuda is llama-b11630-bin-win-cuda-12.4-x64.zip (~265 MB).
+- darwin-arm64 and darwin-x64 are llama-b11630-bin-macos-<arch>.tar.gz (~12 MB each), with root dir llama-b11630/ and dylib symlinks.
+- LLM_MODELS in config.ts lists qwen2.5-1.5b-instruct-q4km (1.12 GB disk, ~2 GB RAM, quality basic, the default) and qwen2.5-3b-instruct-q4km (2.10 GB disk, ~3 GB RAM, quality higher).
+- Install flow: ensureLlmInstalled() downloads the CPU engine, then the CUDA engine when the whisper engine is cuda (non-fatal), then the model.
+- Each download uses a .part file, SHA256 verification and 3 attempts, with a stall timeout of 300 s for models and 120 s for engines.
+- ensureLlmInstalled() runs after ensureWhisperModel at startup, on POST /api/llm/enable and /api/llm/download, and after a switch to cuda.
+- Extraction: Windows uses System32 tar.exe with an Expand-Archive fallback; macOS tar keeps the dylib symlinks.
+- The archive is extracted to .extract-<variant> and then renamed to bin/<variant>/.
+- Download progress streams to the client through GET /api/llm/progress (SSE), like /api/engine/cuda-progress.
+
 ## Invariants
 
 - Supported platforms are Windows x64, macOS arm64, and macOS x64 only — Linux is unsupported.
@@ -166,6 +183,14 @@ Explain the setup, binary-distribution, and model-download mechanics behind tran
 - The PATH fallback must be preserved so dev machines with only a system ffmpeg keep working (npm run dev).
 - ffmpeg is never an npm dependency (no ffmpeg-static); the download stays in setup.ts so the binary layout stays under whisper/bin/ and gets bundled by electron-builder as-is.
 - Binaries are excluded from git because they are large and platform-specific — never commit a whisper-cli, ffmpeg or ffprobe binary.
+- With llmEnabled off the server never downloads a llama.cpp build or an LLM model at runtime; only npm run setup (dev) pre-fetches the CPU llama-server (AUG-162).
+- llama.cpp DLLs never share a folder with whisper-cli: they live in <llmRoot>/bin/<variant>/ (AUG-162).
+- LLM root precedence (resolveLlmRoot in config.ts): LLM_ROOT env (pinned, Settings cannot change it) → the folder chosen in Settings → Transcription, remembered in <dataDir>/llm-location.json → default <dataDir>/llm (AUG-162).
+- A folder picked in Settings maps to <picked>/August LLM/, so choosing a drive root or Desktop never scatters bin/ and models/ there (AUG-162).
+- llm-location.json lives in the data dir, not in user-preferences.json: it survives app updates (Windows <install dir>/data, macOS ~/Library/Application Support/August/data) and Reset to Defaults never forgets where gigabytes of files are (AUG-162).
+- Changing the folder moves the files: same volume → rename; another volume (EXDEV) → copy with progress, size verification, then the source is deleted; llm-location.json is written only after everything moved, and a failure rolls back to the old root (AUG-162).
+- A move is refused while a download runs or the root is pinned, and the target must not be inside the current root or contain it (validateRelocation, case-insensitive on Windows) (AUG-162).
+- An unavailable remembered root (disconnected drive, missing parent) never falls back to the default: downloads and starts are refused with "The model folder is not available. Connect the drive or choose another folder." (AUG-162).
 
 ## Route-Specific Constraints
 
@@ -182,16 +207,26 @@ Explain the setup, binary-distribution, and model-download mechanics behind tran
 - Diagnostics UI text about the GPU stays plain-language ("Transcription runs on CPU on this computer — expect it to take longer"); DLL names, exit codes and backend names belong in the server log, never in SetupGuide.tsx.
 - Do not add a second whisper-cli spawn path for probing or retrying — the probe lives in whisper.ts next to runWhisper() and the retry is runWithGpuFallback() inside runWhisper().
 
+## Components
+
+- llmInstaller (component): part of the August server; downloads llama-server and the LLM model for llmServer (AUG-162).
+- llmServer (component): part of the August server; depends on llmInstaller for installed binaries and models (AUG-162).
+- llama.cpp (technology): used by llmServer through the llama-server binary (AUG-162).
+
 ## Key Files
 
-- server/src/scripts/setup.ts — per-platform whisper-cli installer (setupVadModel() for the Silero VAD model, download for Windows, cmake build for macOS with a portable CMake fallback), legacy migration, pinned FFMPEG_BUILDS table and setupFfmpeg(), pinned VULKAN_RUNTIME and setupVulkanLoader() (Windows), ffmpeg pre-flight.
+- server/src/scripts/setup.ts — per-platform whisper-cli installer (setupVadModel() for the Silero VAD model, download for Windows, cmake build for macOS with a portable CMake fallback), legacy migration, pinned FFMPEG_BUILDS table and setupFfmpeg(), pinned VULKAN_RUNTIME and setupVulkanLoader() (Windows), ffmpeg pre-flight; setupLlamaServer() pre-fetches the CPU llama-server (AUG-162).
 - server/src/services/cudaDownloader.ts — ensureWhisperCuda(), CUDA variant download state machine, on-demand extraction of 9 DLLs + exe from the zip (AUG-130).
 - electron/build/installer.nsh — NSIS installer pages for model directory chooser (AUG-119) and GPU engine radio selection (AUG-130); persists choices to %APPDATA%/August/ and preserves them across updates (AUG-141); keeps <install dir>/data and the CUDA engine across updates (AUG-158).
 - server/src/services/modelDownloader.ts — ensureWhisperModel(), model status state machine, checksum verification.
 - server/src/services/download.ts — shared streaming download and SHA256 helper (downloadToFile, isOfflineError) used by setup and the model downloader.
 - server/src/routes/setup.ts — GET /api/setup/status and the SSE /api/setup/download-progress stream.
-- server/src/config.ts — whisperPlatformDir(), whisperBinName(), ffmpegBinName(), resolveFfmpegPaths(), parseGpuOverride(), parseGpuEngine(), GpuEngine type, WHISPER_CUDA_BUILD, config.whisperGpuEngine, config.whisperGpuOverride, config.ffmpegPath/ffprobePath/ffmpegSource, WHISPER_CPP_VERSION, WHISPER_MODEL constants, repo-root .env loading.
-- server/src/config.test.ts — unit tests for the ffmpeg resolver precedence (env, bundled, PATH).
+- server/src/config.ts — whisperPlatformDir(), whisperBinName(), ffmpegBinName(), resolveFfmpegPaths(), parseGpuOverride(), parseGpuEngine(), GpuEngine type, WHISPER_CUDA_BUILD, config.whisperGpuEngine, config.whisperGpuOverride, config.ffmpegPath/ffprobePath/ffmpegSource, WHISPER_CPP_VERSION, WHISPER_MODEL constants, repo-root .env loading, LLAMA_CPP_VERSION, LLAMA_CPP_BUILDS, LLAMA_CUDA_RUNTIME_DLLS, LLM_MODELS, llamaServerBinName(), llmVariantDir(), parseLlmGpuLayers(), parseLlmIdleMinutes(), config.llmRoot (AUG-162).
+- server/src/config.test.ts — unit tests for the ffmpeg resolver precedence (env, bundled, PATH) and the llama.cpp variant/binary-name selection with process.platform mocked for win32 and darwin (AUG-162).
+- server/src/services/llmInstaller.ts — ensureLlmInstalled(), installLlamaBuild(), model download, extractArchive(), readLlmSettings(), llmInstallState() and the download status emitter (AUG-162).
+- server/src/services/llmLocation.ts — targetRootFor, validateRelocation, relocateLlmRoot (move/copy with rollback), llmLocationAvailable, freeBytesAt, getLlmLocationStatus, writeLlmLocation (AUG-162).
+- server/src/services/llmStatus.ts — shared download/move status emitter (phases engine, gpu-engine, model, moving) (AUG-162).
+- server/src/services/llmPaths.ts — llmBinDir/llmModelPath/llamaServerPath, llamaBuildInstalled (version marker), llmGpuLayers, buildLlamaServerArgs (AUG-162).
 - server/src/services/gpuBackend.ts — GPU policy resolution (Metal/CUDA/Vulkan/CPU), GpuState (process-wide mode cache), conservative failure classifier, countVulkanDevices() and countCudaDevices() banner parsers, runWithGpuFallback() retry-once engine (AUG-116/117/130).
 - server/src/services/nvidiaDetect.ts — detectNvidiaGpu() NVIDIA GPU detection via nvidia-smi, cached process-wide (AUG-136).
 - server/src/routes/engine.ts — POST /api/engine/switch and GET /api/engine/cuda-progress SSE stream (AUG-136).

@@ -120,6 +120,11 @@ export class CompactController {
     return this.current;
   }
 
+  /// Normal-window bounds saved when compact mode was entered; null while not compact.
+  get normalSnapshot(): { bounds: Rectangle; maximized: boolean } | null {
+    return this.snapshot ? { bounds: { ...this.snapshot.bounds }, maximized: this.snapshot.maximized } : null;
+  }
+
   isGhostSender(wc: WebContents): boolean {
     return this.ghost !== null && !this.ghost.isDestroyed() && this.ghost.webContents === wc;
   }

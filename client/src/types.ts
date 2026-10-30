@@ -94,3 +94,42 @@ export interface ServerCapture {
   // AUG-113: true when the server also tees PCM to the live-transcription WebSocket.
   live?: boolean;
 }
+
+// Opt-in local language model (AUG-162).
+export type LlmModelId = 'qwen2.5-1.5b-instruct-q4km' | 'qwen2.5-3b-instruct-q4km';
+
+export interface LlmModelInfo {
+  id: LlmModelId;
+  label: string;
+  quality: 'basic' | 'better';
+  diskBytes: number;
+  ramBytes: number;
+}
+
+export interface LlmDownloadStatus {
+  downloading: boolean;
+  phase: 'engine' | 'gpu-engine' | 'model' | 'moving' | null;
+  percent: number;
+  bytesDownloaded: number;
+  totalBytes: number;
+  verifying: boolean;
+  error: string | null;
+}
+
+export interface LlmLocation {
+  root: string;
+  isDefault: boolean;
+  pinned: boolean;
+  available: boolean;
+  freeBytes: number | null;
+}
+
+export interface LlmStatus {
+  enabled: boolean;
+  modelId: LlmModelId;
+  supported: boolean;
+  install: 'missing' | 'ready';
+  runtime: 'stopped' | 'starting' | 'running';
+  download: LlmDownloadStatus;
+  location: LlmLocation;
+}

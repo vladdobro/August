@@ -2299,6 +2299,17 @@ body {
   gap: 8px;
 }
 
+/* Short windows: tighten the New Transcription screen so the link row stays above the fixed
+   [ SESSIONS / CONTROLS ] pin bar instead of sliding under it. */
+@media (max-height: 860px) {
+  .circuit-layout { padding: 16px 24px; gap: 16px; }
+  .circuit-diagram { max-width: 400px; }
+}
+@media (max-height: 720px) {
+  .circuit-layout { padding: 12px 24px; gap: 10px; }
+  .circuit-diagram { max-width: 320px; }
+}
+
 .circuit-link-input {
   flex: 1;
   min-width: 0;
@@ -4991,6 +5002,12 @@ body {
   color: var(--text-primary);
   font-size: 11px;
   line-height: 1.45;
+  /* The popup sits inside table header cells (nowrap, uppercase, bold): never inherit that text styling. */
+  white-space: normal;
+  text-transform: none;
+  letter-spacing: normal;
+  font-weight: 400;
+  text-align: left;
   z-index: 10;
   box-shadow: 0 4px 16px rgba(45, 58, 51, 0.15);
   backdrop-filter: blur(12px);
@@ -4998,153 +5015,77 @@ body {
   font-family: var(--font-terminal);
 }
 
-/* --- Circuit node layout --- */
-.diag-circuit {
-  position: relative;
-  height: 290px;
-  margin-bottom: 24px;
-}
-
-.diag-circuit-lines {
-  position: absolute;
-  inset: 0;
+/* --- Diagnostics service/status table --- */
+.diag-table {
   width: 100%;
-  height: 100%;
-  pointer-events: none;
+  border-collapse: collapse;
+  margin: 8px 0 24px;
+  font-family: var(--font-terminal);
+  font-size: 12px;
 }
-
-@keyframes diag-dash-flow {
-  to { stroke-dashoffset: -20; }
+.diag-table th,
+.diag-table td {
+  padding: 10px 12px;
+  border-bottom: 1px solid var(--border-color);
+  text-align: left;
 }
-.diag-line-anim {
-  animation: diag-dash-flow 1.5s linear infinite;
+.diag-table thead th {
+  font-size: 10px;
+  font-weight: 600;
+  text-transform: uppercase;
+  letter-spacing: 0.12em;
+  color: var(--text-secondary);
+  border-bottom: 1px solid rgba(0, 200, 118, 0.35);
 }
-
-/* --- Node base --- */
-.diag-node {
-  position: absolute;
-  display: flex;
-  align-items: center;
-  gap: 12px;
-}
-
-.diag-node-circle {
-  flex-shrink: 0;
-  border-radius: 50%;
-  border: 2px solid;
-  display: flex;
-  align-items: center;
-  justify-content: center;
-  transition: box-shadow 0.2s, border-color 0.2s;
-}
-
-.diag-node-dot {
-  width: 6px;
-  height: 6px;
-  border-radius: 50%;
-  background: rgba(45, 58, 51, 0.2);
-}
-
-.diag-download-arrow {
-  animation: diag-arrow-pulse 1.4s ease-in-out infinite;
-}
-
-@keyframes diag-arrow-pulse {
-  0%, 100% { opacity: 0.4; transform: scale(0.9); }
-  50%      { opacity: 1; transform: scale(1.1); }
-}
-
-/* --- Node positions: circle centers at percentage coords matching SVG lines --- */
-
-/* Whisper: circle 70px, center at (30%, 18%), text to right */
-.diag-node--whisper {
-  left: calc(30% - 35px);
-  top: calc(18% - 35px);
-}
-.diag-node--whisper .diag-node-circle {
-  width: 70px;
-  height: 70px;
-}
-.diag-circle--yellow {
-  background: rgba(212, 170, 60, 0.25);
-  border-color: #d4a028;
-  box-shadow: 0 0 14px rgba(212, 160, 40, 0.2);
-}
-
-/* GGML: circle 84px, center at (70%, 48%), text to left */
-/* right = 100%-70%-42px puts circle center at 70% from left */
-.diag-node--ggml {
-  right: calc(30% - 42px);
-  top: calc(48% - 42px);
-}
-.diag-node--ggml .diag-node-circle {
-  width: 84px;
-  height: 84px;
-}
-.diag-circle--red {
-  background: rgba(212, 80, 80, 0.22);
-  border-color: #d44040;
-  box-shadow: 0 0 14px rgba(212, 64, 64, 0.2);
-}
-
-/* FFmpeg: circle 62px, center at (34%, 80%), text to right */
-.diag-node--ffmpeg {
-  left: calc(34% - 31px);
-  top: calc(80% - 31px);
-}
-.diag-node--ffmpeg .diag-node-circle {
-  width: 62px;
-  height: 62px;
-}
-.diag-circle--green {
-  background: rgba(13, 140, 92, 0.15);
-  border-color: var(--accent);
-  box-shadow: 0 0 14px var(--accent-glow);
-}
-
-/* --- OK state: keeps fill color, adds green glow --- */
-.diag-circle--ok {
-  box-shadow: 0 0 20px var(--accent-glow);
-}
-
-/* --- Downloading pulse --- */
-.diag-circle--pulse {
-  animation: diag-pulse 1.5s ease-in-out infinite;
-}
-
-@keyframes diag-pulse {
-  0%, 100% { box-shadow: 0 0 10px rgba(212, 64, 64, 0.2); }
-  50%      { box-shadow: 0 0 24px rgba(212, 64, 64, 0.4); }
-}
-
-/* --- Text left of circle (GGML) --- */
-.diag-node-info--left {
+.diag-table thead th:last-child,
+.diag-table-status {
   text-align: right;
 }
-
-/* --- Node info text --- */
-.diag-node-info {
-  display: flex;
-  flex-direction: column;
-  gap: 1px;
-  white-space: nowrap;
+.diag-table tbody tr:hover {
+  background: rgba(0, 200, 118, 0.04);
 }
-
-.diag-node-label {
-  font-size: 12px;
-  font-weight: 700;
+.diag-table-service {
   color: var(--text-primary);
+  font-weight: 700;
   text-transform: uppercase;
   letter-spacing: 0.04em;
+  white-space: nowrap;
 }
-
-.diag-node-status {
-  font-size: 11px;
-  color: var(--text-secondary);
-  font-family: var(--font-terminal);
+.diag-status {
+  display: inline-flex;
+  align-items: center;
+  gap: 8px;
 }
-.diag-node-status--ready {
-  color: var(--accent);
+.diag-status::before {
+  content: '';
+  width: 8px;
+  height: 8px;
+  flex-shrink: 0;
+  background: currentColor;
+}
+.diag-status--ok { color: var(--accent); }
+.diag-status--progress { color: #d4a028; }
+.diag-status--warn { color: #d4a028; }
+/* Row accent: a 3px tone-coloured edge on the service cell, so the state reads at a glance. */
+.diag-table tbody tr.diag-row--ok th { box-shadow: inset 3px 0 0 var(--accent); }
+.diag-table tbody tr.diag-row--warn th,
+.diag-table tbody tr.diag-row--progress th { box-shadow: inset 3px 0 0 #d4a028; }
+.diag-table tbody tr.diag-row--danger th { box-shadow: inset 3px 0 0 #d44040; }
+.diag-table tbody tr.diag-row--danger { background: rgba(212, 64, 64, 0.06); }
+.diag-table tbody tr.diag-row--warn { background: rgba(212, 160, 40, 0.06); }
+.diag-status--danger { color: #d44040; }
+.diag-status--muted { color: var(--text-secondary); }
+.diag-status--progress::before {
+  animation: diag-status-pulse 1.4s ease-in-out infinite;
+}
+@keyframes diag-status-pulse {
+  0%, 100% { opacity: 0.35; }
+  50%      { opacity: 1; }
+}
+@media (max-width: 480px) {
+  .diag-table th,
+  .diag-table td { padding: 8px; }
+  .diag-table-service { white-space: normal; }
 }
 
 .diag-tag-optional {
@@ -5153,7 +5094,7 @@ body {
   color: var(--text-secondary);
   border: 1px solid var(--border-color);
   padding: 0 4px;
-  margin-left: 4px;
+  margin-left: 6px;
   text-transform: uppercase;
   letter-spacing: 0.04em;
   vertical-align: middle;
@@ -5441,30 +5382,16 @@ body {
   backdrop-filter: none;
 }
 
-:root[data-theme='dark'] .diag-node-dot {
-  background: rgba(255, 255, 255, 0.3);
-}
-
-:root[data-theme='dark'] .diag-circle--green {
-  background: rgba(0, 200, 118, 0.18);
-  border-color: #00c876;
-  box-shadow: 0 0 14px rgba(0, 200, 118, 0.2);
-}
-
-:root[data-theme='dark'] .diag-circle--ok {
-  box-shadow: 0 0 20px rgba(0, 200, 118, 0.3);
-}
-
-:root[data-theme='dark'] .diag-node-label {
+:root[data-theme='dark'] .diag-table-service {
   color: var(--necron-50);
 }
 
-:root[data-theme='dark'] .diag-node-status {
-  color: var(--necron-200);
+:root[data-theme='dark'] .diag-status--ok {
+  color: #00c876;
 }
 
-:root[data-theme='dark'] .diag-node-status--ready {
-  color: #00c876;
+:root[data-theme='dark'] .diag-status--muted {
+  color: var(--necron-200);
 }
 
 :root[data-theme='dark'] .diag-tag-optional {
@@ -5744,9 +5671,7 @@ body {
 }
 
 @media (prefers-reduced-motion: reduce) {
-  .diag-line-anim { animation: none; }
-  .diag-node--active .diag-node-circle { animation: none; }
-  .diag-download-arrow { animation: none; opacity: 0.7; }
+  .diag-status--progress::before { animation: none; }
   .diag-reveal { animation: none; opacity: 1; }
 }
 
@@ -6984,6 +6909,72 @@ button:hover:not(:disabled):not(.sidebar-menu-item):not(.export-menu-item):not(.
   font-family: var(--font-terminal);
   font-size: 11px;
   color: var(--text-secondary);
+}
+
+/* Opt-in local language model (AUG-162) */
+.settings-llm-confirm {
+  border: 1px solid var(--accent);
+  border-radius: 0;
+  padding: 12px;
+  margin: 8px 0;
+  font-family: var(--font-terminal);
+  font-size: 12px;
+}
+.settings-llm-confirm-title {
+  color: var(--accent);
+  font-weight: 700;
+  margin-bottom: 8px;
+}
+.settings-llm-confirm-list {
+  list-style: none;
+  margin: 0;
+  padding: 0;
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+}
+.settings-llm-actions {
+  display: flex;
+  gap: 8px;
+  margin-top: 10px;
+}
+.settings-llm-btn {
+  padding: 6px 14px;
+  border: 1px solid var(--accent);
+  border-radius: 0;
+  background: transparent;
+  color: var(--accent);
+  font-family: var(--font-terminal);
+  font-size: 12px;
+  cursor: pointer;
+  transition: background 0.15s, color 0.15s;
+}
+.settings-llm-btn:hover:not(:disabled) {
+  background: var(--accent);
+  color: var(--bg-primary);
+}
+.settings-llm-btn:disabled {
+  opacity: 0.5;
+  cursor: not-allowed;
+}
+.settings-llm-folder-actions {
+  display: flex;
+  gap: 8px;
+  flex-shrink: 0;
+}
+.settings-llm-path {
+  font-family: var(--font-terminal);
+  font-size: 11px;
+  color: var(--text-secondary);
+  word-break: break-all;
+  margin-bottom: 4px;
+}
+.settings-llm-warn {
+  color: #d4a028;
+}
+.settings-llm-btn--primary {
+  background: var(--accent);
+  color: var(--bg-primary);
 }
 
 @media (max-width: 768px) {

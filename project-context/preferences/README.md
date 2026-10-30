@@ -2,7 +2,7 @@
 
 ## TL;DR
 - User preferences persist as a flat JSON file at server/data/user-preferences.json with GET/PATCH/DELETE REST endpoints.
-- All 26 preference fields are optional; the client applies defaults when absent from the server response.
+- All 26 client preference fields are optional; the client applies defaults when absent from the server response. The server-only fields llmEnabled and llmModel (AUG-162) follow the same rule: absent means off and the default model.
 - praxisProjects (array of path, name, isDefault, optional prompt) and praxisDefaultPrompt (string or null) hold the multi-project Praxis setup (AUG-142).
 - The legacy praxisProjectPath key stays in ALLOWED_KEYS for backward compatibility only; it is folded into praxisProjects and removed.
 - migratePraxisProjects() in preferencesStore.ts turns a legacy praxisProjectPath into the first project, named after the folder basename, default if none is default.
@@ -30,7 +30,10 @@
 - On Windows with NVIDIA GPU detected, Settings shows a CPU/GPU(NVIDIA) engine dropdown; gpuEngine persists via PATCH /api/preferences.
 - autoDeleteWav (boolean, default false) and autoDeleteWavThreshold (50–95 step 5, default 70) back the Settings → Transcription toggle "Delete audio.wav after transcription" and its "Minimum confidence" slider; the server reads them when a transcription completes to decide whether the converted WAV is removed (AUG-152).
 - Compact Mode prefs (AUG-156): compactEnabled (default true), compactMode 'follow'|'indicator'|'transcript' (follow), compactIndicatorWidget 'dock-square'|'ghost-coin' (dock-square), compactTranscriptWidget 'dock-strip'|'ghost-caption' (dock-strip), compactAlwaysOnTop (true), compactExpandOn 'stop'|'click' (stop), compactStripWidth 280–520 (360), compactCaptionHeight 72–480 (112, set by dragging the Ghost Caption edge), compactHintSeen (false) back Settings → Compact mode; compactHintSeen lives here, not localStorage, because the packaged renderer origin port changes every launch.
-- Also known as: user preferences, settings persistence, user-preferences.json, Settings modal, auto-delete WAV setting, confidence threshold slider (AUG-152), Compact mode settings, compact preferences (AUG-156).
+- llmEnabled (boolean, default false) and llmModel ('qwen2.5-1.5b-instruct-q4km' default | 'qwen2.5-3b-instruct-q4km') hold the opt-in local language model (AUG-162); they are written only by POST /api/llm/enable and /disable, are not in ALLOWED_KEYS (PATCH /api/preferences ignores them) and are not part of the client UserPreferences — Settings reads them from GET /api/llm/status.
+- Settings → Transcription shows a "Model folder" row (path, Change…, Use default; read-only when LLM_ROOT is set) and the confirmation names that folder and warns when free space is below the model size (AUG-162).
+- Settings → Transcription has a "Local language model" toggle (off by default) and a model dropdown whose hint shows disk size, memory and quality; turning it on, or picking another model while on, opens a two-point confirmation (A: download size, B: RAM/VRAM) and nothing downloads until "Download and enable" is pressed (AUG-162).
+- Also known as: user preferences, settings persistence, user-preferences.json, Settings modal, auto-delete WAV setting, confidence threshold slider (AUG-152), Compact mode settings, compact preferences (AUG-156), local language model toggle, llmEnabled, llmModel (AUG-162).
 
 Persistence layer for user preferences across sessions — auto-saves choices and provides a Settings UI for review/reset.
 
@@ -42,7 +45,7 @@ Eliminate repeated manual re-configuration every app session. Before this system
 
 - Preferences file: server/data/user-preferences.json — a flat JSON object, created on first PATCH, deleted on reset. The path is derived from config.dataDir (server/src/config.ts), the same root as sessions, uploads, captures, and perf-stats.json.
 - Legacy migration: before AUG-109 the file lived at server/src/data/user-preferences.json and was tracked in git. On every server start, migrateLegacyPreferences() (server/src/services/preferencesStore.ts) moves that file to server/data/ once, removes the old copy, and logs the move. It never overwrites an existing server/data/ file.
-- Schema: 27 optional fields (language, micDeviceId, systemAudio, systemAudioSource, recordingMode, liveEngine, audioBoost, retranscriptionLanguage, praxisProjectPath (legacy), praxisProjects, praxisDefaultPrompt, sidebarCollapsed, sessionSortOrder, skipStopConfirmation, skipClearConfirmation, gpuEngine, autoDeleteWav, autoDeleteWavThreshold, compactEnabled, compactMode, compactIndicatorWidget, compactTranscriptWidget, compactAlwaysOnTop, compactExpandOn, compactStripWidth, compactCaptionHeight, compactHintSeen).
+- Schema: 27 optional fields (language, micDeviceId, systemAudio, systemAudioSource, recordingMode, liveEngine, audioBoost, retranscriptionLanguage, praxisProjectPath (legacy), praxisProjects, praxisDefaultPrompt, sidebarCollapsed, sessionSortOrder, skipStopConfirmation, skipClearConfirmation, gpuEngine, autoDeleteWav, autoDeleteWavThreshold, compactEnabled, compactMode, compactIndicatorWidget, compactTranscriptWidget, compactAlwaysOnTop, compactExpandOn, compactStripWidth, compactCaptionHeight, compactHintSeen), plus the server-only llmEnabled and llmModel written by /api/llm (AUG-162).
 - readPreferences and writePreferences live in server/src/services/preferencesStore.ts; the route has no private file helpers.
 - Server allowlist: ALLOWED_KEYS set in the route filters unknown keys from PATCH requests.
 - Auto-delete controls (AUG-152): Settings → Transcription shows the "Delete audio.wav after transcription" toggle after Retranscription Language; only while it is on, a "Minimum confidence" range input (50–95, step 5) appears, followed by a hint whose text changes with the toggle state.
@@ -91,11 +94,12 @@ Eliminate repeated manual re-configuration every app session. Before this system
 - preferencesStore (component): part of the August server; readPreferences is used by the sessions route's autoDeleteWavIfConfident at transcription completion (AUG-152).
 - SettingsModal (component): part of the August client; owns the auto-delete toggle and the threshold slider (AUG-152).
 - sanitizeCompactPreferences (component): part of preferencesStore; called by the preferences route on every PATCH (AUG-156).
+- llm route (component): part of the August server; the only writer of llmEnabled and llmModel (AUG-162).
 
 ## Invariants
 
 - All preference fields are optional — the app works identically to before if the file is missing or empty.
-- The server never validates field values beyond key membership in ALLOWED_KEYS, except that praxisProjects is always normalized by sanitizePraxisProjects(), autoDeleteWav is coerced to a strict boolean, and autoDeleteWavThreshold is rounded and clamped to 50–95 (a non-numeric value is dropped from the patch) (AUG-152); sanitizeCompactPreferences() makes compactEnabled/compactAlwaysOnTop/compactHintSeen strict booleans, drops unknown compactMode/compactIndicatorWidget/compactTranscriptWidget/compactExpandOn values and rounds/clamps compactStripWidth to 280–520 (AUG-156) and compactCaptionHeight to 72–480.
+- The server never validates field values beyond key membership in ALLOWED_KEYS, except that praxisProjects is always normalized by sanitizePraxisProjects(), autoDeleteWav is coerced to a strict boolean, and autoDeleteWavThreshold is rounded and clamped to 50–95 (a non-numeric value is dropped from the patch) (AUG-152); sanitizeCompactPreferences() makes compactEnabled/compactAlwaysOnTop/compactHintSeen strict booleans, drops unknown compactMode/compactIndicatorWidget/compactTranscriptWidget/compactExpandOn values and rounds/clamps compactStripWidth to 280–520 (AUG-156) and compactCaptionHeight to 72–480. llmEnabled/llmModel are outside ALLOWED_KEYS; /api/llm/enable validates llmModel against LLM_MODELS (AUG-162).
 - Theme toggle stays in localStorage — it is not part of the preferences system.
 - The preferences file is gitignored (server/data/user-preferences.json; the legacy server/src/data/ path is also ignored as a safety net for old checkouts). Running the app must never dirty the git working tree.
 - The legacy migration is idempotent and never overwrites a file already present at server/data/user-preferences.json.
@@ -103,7 +107,9 @@ Eliminate repeated manual re-configuration every app session. Before this system
 - PATCH merges into existing data (spread operator) — it never replaces the entire file.
 - systemAudioSource never disables system audio — when systemAudio is false, the source field is ignored.
 - Without a detected capture method (no WASAPI helper, Stereo Mix or VB-Cable on Windows; no bundled or PATH audiotee and no BlackHole on macOS — run npm run setup to build the bundled audiotee), every systemAudioSource value resolves to the browser picker; there is no regression path.
-- DELETE removes the file entirely — there is no "partial reset".
+- The local LLM folder is deliberately NOT a preference: it lives in <dataDir>/llm-location.json, so DELETE /api/preferences (Reset to Defaults) keeps it and downloaded models are never orphaned (AUG-162).
+- llmEnabled is the single source of truth for the local language model: the server reads it from user-preferences.json on every use, so DELETE /api/preferences turns the model off and also stops a running llama-server (AUG-162).
+- DELETE removes the file entirely — there is no "partial reset"; it also stops a running llama-server (AUG-162).
 - The auto-delete decision reads user-preferences.json at transcription completion, so changing the toggle or threshold affects the next completion, never a session that already finished (AUG-152).
 
 ## Key Files
@@ -112,7 +118,8 @@ Eliminate repeated manual re-configuration every app session. Before this system
 - server/src/services/preferencesStore.ts — PREFS_PATH / LEGACY_PREFS_PATH constants, migrateLegacyPreferences() startup migration, readPreferences/writePreferences, migratePraxisProjects(), readPreferencesMigrated(), sanitizePraxisProjects(), sanitizeCompactPreferences() (AUG-156).
 - server/src/services/preferencesStore.test.ts — tests for the Praxis project migration and sanitizing.
 - client/src/services/preferences.ts — UserPreferences interface, DEFAULT_PREFERENCES, API wrappers.
-- client/src/components/SettingsModal.tsx — Settings modal UI component with the General, Audio, Transcription, Projects and Compact mode tabs; Transcription holds the auto-delete toggle and threshold slider (AUG-152).
+- client/src/components/SettingsModal.tsx — Settings modal UI component with the General, Audio, Transcription, Projects and Compact mode tabs; Transcription holds the auto-delete toggle and threshold slider (AUG-152) and the Local language model toggle, model dropdown and download confirmation (AUG-162).
+- server/src/routes/llm.ts — writes llmEnabled/llmModel on enable/disable (AUG-162).
 - client/src/components/PraxisProjectsPage.tsx — Projects tab: master-detail list and editor for the default prompt, projects, paths and per-project prompts.
 - client/src/components/SettingsDropdown.tsx — shared dropdown with optional sublabel and placeholder, used by SettingsModal and PraxisModal.
 - client/src/components/FileUpload.tsx — auto-save integration and mic notice.

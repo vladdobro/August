@@ -4,6 +4,8 @@ import fs from 'node:fs/promises';
 
 import { config, WHISPER_BIN_ROOT, WHISPER_CUDA_BUILD, whisperBinName, whisperPlatformDir, WHISPER_VAD_MODEL } from '../config.js';
 import { cudaBuildComplete, ensureWhisperCuda, getCudaStatus, onCudaStatus } from '../services/cudaDownloader.js';
+import { ensureLlmInstalled } from '../services/llmInstaller.js';
+import { stopLlmServer } from '../services/llmServer.js';
 import { gpuState, resolveGpuPolicy } from '../services/gpuBackend.js';
 import { detectNvidiaGpu } from '../services/nvidiaDetect.js';
 import { PREFS_PATH } from '../services/preferencesStore.js';
@@ -75,6 +77,9 @@ router.post('/engine/switch', async (req, res) => {
     gpuEngine: config.whisperGpuEngine,
   }));
 
+  // AUG-162: the local language model picks its build from the engine; the next request restarts it on the right one.
+  void stopLlmServer('gpu engine changed');
+
   if (engine === 'cuda') {
     // Reuse the CUDA path resolved at startup (Electron sets WHISPER_CUDA_BIN_PATH
     // to the AppData download location). Only fall back to WHISPER_BIN_ROOT for dev.
@@ -85,7 +90,7 @@ router.post('/engine/switch', async (req, res) => {
     // Always go through ensureWhisperCuda(): it activates a complete build immediately, and re-downloads when the
     // folder is missing or incomplete (interrupted download), so a retry from the UI needs no restart (AUG-140).
     const complete = await cudaBuildComplete(path.dirname(config.whisperCudaBinPath));
-    void ensureWhisperCuda().then(() => probeGpuBackend());
+    void ensureWhisperCuda().then(() => probeGpuBackend()).then(() => ensureLlmInstalled());
     res.json({ ok: true, engine: config.whisperGpuEngine, cudaStatus: complete ? 'present' : 'downloading' });
     return;
   } else {

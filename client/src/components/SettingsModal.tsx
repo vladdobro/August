@@ -1,9 +1,10 @@
-import React, { useEffect, useState } from 'react';
+import React, { useEffect, useRef, useState } from 'react';
 import type { UserPreferences } from '../services/preferences';
 import { DEFAULT_PREFERENCES, isSystemCaptureUsable, resolveSystemAudioSource } from '../services/preferences';
 import { compactPrefs } from '../services/compact';
-import { switchEngine, CUDA_PROGRESS_URL } from '../api';
-import type { CaptureCapabilities, HealthStatus, SystemAudioSource } from '../types';
+import { switchEngine, CUDA_PROGRESS_URL, fetchLlmModels, fetchLlmStatus, enableLlm, disableLlm, retryLlmDownload, browseLlmFolder, setLlmLocation } from '../api';
+import type { CaptureCapabilities, HealthStatus, LlmModelId, LlmModelInfo, LlmStatus, SystemAudioSource } from '../types';
+import { formatGb, formatRamGb, qualityLabel, subscribeLlmProgress } from '../services/llm';
 import type { DesktopSettings } from '../desktop';
 import { acceleratorFromKeyboardEvent, formatAccelerator } from '../services/desktop';
 import SettingsDropdown from './SettingsDropdown';
@@ -22,6 +23,7 @@ interface SettingsModalProps {
   cudaStatus?: HealthStatus['cudaStatus'];
   onHealthRefresh: () => void;
   isTranscribing: boolean;
+  initialTab?: 'general' | 'audio' | 'transcription' | 'projects' | 'compact';
 }
 
 const SettingsModal: React.FC<SettingsModalProps> = ({
@@ -37,12 +39,61 @@ const SettingsModal: React.FC<SettingsModalProps> = ({
   cudaStatus,
   onHealthRefresh,
   isTranscribing,
+  initialTab,
 }) => {
   const [engineSwitching, setEngineSwitching] = useState(false);
   const [cudaProgress, setCudaProgress] = useState<number>(0);
   const [cudaError, setCudaError] = useState<string | null>(null);
   const [confirmingReset, setConfirmingReset] = useState(false);
-  const [tab, setTab] = useState<'general' | 'audio' | 'transcription' | 'projects' | 'compact'>('general');
+  const [tab, setTab] = useState<'general' | 'audio' | 'transcription' | 'projects' | 'compact'>(initialTab ?? 'general');
+
+  // Opt-in local language model (AUG-162). Nothing is downloaded until the user confirms.
+  const [llmModels, setLlmModels] = useState<LlmModelInfo[]>([]);
+  const [llmStatus, setLlmStatus] = useState<LlmStatus | null>(null);
+  const [llmSelected, setLlmSelected] = useState<LlmModelId>('qwen2.5-1.5b-instruct-q4km');
+  const [llmConfirm, setLlmConfirm] = useState<LlmModelId | null>(null);
+  const [llmBusy, setLlmBusy] = useState(false);
+  const [llmError, setLlmError] = useState<string | null>(null);
+  const llmUnsubRef = useRef<(() => void) | null>(null);
+
+  const watchLlmProgress = () => {
+    llmUnsubRef.current?.();
+    llmUnsubRef.current = subscribeLlmProgress(
+      (download) => setLlmStatus((prev) => (prev ? { ...prev, download } : prev)),
+      () => { void fetchLlmStatus().then(setLlmStatus).catch(() => {}); },
+    );
+  };
+
+  useEffect(() => {
+    if (tab !== 'transcription') return;
+    let cancelled = false;
+    void fetchLlmModels().then((models) => { if (!cancelled) setLlmModels(models); }).catch(() => {});
+    void fetchLlmStatus().then((status) => {
+      if (cancelled) return;
+      setLlmStatus(status);
+      setLlmSelected(status.modelId);
+      if (status.download.downloading) watchLlmProgress();
+    }).catch(() => {});
+    return () => {
+      cancelled = true;
+      llmUnsubRef.current?.();
+      llmUnsubRef.current = null;
+    };
+  }, [tab]);
+
+  const runLlmAction = async (action: () => Promise<LlmStatus>, watch: boolean) => {
+    setLlmBusy(true);
+    setLlmError(null);
+    try {
+      const status = await action();
+      setLlmStatus(status);
+      if (watch) watchLlmProgress();
+    } catch (err) {
+      setLlmError((err as Error).message || 'Something went wrong.');
+    } finally {
+      setLlmBusy(false);
+    }
+  };
 
   // Desktop shell (Electron) settings — the section renders only when window.august exists.
   const desktop = window.august ?? null;
@@ -432,6 +483,154 @@ const SettingsModal: React.FC<SettingsModalProps> = ({
                     <span className="engine-detail">{detail}</span>
                   </div>
                 </div>
+              );
+            })()}
+            {llmStatus?.supported && llmModels.length > 0 && (() => {
+              const selected = llmModels.find((m) => m.id === llmSelected) ?? llmModels[0];
+              const download = llmStatus.download;
+              const confirmModel = llmModels.find((m) => m.id === llmConfirm) ?? null;
+              const location = llmStatus.location;
+              const lowSpace = !!confirmModel && location.freeBytes !== null && location.freeBytes < confirmModel.diskBytes + 200e6;
+              const folderLocked = llmBusy || download.downloading || llmConfirm !== null;
+              const phaseText = download.verifying
+                ? 'Verifying…'
+                : download.phase === 'moving'
+                  ? `Moving model files… ${download.percent.toFixed(0)}%`
+                  : download.phase === 'model'
+                  ? `Downloading local model… ${download.percent.toFixed(0)}%`
+                  : `Downloading model engine… ${download.percent.toFixed(0)}%`;
+              const toggleOn = llmStatus.enabled || llmConfirm !== null;
+              return (
+                <>
+                  <div className="settings-row">
+                    <span className="settings-label">Local language model</span>
+                    <label className="settings-toggle">
+                      <input
+                        type="checkbox"
+                        checked={toggleOn}
+                        disabled={llmBusy}
+                        onChange={(e) => {
+                          if (e.target.checked) {
+                            setLlmError(null);
+                            setLlmConfirm(llmSelected);
+                          } else if (llmConfirm !== null) {
+                            setLlmConfirm(null);
+                          } else {
+                            void runLlmAction(disableLlm, false);
+                          }
+                        }}
+                      />
+                      <span className="settings-toggle-label">{toggleOn ? 'On' : 'Off'}</span>
+                    </label>
+                  </div>
+                  <div className="settings-row">
+                    <label className="settings-label">Model</label>
+                    <SettingsDropdown
+                      className="settings-dropdown--wide"
+                      value={llmSelected}
+                      options={llmModels.map((m) => ({ value: m.id, label: `${m.label} — ${qualityLabel(m.quality)}` }))}
+                      onChange={(v) => {
+                        const id = v as LlmModelId;
+                        setLlmSelected(id);
+                        if (llmStatus.enabled && id !== llmStatus.modelId) setLlmConfirm(id);
+                      }}
+                    />
+                  </div>
+                  <div className="settings-hint">
+                    {`${formatGb(selected.diskBytes)} on disk · about ${formatRamGb(selected.ramBytes)} of memory · quality: ${qualityLabel(selected.quality)}`}
+                  </div>
+                  <div className="settings-row">
+                    <span className="settings-label">Model folder</span>
+                    {location.pinned ? null : (
+                      <div className="settings-llm-folder-actions">
+                        <button
+                          type="button"
+                          className="settings-llm-btn"
+                          disabled={folderLocked}
+                          onClick={() => {
+                            void (async () => {
+                              try {
+                                const { path } = await browseLlmFolder();
+                                if (path) await runLlmAction(() => setLlmLocation(path), true);
+                              } catch (err) {
+                                setLlmError((err as Error).message || 'Something went wrong.');
+                              }
+                            })();
+                          }}
+                        >
+                          Change…
+                        </button>
+                        {!location.isDefault && (
+                          <button
+                            type="button"
+                            className="settings-llm-btn"
+                            disabled={folderLocked}
+                            onClick={() => void runLlmAction(() => setLlmLocation(null), true)}
+                          >
+                            Use default
+                          </button>
+                        )}
+                      </div>
+                    )}
+                  </div>
+                  <div className="settings-llm-path">{location.root}</div>
+                  {!location.available && (
+                    <div className="settings-hint settings-hint--warn">The model folder is not available. Connect the drive or choose another folder.</div>
+                  )}
+                  {location.pinned ? (
+                    <div className="settings-hint">Set by system configuration.</div>
+                  ) : (
+                    <div className="settings-hint">Downloaded files are moved to the new folder. The choice is kept after updates.</div>
+                  )}
+                  {confirmModel && (
+                    <div className="settings-llm-confirm">
+                      <div className="settings-llm-confirm-title">Download the local language model?</div>
+                      <ol className="settings-llm-confirm-list">
+                        <li>{`A) ${confirmModel.label} will be downloaded — ${formatGb(confirmModel.diskBytes)}.`}</li>
+                        <li>{`B) While it runs it takes about ${formatRamGb(confirmModel.ramBytes)} of RAM/VRAM. It starts only when needed and unloads after 10 minutes idle.`}</li>
+                        <li>{`C) Files are stored in ${location.root}.`}</li>
+                        {lowSpace && location.freeBytes !== null && (
+                          <li className="settings-llm-warn">{`Not enough free space there (${formatGb(location.freeBytes)} free) — choose another folder first.`}</li>
+                        )}
+                      </ol>
+                      <div className="settings-llm-actions">
+                        <button
+                          type="button"
+                          className="settings-llm-btn settings-llm-btn--primary"
+                          disabled={llmBusy || lowSpace}
+                          onClick={() => {
+                            const id = confirmModel.id;
+                            setLlmConfirm(null);
+                            void runLlmAction(() => enableLlm(id), true);
+                          }}
+                        >
+                          Download and enable
+                        </button>
+                        <button type="button" className="settings-llm-btn" onClick={() => setLlmConfirm(null)}>Cancel</button>
+                      </div>
+                    </div>
+                  )}
+                  {download.downloading && (
+                    <div className="settings-cuda-progress">
+                      <div className="settings-cuda-progress-bar">
+                        <div className="settings-cuda-progress-fill" style={{ width: `${download.percent}%` }} />
+                      </div>
+                      <span className="settings-cuda-progress-text">{phaseText}</span>
+                    </div>
+                  )}
+                  {llmStatus.enabled && !download.downloading && download.error && (
+                    <>
+                      <div className="settings-hint settings-hint--warn">{download.error}</div>
+                      <div className="settings-llm-actions">
+                        <button type="button" className="settings-llm-btn" disabled={llmBusy} onClick={() => void runLlmAction(retryLlmDownload, true)}>Retry download</button>
+                      </div>
+                    </>
+                  )}
+                  {llmError && <div className="settings-hint settings-hint--warn">{llmError}</div>}
+                  {llmStatus.enabled && !download.downloading && !download.error && llmStatus.install === 'ready' && (
+                    <div className="settings-hint">Ready. Test it from Diagnostics.</div>
+                  )}
+                </>
               );
             })()}
           </div>

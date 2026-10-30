@@ -13,6 +13,7 @@ import setupRouter from './routes/setup.js';
 import praxisRouter from './routes/praxis.js';
 import preferencesRouter from './routes/preferences.js';
 import captureRouter from './routes/capture.js';
+import llmRouter from './routes/llm.js';
 import { setupLiveTranscription } from './services/liveTranscription.js';
 import { checkFfmpegAvailable, FFMPEG_MISSING_MESSAGE, fileExists, probeGpuBackend } from './services/whisper.js';
 import { gpuState } from './services/gpuBackend.js';
@@ -20,6 +21,8 @@ import { ensureWhisperCuda } from './services/cudaDownloader.js';
 import { ensureWhisperModel } from './services/modelDownloader.js';
 import { cleanupOrphanedCaptures, detectCapabilities } from './services/systemCapture.js';
 import { migrateLegacyPreferences } from './services/preferencesStore.js';
+import { ensureLlmInstalled } from './services/llmInstaller.js';
+import { cleanupOrphanedLlmServer, killLlmServerSync, stopLlmServer } from './services/llmServer.js';
 
 const __filename = fileURLToPath(import.meta.url);
 const __dirname = path.dirname(__filename);
@@ -63,6 +66,7 @@ export async function startServer(options: StartServerOptions = {}): Promise<Run
   await migrateLegacyPreferences();
   await recoverOrphanedSessions();
   await cleanupOrphanedCaptures();
+  await cleanupOrphanedLlmServer();
   await runPreflightChecks();
 
   const app = express();
@@ -77,6 +81,7 @@ export async function startServer(options: StartServerOptions = {}): Promise<Run
   app.use('/api/praxis', praxisRouter);
   app.use('/api/preferences', preferencesRouter);
   app.use('/api/capture', captureRouter);
+  app.use('/api/llm', llmRouter);
 
   const isDev = process.env.NODE_ENV !== 'production';
 
@@ -132,16 +137,20 @@ export async function startServer(options: StartServerOptions = {}): Promise<Run
   void ensureWhisperCuda().then(() => probeGpuBackend()).then((backend) => {
     const reason = gpuState.fallbackReason();
     console.log(`  Whisper backend: ${backend}${reason ? ` (CPU fallback: ${reason})` : ''}`);
-  }).then(() => ensureWhisperModel());
+  }).then(() => ensureWhisperModel()).then(() => ensureLlmInstalled());
   console.log(`  Live transcription: ws://localhost:${port}/api/live-transcribe`);
   console.log(`  System capture: GET /api/capture/capabilities (loopback only)`);
+  console.log('  Local LLM: GET /api/llm/status (opt-in, off until enabled in Settings)');
   console.log(`  Groq API: ${config.groqApiKey ? 'configured' : 'not configured (live mode uses local whisper only)'}`);
 
   void detectCapabilities();
+  process.once('exit', killLlmServerSync);
 
   return {
     port,
     httpServer,
-    close: () => new Promise<void>((resolve, reject) => httpServer.close((err) => (err ? reject(err) : resolve()))),
+    close: () => stopLlmServer('server closing').catch(() => {}).then(
+      () => new Promise<void>((resolve, reject) => httpServer.close((err) => (err ? reject(err) : resolve()))),
+    ),
   };
 }

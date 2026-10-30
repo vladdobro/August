@@ -1,11 +1,16 @@
 import React, { useCallback, useEffect, useState } from 'react';
-import { fetchSetupStatus, SETUP_PROGRESS_URL, switchEngine, CUDA_PROGRESS_URL } from '../api';
-import type { HealthStatus, ModelSetupStatus } from '../types';
+import { fetchSetupStatus, SETUP_PROGRESS_URL, switchEngine, CUDA_PROGRESS_URL, fetchLlmStatus, retryLlmDownload, testLlm } from '../api';
+import type { HealthStatus, LlmStatus, ModelSetupStatus } from '../types';
+import { llmNodeState, subscribeLlmProgress } from '../services/llm';
 
 interface SetupGuideProps {
   health: HealthStatus;
   onRefresh: () => Promise<void>;
   onDismiss: () => void;
+  // Opens Settings on the Transcription tab, where turning the local model on asks for confirmation first (AUG-162).
+  onOpenLlmSettings: () => void;
+  // True while the Settings modal is open; closing it refreshes the Language Model status at once.
+  settingsOpen: boolean;
 }
 
 function formatBytes(bytes: number): string {
@@ -64,7 +69,7 @@ const NecronLogo: React.FC = () => (
   </svg>
 );
 
-const SetupGuide: React.FC<SetupGuideProps> = ({ health, onRefresh, onDismiss }) => {
+const SetupGuide: React.FC<SetupGuideProps> = ({ health, onRefresh, onDismiss, onOpenLlmSettings, settingsOpen }) => {
   const [modelStatus, setModelStatus] = useState<ModelSetupStatus | null>(null);
   const [copied, setCopied] = useState(false);
   const [ffmpegCopied, setFfmpegCopied] = useState(false);
@@ -75,6 +80,69 @@ const SetupGuide: React.FC<SetupGuideProps> = ({ health, onRefresh, onDismiss })
   const [cudaProgress, setCudaProgress] = useState(0);
   const [cudaError, setCudaError] = useState<string | null>(null);
   const [switchedToGpu, setSwitchedToGpu] = useState(false);
+
+  // Opt-in local language model (AUG-162): informational only, never part of allReady.
+  const [llmStatus, setLlmStatus] = useState<LlmStatus | null>(null);
+  const [llmTest, setLlmTest] = useState<{ reply: string; totalMs: number } | null>(null);
+  const [llmTesting, setLlmTesting] = useState(false);
+  const [llmTestError, setLlmTestError] = useState<string | null>(null);
+
+  const refreshLlmStatus = useCallback(() => {
+    return fetchLlmStatus().then(setLlmStatus).catch(() => {});
+  }, []);
+
+  const watchLlmDownload = useCallback(() => {
+    return subscribeLlmProgress(
+      (download) => setLlmStatus((prev) => (prev ? { ...prev, download } : prev)),
+      () => { void refreshLlmStatus(); },
+    );
+  }, [refreshLlmStatus]);
+
+  useEffect(() => {
+    let unsub: (() => void) | null = null;
+    let cancelled = false;
+    void fetchLlmStatus().then((status) => {
+      if (cancelled) return;
+      setLlmStatus(status);
+      if (status.download.downloading) unsub = watchLlmDownload();
+    }).catch(() => {});
+    return () => { cancelled = true; unsub?.(); };
+  }, [watchLlmDownload]);
+
+  // Poll always: the model can be turned on, downloaded or moved from Settings while this page stays open, and
+  // sleeping / loaded transitions happen on their own.
+  useEffect(() => {
+    const id = setInterval(() => { void refreshLlmStatus(); }, 3000);
+    return () => clearInterval(id);
+  }, [refreshLlmStatus]);
+
+  useEffect(() => {
+    if (!settingsOpen) void refreshLlmStatus();
+  }, [settingsOpen, refreshLlmStatus]);
+
+  const handleLlmRetry = async () => {
+    try {
+      setLlmStatus(await retryLlmDownload());
+      watchLlmDownload();
+    } catch (err) {
+      setLlmTestError((err as Error).message || 'Could not start the download.');
+    }
+  };
+
+  const handleLlmTest = async () => {
+    setLlmTesting(true);
+    setLlmTestError(null);
+    setLlmTest(null);
+    try {
+      const result = await testLlm();
+      setLlmTest({ reply: result.reply, totalMs: result.totalMs });
+    } catch (err) {
+      setLlmTestError((err as Error).message || 'The local language model did not respond.');
+    } finally {
+      setLlmTesting(false);
+      void refreshLlmStatus();
+    }
+  };
 
   const setupCommand = isMac
     ? 'brew install whisper-cpp ffmpeg'
@@ -309,104 +377,83 @@ const SetupGuide: React.FC<SetupGuideProps> = ({ health, onRefresh, onDismiss })
           </div>
         )}
 
-        {/* Circuit node layout — all positions in % so SVG lines and CSS nodes share the same coordinate space */}
-        <div className="diag-circuit">
-          {/* SVG lines — no viewBox, width/height 100%, percentage coords match CSS */}
-          <svg className="diag-circuit-lines" width="100%" height="100%">
-            {/* Whisper(30%,18%) → GGML(70%,48%) — dots 6px outside circle edges */}
-            <line x1="37%" y1="23%" x2="62%" y2="42%" stroke="rgba(0,200,118,0.2)" strokeWidth="2" strokeDasharray="6 4" className="diag-line-anim" />
-            <circle cx="37%" cy="23%" r="4" fill="rgba(0,200,118,0.4)" />
-            <circle cx="62%" cy="42%" r="4" fill="rgba(0,200,118,0.4)" />
-            {/* GGML(70%,48%) → FFmpeg(34%,80%) — dots 6px outside circle edges */}
-            {!isMac && (
-              <>
-                <line x1="62%" y1="55%" x2="40%" y2="74%" stroke="rgba(0,200,118,0.2)" strokeWidth="2" strokeDasharray="6 4" className="diag-line-anim" />
-                <circle cx="62%" cy="55%" r="4" fill="rgba(0,200,118,0.4)" />
-                <circle cx="40%" cy="74%" r="4" fill="rgba(0,200,118,0.4)" />
-              </>
-            )}
-          </svg>
-
-          {/* Whisper — circle center at 30%,18%; circle 70px; text right */}
-          <div className="diag-node diag-node--whisper">
-            <div className={`diag-node-circle diag-circle--yellow ${whisperReady ? 'diag-circle--ok' : ''}`}>
-              {whisperReady ? (
-                <svg className="diag-check" width="28" height="28" viewBox="0 0 24 24" fill="none" stroke="#00c876" strokeWidth="3" strokeLinecap="round" strokeLinejoin="round">
-                  <polyline points="20 6 9 17 4 12" />
-                </svg>
-              ) : (
-                <span className="diag-node-dot" />
-              )}
-            </div>
-            <div className="diag-node-info">
-              <span className="diag-node-label">
-                Whisper Engine
-                <HintPopup text="Local speech-to-text engine built from whisper.cpp with GPU acceleration." />
-              </span>
-              <span className={`diag-node-status ${whisperReady ? 'diag-node-status--ready' : ''}`}>
-                {whisperReady ? 'Operational' : 'Not installed'}
-              </span>
-            </div>
-          </div>
-
-          {/* GGML — circle center at 70%,48%; circle 84px; text left */}
-          <div className="diag-node diag-node--ggml">
-            <div className="diag-node-info diag-node-info--left">
-              <span className="diag-node-label">
-                <HintPopup text="Neural network weights (~874 MB). Required for the whisper engine to transcribe audio." />
-                GGML Model
-              </span>
-              <span className={`diag-node-status ${modelReady ? 'diag-node-status--ready' : ''}`}>
-                {modelReady
-                  ? 'Operational'
-                  : isDownloading
-                    ? `Downloading — ${modelStatus!.percent.toFixed(1)}%`
-                    : 'Not downloaded (~874 MB)'}
-              </span>
-            </div>
-            <div className={`diag-node-circle diag-circle--red ${modelReady ? 'diag-circle--ok' : ''} ${isDownloading ? 'diag-circle--pulse' : ''}`}>
-              {modelReady ? (
-                <svg className="diag-check" width="32" height="32" viewBox="0 0 24 24" fill="none" stroke="#00c876" strokeWidth="3" strokeLinecap="round" strokeLinejoin="round">
-                  <polyline points="20 6 9 17 4 12" />
-                </svg>
-              ) : isDownloading ? (
-                <svg className="diag-download-arrow" width="28" height="28" viewBox="0 0 24 24" fill="none" stroke="#d4a028" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round">
-                  <path d="M12 3v13" />
-                  <polyline points="7 11 12 16 17 11" />
-                  <line x1="5" y1="21" x2="19" y2="21" />
-                </svg>
-              ) : (
-                <span className="diag-node-dot" />
-              )}
-            </div>
-          </div>
-
-          {/* FFmpeg — circle center at 34%,80%; circle 62px; text right (Windows only) */}
-          {!isMac && (
-            <div className="diag-node diag-node--ffmpeg">
-              <div className={`diag-node-circle diag-circle--yellow ${ffmpegReady ? 'diag-circle--ok' : ''}`}>
-                {ffmpegReady ? (
-                  <svg className="diag-check" width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="#00c876" strokeWidth="3" strokeLinecap="round" strokeLinejoin="round">
-                    <polyline points="20 6 9 17 4 12" />
-                  </svg>
-                ) : (
-                  <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round">
-                    <line x1="5" y1="12" x2="19" y2="12" />
-                  </svg>
-                )}
-              </div>
-              <div className="diag-node-info">
-                <span className="diag-node-label">
-                  FFmpeg
-                  <HintPopup text="Converts browser audio (WebM) to WAV for the whisper engine. Required for recording." />
-                </span>
-                <span className={`diag-node-status ${ffmpegReady ? 'diag-node-status--ready' : ''}`}>
-                  {ffmpegReady ? 'Available' : 'Not installed'}
-                </span>
-              </div>
-            </div>
-          )}
-        </div>
+        {(() => {
+          // ok = green, warn = yellow (installed but off), progress = pulsing yellow, danger = red (not installed / broken).
+          type Tone = 'ok' | 'warn' | 'progress' | 'danger' | 'muted';
+          const nodeState = llmNodeState(llmStatus);
+          const folderMissing = llmStatus?.enabled === true && llmStatus.location.available === false && nodeState !== 'downloading';
+          const llmPercent = (llmStatus?.download.percent ?? 0).toFixed(1);
+          const llmRow: { tone: Tone; text: string } = folderMissing
+            ? { tone: 'danger', text: 'Folder not available' }
+            : ({
+                off: llmStatus?.install === 'ready'
+                  ? { tone: 'warn', text: 'Installed, off' }
+                  : { tone: 'danger', text: 'Not installed' },
+                missing: { tone: 'danger', text: 'Not downloaded' },
+                downloading: {
+                  tone: 'progress',
+                  text: llmStatus?.download.phase === 'moving' ? `Moving files — ${llmPercent}%` : `Downloading — ${llmPercent}%`,
+                },
+                waking: { tone: 'progress', text: 'Waking up…' },
+                sleeping: { tone: 'ok', text: 'Downloaded, sleeping' },
+                loaded: { tone: 'ok', text: 'Loaded in memory' },
+              } as Record<typeof nodeState, { tone: Tone; text: string }>)[nodeState];
+          const rows: { key: string; label: string; optional?: boolean; hint: string; tone: Tone; text: string }[] = [
+            {
+              key: 'whisper',
+              label: 'Whisper Engine',
+              hint: 'Local speech-to-text engine built from whisper.cpp with GPU acceleration.',
+              tone: whisperReady ? 'ok' : 'danger',
+              text: whisperReady ? 'Operational' : 'Not installed',
+            },
+            {
+              key: 'ggml',
+              label: 'GGML Model',
+              hint: 'Neural network weights (~874 MB). Required for the whisper engine to transcribe audio.',
+              tone: modelReady ? 'ok' : isDownloading ? 'progress' : 'danger',
+              text: modelReady
+                ? 'Operational'
+                : isDownloading
+                  ? `Downloading — ${modelStatus!.percent.toFixed(1)}%`
+                  : 'Not downloaded (~874 MB)',
+            },
+            {
+              key: 'ffmpeg',
+              label: 'FFmpeg',
+              hint: 'Converts browser audio (WebM) to WAV for the whisper engine. Required for recording.',
+              tone: ffmpegReady ? 'ok' : 'danger',
+              text: ffmpegReady ? 'Available' : 'Not installed',
+            },
+            {
+              key: 'llm',
+              label: 'Language Model',
+              optional: true,
+              hint: 'Optional local model for meaning-based text checks. Turned on in Settings → Transcription. Starts on demand and unloads when idle.',
+              ...llmRow,
+            },
+          ];
+          return (
+            <table className="diag-table">
+              <thead>
+                <tr><th scope="col">Service</th><th scope="col">Status</th></tr>
+              </thead>
+              <tbody>
+                {rows.map((r) => (
+                  <tr key={r.key} className={`diag-row--${r.tone}`}>
+                    <th scope="row" className="diag-table-service">
+                      {r.label}
+                      {r.optional && <span className="diag-tag-optional">optional</span>}
+                      <HintPopup text={r.hint} />
+                    </th>
+                    <td className="diag-table-status">
+                      <span className={`diag-status diag-status--${r.tone}`}>{r.text}</span>
+                    </td>
+                  </tr>
+                ))}
+              </tbody>
+            </table>
+          );
+        })()}
 
         {/* FFmpeg guidance — shown when whisper+model are ready but ffmpeg is missing. Bundled setup first, manual install as fallback. */}
         {!ffmpegReady && whisperReady && modelReady && (
@@ -433,6 +480,57 @@ const SetupGuide: React.FC<SetupGuideProps> = ({ health, onRefresh, onDismiss })
             <p className="diag-section-desc">
               Fallback if setup cannot download it: {ffmpegManualCommand}
             </p>
+          </div>
+        )}
+
+        {/* Language Model (optional, AUG-162) — full section when on; description + Turn on (opens Settings) when off */}
+        {llmStatus && !llmStatus.enabled && (
+          <div className="diag-section">
+            <div className="diag-section-title">Language Model</div>
+            <p className="diag-section-desc">Optional local model for meaning-based text checks. It is off — nothing is downloaded.</p>
+            <button className="diag-gpu-switch-btn" type="button" onClick={onOpenLlmSettings}>Turn on…</button>
+          </div>
+        )}
+        {llmStatus?.enabled && (
+          <div className="diag-section">
+            <div className="diag-section-title">Language Model</div>
+            {llmStatus.download.downloading && (
+              <div className="diag-progress">
+                <div className="diag-progress-track">
+                  <div className="diag-progress-fill" style={{ width: `${llmStatus.download.percent}%` }} />
+                </div>
+                <div className="diag-progress-text">
+                  {llmStatus.download.verifying
+                    ? 'Verifying checksum...'
+                    : llmStatus.download.phase === 'moving'
+                      ? `Moving model files… ${llmStatus.download.percent.toFixed(1)}%`
+                      : `${formatBytes(llmStatus.download.bytesDownloaded)} / ${formatBytes(llmStatus.download.totalBytes)} — ${llmStatus.download.percent.toFixed(1)}%`}
+                </div>
+              </div>
+            )}
+            {!llmStatus.download.downloading && !llmStatus.download.error && !llmStatus.location.available && (
+              <div className="diag-error">The model folder is not available. Connect the drive or choose another folder.</div>
+            )}
+            {!llmStatus.download.downloading && llmStatus.download.error && (
+              <>
+                <div className="diag-error">{llmStatus.download.error}</div>
+                <button className="diag-gpu-switch-btn" type="button" onClick={() => void handleLlmRetry()}>Retry download</button>
+              </>
+            )}
+            {!llmStatus.download.downloading && llmStatus.install === 'ready' && (
+              <>
+                <button className="diag-gpu-switch-btn" type="button" disabled={llmTesting} onClick={() => void handleLlmTest()}>
+                  {llmTesting ? 'Testing…' : 'Test'}
+                </button>
+                {llmTest && (
+                  <>
+                    <p className="diag-info-line diag-gpu-status">Reply: {'“'}{llmTest.reply}{'”'}</p>
+                    <p className="diag-info-line">Answered in {(llmTest.totalMs / 1000).toFixed(1)} s</p>
+                  </>
+                )}
+                {llmTestError && <p className="diag-info-line diag-gpu-error">{llmTestError}</p>}
+              </>
+            )}
           </div>
         )}
 

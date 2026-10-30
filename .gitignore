@@ -23,6 +23,9 @@ server/data/user-preferences.json
 server/data/live-tmp/
 server/data/captures/
 server/data/tools/
+server/data/llm/
+server/data/llm-location.json
+server/data/llama-server.pid
 
 # Legacy pre-AUG-109 preferences location; migrated to server/data/ on server start
 server/src/data/user-preferences.json
