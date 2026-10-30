@@ -32,6 +32,8 @@ export interface UserPreferences {
   gpuEngine?: 'cpu' | 'cuda';
   autoDeleteWav?: boolean;
   autoDeleteWavThreshold?: number;
+  // AUG-163: let the local model suggest meaning fixes for suspicious lines (accepted one by one in the transcript view)
+  llmCorrections?: boolean;
   // Compact Mode (AUG-156)
   compactEnabled?: boolean;
   compactMode?: CompactModePreference;
@@ -67,6 +69,7 @@ export const DEFAULT_PREFERENCES: Required<UserPreferences> = {
   gpuEngine: 'cpu',
   autoDeleteWav: false,
   autoDeleteWavThreshold: 70,
+  llmCorrections: false,
   compactEnabled: true,
   compactMode: 'follow',
   compactIndicatorWidget: 'dock-square',

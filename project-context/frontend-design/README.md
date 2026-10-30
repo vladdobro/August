@@ -34,7 +34,8 @@
 - Archive page (AUG-150) is a standalone page from ControlsPanel (not a Settings tab): storage card, CRT scan-line session list with select-all, expandable per-file breakdown, sticky bulk bar and in-app blur-backdrop confirm dialogs; red only on destructive buttons.
 - Confidence badge (.confidence-badge, AUG-152): terminal-font 10px outline chip with 0 radius and a 5px square marker; green ≥ 80 (--status-completed), amber 60–79 (--status-uploading), red < 60 (--status-failed); shown in the sidebar session meta and the transcript header for completed sessions only.
 - Compact Mode (AUG-156, implemented; designed in AUG-155): 300 ms after a recording starts, the desktop app collapses to a widget chosen in Settings → Compact mode — Variant A in the same window (Dock Strip for the transcript, Dock Square for the indicator) or Variant B as a ghost overlay with August in the tray (Ghost Caption / Ghost Coin); it restores on End Recording or stays as DONE until clicked.
-- Also known as: Bold Layout, transcript-first layout, overlay panels, pin bar, panel layout, layout overlays (AUG-154), Compact Mode, compact layout, dock strip, timer square, Ghost HUD, auto-collapse on recording (AUG-155), Ghost Caption, Ghost Coin, Dock Square, Compact mode settings tab, CompactLayer (AUG-156), Archive page, storage page, delete audio UI, bulk delete (AUG-150), confidence badge, auto-deleted label, threshold slider (AUG-152), hamburger menu, ≡ menu, sidebar menu, update menu (removed AUG-160 → ControlsPanel).
+- Correction diff cards (.correction-card, AUG-163): under a transcript line, one card per pending meaning fix — 'Was' / 'Now' rows with a word-level LCS diff (removed words <del class=correction-del> red line-through, inserted <ins class=correction-ins> green bold), outline 0-radius Accept (green, --status-completed) and Reject buttons; amber 3px left border (--status-uploading); decided fixes collapse to a 'Fix accepted · Undo' / 'Fix rejected · Undo' row; accepted text is shown in the line; no scores or flags are rendered.
+- Also known as: Bold Layout, transcript-first layout, overlay panels, pin bar, panel layout, layout overlays (AUG-154), Compact Mode, compact layout, dock strip, timer square, Ghost HUD, auto-collapse on recording (AUG-155), Ghost Caption, Ghost Coin, Dock Square, Compact mode settings tab, CompactLayer (AUG-156), Archive page, storage page, delete audio UI, bulk delete (AUG-150), confidence badge, auto-deleted label, threshold slider (AUG-152), hamburger menu, ≡ menu, sidebar menu, update menu (removed AUG-160 → ControlsPanel), correction card, diff card, Accept / Reject fix (AUG-163).
 
 The frontend design system defines the Necron-themed visual language, color tokens, theme switching, and component styling rules for the August web app.
 
@@ -309,6 +310,8 @@ Confidence badge (.confidence-badge, AUG-152, client/src/components/ConfidenceBa
 - tiers from confidenceTier(): ok ≥ 80 → var(--status-completed), warn 60–79 → var(--status-uploading), bad < 60 → var(--status-failed)
 - sidebar shows "87%", transcript header shows "87% confidence"; both render only when status is completed and confidenceScore is a number
 - the title attribute explains the inputs (token probabilities, audio coverage, filtered hallucinations); no breakdown numbers appear in the UI
+
+Correction cards (AUG-163, client/src/components/TranscriptView.tsx): TranscriptView fetches GET /api/sessions/:id/corrections when a completed session opens; items are grouped by line index and filtered to those whose original text is still inside the line (applyItemsToText mirrors the server); the card sits under the text column (margin-left 84px = timestamp 68px + gap 16px); while any fix is pending a sticky .corrections-bar ('N suggested fixes' + green 'Accept all', amber left border, opaque var(--main-bg) because --card-bg is translucent) sits at the top of .transcript-lines so long recordings are not reviewed card by card; Export menu gets 'Download corrected .txt' (from GET /api/sessions/:id/transcript/corrected) only when at least one fix is accepted; Copy / Download .txt / .srt keep using the original transcript.
 
 Recording indicator:
 - Red dot: 10px circle, var(--status-failed) bg, pulse animation
@@ -701,7 +704,7 @@ Status badge colors (uploading, transcribing, completed, failed) must remain dis
 - client/src/theme.tsx — ThemeProvider, ThemeToggle, useTheme hook
 - client/src/main.tsx — ThemeProvider mounting point
 - client/index.html — Inline SVG favicon with necron dark background and gauss green text
-- client/src/components/TranscriptView.tsx — Transcript display, export dropdown with copy/download options; includes the ChronoRing local component for transcription ETA countdown.
+- client/src/components/TranscriptView.tsx — Transcript display, export dropdown with copy/download options, AUG-163 correction diff cards and 'Download corrected .txt'; includes the ChronoRing local component for transcription ETA countdown.
 - client/src/components/FileUpload.tsx — Circuit-node radial layout for recording and upload controls
 - client/src/components/OverlayLayer.tsx — edge triggers, backdrop, left/right overlay panels and the bottom pin bar (AUG-154)
 - client/src/components/ControlsPanel.tsx — right overlay list and the only app menu: New session, Settings, Archive, API Keys, Diagnostics, desktop-only update item, with active-item highlight (AUG-154, AUG-160)

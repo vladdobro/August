@@ -8,13 +8,14 @@ import * as sessionManager from '../services/sessionManager.js';
 import { transcribe, ensureWav, boostAudio, checkFfmpegAvailable, getAudioDuration, WhisperError, cancelTranscription, beginTranscriptionJob, isTranscribing, FFMPEG_MISSING_MESSAGE, fileExists } from '../services/whisper.js';
 import { mergeSingleStreamDetailed, mergeDualStreamDetailed, renderTranscript, alignDualSegments, alignedDualDuration, describeTrackMismatch } from '../services/transcriptMerger.js';
 import { readPreferences } from '../services/preferencesStore.js';
-import { computeConfidence } from '../services/confidenceScore.js';
+import { runSemanticPass } from '../services/semanticCheck.js';
+import { applyCorrections, clearCorrections, readCorrections, setAllPendingStatus, setCorrectionStatus, writeCorrections } from '../services/transcriptCorrections.js';
 import { recordCompletion, getEstimatedDuration } from '../services/performanceTracker.js';
 import { getModelStatus } from '../services/modelDownloader.js';
 import { consumeCapture, hasCapture, CaptureError } from '../services/systemCapture.js';
 import { downloadFromUrl, UrlDownloadError } from '../services/urlDownloader.js';
 import { isPlatformUrl, probePlatformVideo, downloadPlatformAudio, YtDlpError, YTDLP_MISSING_MESSAGE, INFO_JSON_NAME } from '../services/ytDlp.js';
-import type { SessionMetadata, SessionStatus, TranscriptionLanguage } from '../types.js';
+import type { CorrectionStatus, SessionMetadata, SessionStatus, TranscriptionLanguage } from '../types.js';
 
 const router = Router();
 
@@ -121,11 +122,18 @@ async function runTranscription(sessionId: string, audioPath: string, language: 
     const startedAt = session?.createdAt ?? new Date().toISOString();
     const duration = utterances.length > 0 ? utterances[utterances.length - 1].end : 0;
     const audioSec = session?.duration && session.duration > 0 ? session.duration : duration;
-    const confidence = computeConfidence({ tracks: [segments], dropped: merged.dropped, audioDurationSec: audioSec });
+    const { confidence, corrections, model: semanticModel } = await runSemanticPass({
+      sessionId, tracks: [segments], utterances, dropped: merged.dropped, audioDurationSec: audioSec, language, isCancelled,
+    });
+    if (isCancelled()) return;
     console.log(`[session ${sessionId}] confidence ${confidence.score}% (${confidence.detail.source}, coverage ${confidence.detail.coverage}, lowLogProb ${confidence.detail.lowLogProbShare}, dropped ${confidence.detail.dropped}/${confidence.detail.segments})`);
 
     const transcript = renderTranscript(utterances, startedAt, duration);
+    await clearCorrections(sessionId);
     await sessionManager.writeTranscript(sessionId, transcript);
+    if (corrections && corrections.length > 0) {
+      await writeCorrections(sessionId, { version: 1, createdAt: new Date().toISOString(), model: semanticModel, items: corrections });
+    }
 
     await sessionManager.updateSession(sessionId, {
       status: 'completed',
@@ -189,11 +197,18 @@ async function runDualTranscription(
     const audioDuration = tracks ? alignedDualDuration(tracks.mic, tracks.system, systemOffsetMs) : 0;
     const lastEnd = utterances.length > 0 ? Math.max(...utterances.map((u) => u.end)) : 0;
     const duration = Math.max(audioDuration, lastEnd);
-    const confidence = computeConfidence({ tracks: [aligned.mic, aligned.system], dropped: merged.dropped, audioDurationSec: duration });
+    const { confidence, corrections, model: semanticModel } = await runSemanticPass({
+      sessionId, tracks: [aligned.mic, aligned.system], utterances, dropped: merged.dropped, audioDurationSec: duration, language, isCancelled,
+    });
+    if (isCancelled()) return;
     console.log(`[session ${sessionId}] confidence ${confidence.score}% (${confidence.detail.source}, coverage ${confidence.detail.coverage}, lowLogProb ${confidence.detail.lowLogProbShare}, dropped ${confidence.detail.dropped}/${confidence.detail.segments})`);
 
     const transcript = renderTranscript(utterances, startedAt, duration);
+    await clearCorrections(sessionId);
     await sessionManager.writeTranscript(sessionId, transcript);
+    if (corrections && corrections.length > 0) {
+      await writeCorrections(sessionId, { version: 1, createdAt: new Date().toISOString(), model: semanticModel, items: corrections });
+    }
 
     await sessionManager.updateSession(sessionId, {
       status: 'completed',
@@ -306,6 +321,77 @@ router.get('/:id/transcript', async (req, res) => {
     return;
   }
   res.type('text/markdown').send(transcript);
+});
+
+// GET /api/sessions/:id/transcript/corrected (AUG-163): original transcript with the accepted meaning fixes applied
+router.get('/:id/transcript/corrected', async (req, res) => {
+  const session = await sessionManager.getSession(req.params.id);
+  if (!session) {
+    res.status(404).json({ error: 'Session not found' });
+    return;
+  }
+  const transcript = await sessionManager.getTranscript(req.params.id);
+  if (transcript === null) {
+    res.status(404).json({ error: 'Transcript not available yet' });
+    return;
+  }
+  const file = await readCorrections(req.params.id);
+  res.type('text/markdown').send(applyCorrections(transcript, file?.items ?? []));
+});
+
+// GET /api/sessions/:id/corrections (AUG-163)
+router.get('/:id/corrections', async (req, res) => {
+  const session = await sessionManager.getSession(req.params.id);
+  if (!session) {
+    res.status(404).json({ error: 'Session not found' });
+    return;
+  }
+  const file = await readCorrections(req.params.id);
+  res.json(file ?? { items: [], model: null });
+});
+
+// POST /api/sessions/:id/corrections/bulk body { status: 'accepted' | 'rejected' } (AUG-163): decide every pending fix at once
+router.post('/:id/corrections/bulk', async (req, res) => {
+  const session = await sessionManager.getSession(req.params.id);
+  if (!session) {
+    res.status(404).json({ error: 'Session not found' });
+    return;
+  }
+  const status = req.body?.status as CorrectionStatus | undefined;
+  if (status !== 'accepted' && status !== 'rejected') {
+    res.status(400).json({ error: 'status must be accepted or rejected' });
+    return;
+  }
+  const file = await setAllPendingStatus(req.params.id, status);
+  if (!file) {
+    res.status(404).json({ error: 'No corrections' });
+    return;
+  }
+  res.json(file);
+});
+
+// POST /api/sessions/:id/corrections/:itemId body { status } (AUG-163): accept / reject / undo one suggested fix
+router.post('/:id/corrections/:itemId', async (req, res) => {
+  const session = await sessionManager.getSession(req.params.id);
+  if (!session) {
+    res.status(404).json({ error: 'Session not found' });
+    return;
+  }
+  const status = req.body?.status as CorrectionStatus | undefined;
+  if (status !== 'accepted' && status !== 'rejected' && status !== 'pending') {
+    res.status(400).json({ error: 'status must be accepted, rejected or pending' });
+    return;
+  }
+  if (!/^\d+$/.test(req.params.itemId)) {
+    res.status(400).json({ error: 'itemId must be a non-negative integer' });
+    return;
+  }
+  const file = await setCorrectionStatus(req.params.id, Number(req.params.itemId), status);
+  if (!file) {
+    res.status(404).json({ error: 'Correction not found' });
+    return;
+  }
+  res.json(file);
 });
 
 // DELETE /api/sessions/:id

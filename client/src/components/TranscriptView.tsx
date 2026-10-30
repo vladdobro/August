@@ -1,5 +1,6 @@
 import React, { useMemo, useState, useRef, useEffect } from 'react';
-import type { SessionMetadata } from '../types';
+import type { CorrectionItem, CorrectionStatus, SessionMetadata } from '../types';
+import { fetchCorrectedTranscript, fetchCorrections, setAllCorrectionsStatus, setCorrectionStatus } from '../api';
 import PraxisModal from './PraxisModal';
 import ConfidenceBadge from './ConfidenceBadge';
 import type { PraxisProject } from '../services/preferences';
@@ -42,6 +43,59 @@ function parseTranscript(markdown: string): ParsedLine[] {
   }
 
   return result;
+}
+
+interface DiffPart { text: string; changed: boolean; }
+
+/// AUG-163: mirror of server applyItemsToText — each accepted fix replaces the first occurrence of its segment text.
+function applyItemsToText(text: string, items: CorrectionItem[]): string {
+  let out = text;
+  for (const item of items) {
+    if (item.status !== 'accepted' || !item.original) continue;
+    const at = out.indexOf(item.original);
+    if (at < 0) continue;
+    out = out.slice(0, at) + item.suggested + out.slice(at + item.original.length);
+  }
+  return out;
+}
+
+/// AUG-163: word-level diff (LCS over whitespace-split tokens). `oldParts` marks removed tokens, `newParts` inserted ones.
+function diffWords(a: string, b: string): { oldParts: DiffPart[]; newParts: DiffPart[] } {
+  const x = a.split(/\s+/).filter(Boolean);
+  const y = b.split(/\s+/).filter(Boolean);
+  const dp: number[][] = Array.from({ length: x.length + 1 }, () => new Array<number>(y.length + 1).fill(0));
+  for (let i = x.length - 1; i >= 0; i--) {
+    for (let j = y.length - 1; j >= 0; j--) {
+      dp[i][j] = x[i] === y[j] ? dp[i + 1][j + 1] + 1 : Math.max(dp[i + 1][j], dp[i][j + 1]);
+    }
+  }
+  const oldParts: DiffPart[] = [];
+  const newParts: DiffPart[] = [];
+  let i = 0;
+  let j = 0;
+  while (i < x.length && j < y.length) {
+    if (x[i] === y[j]) {
+      oldParts.push({ text: x[i], changed: false });
+      newParts.push({ text: y[j], changed: false });
+      i++; j++;
+    } else if (dp[i + 1][j] >= dp[i][j + 1]) {
+      oldParts.push({ text: x[i++], changed: true });
+    } else {
+      newParts.push({ text: y[j++], changed: true });
+    }
+  }
+  while (i < x.length) oldParts.push({ text: x[i++], changed: true });
+  while (j < y.length) newParts.push({ text: y[j++], changed: true });
+  return { oldParts, newParts };
+}
+
+function renderDiffParts(parts: DiffPart[], tag: 'del' | 'ins'): React.ReactNode[] {
+  return parts.map((p, i) => {
+    const sep = i > 0 ? ' ' : '';
+    return p.changed
+      ? <React.Fragment key={i}>{sep}{tag === 'del' ? <del className="correction-del">{p.text}</del> : <ins className="correction-ins">{p.text}</ins>}</React.Fragment>
+      : <React.Fragment key={i}>{sep}{p.text}</React.Fragment>;
+  });
 }
 
 function formatDuration(seconds: number): string {
@@ -285,6 +339,8 @@ const TranscriptView: React.FC<TranscriptViewProps> = ({ session, transcript, on
   const failedMenuRef = useRef<HTMLDivElement>(null);
   const [showPraxisModal, setShowPraxisModal] = useState(false);
   const [redownloading, setRedownloading] = useState(false);
+  const [corrections, setCorrections] = useState<CorrectionItem[]>([]);
+  const [correctionBusy, setCorrectionBusy] = useState<number | null>(null);
   const audioDeleted = !!session.audioDeletedAt;
 
   useEffect(() => {
@@ -363,6 +419,64 @@ const TranscriptView: React.FC<TranscriptViewProps> = ({ session, transcript, on
   };
 
   const parsedLines = useMemo(() => parseTranscript(transcript), [transcript]);
+
+  // AUG-163: suggested meaning fixes, keyed by utterance index (k-th timestamp line).
+  useEffect(() => {
+    if (session.status !== 'completed') { setCorrections([]); return; }
+    let alive = true;
+    fetchCorrections(session.id)
+      .then((file) => { if (alive) setCorrections(file.items); })
+      .catch(() => { if (alive) setCorrections([]); });
+    return () => { alive = false; };
+  }, [session.id, session.status, transcript]);
+
+  const correctionsByIndex = useMemo(() => {
+    const map = new Map<number, CorrectionItem[]>();
+    for (const c of corrections) map.set(c.index, [...(map.get(c.index) ?? []), c]);
+    return map;
+  }, [corrections]);
+  const hasAcceptedCorrection = corrections.some((c) => c.status === 'accepted');
+  const pendingCount = corrections.filter((c) => c.status === 'pending').length;
+  const utteranceIndexByLine = useMemo(() => {
+    let k = -1;
+    return parsedLines.map((l) => (l.timestamp ? ++k : -1));
+  }, [parsedLines]);
+
+  const handleCorrection = async (item: CorrectionItem, status: CorrectionStatus) => {
+    if (correctionBusy !== null) return;
+    setCorrectionBusy(item.id);
+    try {
+      const file = await setCorrectionStatus(session.id, item.id, status);
+      setCorrections(file.items);
+    } catch {
+      // keep the current state; the user can retry
+    } finally {
+      setCorrectionBusy(null);
+    }
+  };
+
+  const handleAcceptAll = async () => {
+    if (correctionBusy !== null) return;
+    setCorrectionBusy(-1);
+    try {
+      setCorrections((await setAllCorrectionsStatus(session.id, 'accepted')).items);
+    } catch {
+      // keep the current state; the user can retry
+    } finally {
+      setCorrectionBusy(null);
+    }
+  };
+
+  const handleDownloadCorrectedTxt = async () => {
+    setDropdownOpen(false);
+    try {
+      const md = await fetchCorrectedTranscript(session.id);
+      const safeName = session.title.replace(/[^a-zA-Z0-9_\- ]/g, '').trim() || 'transcript';
+      downloadFile(generateTxtWithTimestamps(parseTranscript(md)), `${safeName}-corrected.txt`, 'text/plain');
+    } catch {
+      // download failed; nothing to show
+    }
+  };
 
   const showFeedback = (text: string) => {
     setFeedbackText(text);
@@ -502,6 +616,9 @@ const TranscriptView: React.FC<TranscriptViewProps> = ({ session, transcript, on
                     <div className="export-menu-divider" />
                     <button type="button" className="export-menu-item export-menu-item--3" onClick={handleDownloadTxt}>Download .txt</button>
                     <button type="button" className="export-menu-item export-menu-item--4" onClick={handleDownloadSrt}>Download .srt</button>
+                    {hasAcceptedCorrection && (
+                      <button type="button" className="export-menu-item export-menu-item--4" onClick={handleDownloadCorrectedTxt}>Download corrected .txt</button>
+                    )}
                     <div className="export-menu-divider" />
                     <button type="button" className="export-menu-item export-menu-item--5 export-menu-item--praxis" onClick={handleSendToPraxis}>Send to Praxis</button>
                   </div>
@@ -716,16 +833,56 @@ const TranscriptView: React.FC<TranscriptViewProps> = ({ session, transcript, on
 
         {session.status === 'completed' && (
           <div className="transcript-lines">
+            {pendingCount > 0 && (
+              <div className="corrections-bar" role="status">
+                <span className="corrections-bar-text">{pendingCount === 1 ? '1 suggested fix' : `${pendingCount} suggested fixes`}</span>
+                <button type="button" className="correction-btn correction-btn--accept" disabled={correctionBusy !== null} onClick={handleAcceptAll}>Accept all</button>
+              </div>
+            )}
             {parsedLines.length === 0 && (
               <p className="transcript-empty">No speech was detected in this recording.</p>
             )}
-            {parsedLines.map((line, index) => (
-              <div className="transcript-line" key={index}>
-                {line.timestamp && <span className="transcript-timestamp">{line.timestamp}</span>}
-                {line.role && <span className={`transcript-role transcript-role-${line.role.toLowerCase()}`}>{line.role}</span>}
-                <span className="transcript-text">{line.text}</span>
-              </div>
-            ))}
+            {parsedLines.map((line, index) => {
+              // A fix targets one flagged segment inside the line (single-track lines merge many segments).
+              const lineItems = (utteranceIndexByLine[index] >= 0 ? correctionsByIndex.get(utteranceIndexByLine[index]) : undefined)
+                ?.filter((c) => line.text.includes(c.original)) ?? [];
+              const shownText = applyItemsToText(line.text, lineItems);
+              return (
+                <React.Fragment key={index}>
+                  <div className="transcript-line">
+                    {line.timestamp && <span className="transcript-timestamp">{line.timestamp}</span>}
+                    {line.role && <span className={`transcript-role transcript-role-${line.role.toLowerCase()}`}>{line.role}</span>}
+                    <span className="transcript-text">{shownText}</span>
+                  </div>
+                  {lineItems.map((item) => {
+                    const busy = correctionBusy === item.id || correctionBusy === -1;
+                    if (item.status !== 'pending') {
+                      return (
+                        <div className="correction-state" key={item.id}>
+                          {item.status === 'accepted' ? 'Fix accepted' : 'Fix rejected'} &middot;{' '}
+                          <button type="button" className="correction-undo" disabled={busy} onClick={() => handleCorrection(item, 'pending')}>Undo</button>
+                        </div>
+                      );
+                    }
+                    const diff = diffWords(item.original, item.suggested);
+                    return (
+                      <div className="correction-card" key={item.id}>
+                        <div className="correction-diff">
+                          <span className="correction-label">Was</span>
+                          <span className="correction-old">{renderDiffParts(diff.oldParts, 'del')}</span>
+                          <span className="correction-label">Now</span>
+                          <span className="correction-new">{renderDiffParts(diff.newParts, 'ins')}</span>
+                        </div>
+                        <div className="correction-actions">
+                          <button type="button" className="correction-btn correction-btn--accept" disabled={busy} onClick={() => handleCorrection(item, 'accepted')}>Accept</button>
+                          <button type="button" className="correction-btn" disabled={busy} onClick={() => handleCorrection(item, 'rejected')}>Reject</button>
+                        </div>
+                      </div>
+                    );
+                  })}
+                </React.Fragment>
+              );
+            })}
           </div>
         )}
       </div>

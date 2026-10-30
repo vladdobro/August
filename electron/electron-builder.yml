@@ -27,6 +27,7 @@ files:
   - "!server/dist/**/*.map"
   - "!server/dist/**/*.test.js"
   - server/tools/**/*
+  - server/assets/**/*
   - server/node_modules/**/*
   - "!server/node_modules/{typescript,tsx,vitest,@vitest,vite,vite-node,esbuild,@esbuild,rollup,@rollup,@types,get-tsconfig,resolve-pkg-maps,fsevents,tinypool,tinybench,chai}/**"
   - "!server/node_modules/**/*.{ts,map,md,markdown}"

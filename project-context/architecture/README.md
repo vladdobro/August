@@ -6,8 +6,9 @@
 - Local language model (AUG-162): server/src/services/llmServer.ts starts llama-server on 127.0.0.1 with a free port on the first request, stops it after 10 idle minutes (LLM_IDLE_SHUTDOWN_MINUTES) and kills it when the server stops; /api/llm/* (models, status, enable, disable, download, progress SSE, test) drives it and server/src/services/llmClient.ts is the provider-agnostic OpenAI-compatible chat/completions client (logprobs supported) to be reused for Groq.
 - Sessions are stored as folders on disk for the MVP — no PostgreSQL yet, no auth yet.
 - Session CRUD includes create, list, get, delete, and rename (PATCH title update) via the REST API; the Archive page (AUG-150) adds GET /api/sessions/storage (disk usage), DELETE /api/sessions/:id/audio (strip audio, keep transcript) and POST /api/sessions/:id/redownload.
-- Also known as: Archive page, storage usage, disk usage, delete audio, free space, session cleanup, re-download audio (AUG-150), auto-delete WAV, confidence score, automatic cleanup (AUG-152), local language model, local LLM, llama-server, llm client (AUG-162).
+- Also known as: Archive page, storage usage, disk usage, delete audio, free space, session cleanup, re-download audio (AUG-150), auto-delete WAV, confidence score, automatic cleanup (AUG-152), local language model, local LLM, llama-server, llm client (AUG-162), transcript.corrected.json, corrected transcript, batch semantic pass (AUG-163).
 - session.json carries confidenceScore (0–100), confidenceDetail and wavAutoDeletedAt; GET /api/sessions/storage entries gain wavAutoDeleted and files[] gain auto: true for WAVs removed by the confidence rule (AUG-152).
+- Session folder (AUG-163): transcript.corrected.json holds the local model's meaning-fix suggestions and the user's accept/reject decisions; transcript.corrected.md is transcript.md with only the accepted fixes applied, regenerated on every decision; transcript.md is never modified by corrections; both files count as kind 'transcript' in GET /api/sessions/storage and are removed when a retranscription writes a new transcript.
 - Transcription runs as a background child process; the client polls session status every 5 seconds.
 - Dev mode: server on port 3001 redirects non-API requests to Vite dev server on port 5173; open 5173 for the latest UI.
 - Production mode: server serves the built client from client/dist via express.static; the Electron shell runs this mode on a free port.
@@ -55,9 +56,10 @@ Give any agent working on the codebase a map of the client/server split, how a s
 - confidenceScore (component): part of the August server; computes the 0–100 transcription confidence that the sessions route stores and the auto-delete rule compares against the threshold (AUG-152).
 - ArchivePage (component): part of the August client; page that uses the storage, delete-audio and redownload endpoints (AUG-150).
 - llmServer (component): part of the August server; owns the llama-server child process lifecycle (AUG-162).
-- llmClient (component): part of the August server; used by llmServer callers for OpenAI-compatible chat/completions (AUG-162).
+- llmClient (component): part of the August server; used by llmServer callers and semanticCheck for OpenAI-compatible chat/completions and raw /completions with an optional llama.cpp GBNF grammar (AUG-162, AUG-163).
 - llmInstaller (component): part of the August server; llmServer depends on it for installed binaries and models (AUG-162).
 - llm route (component): part of the August server; depends on llmServer and llmInstaller (AUG-162).
+- semanticCheck (component): part of the August server; depends on llmServer and whisper.withBatchSlot (AUG-163).
 
 ## Invariants
 
@@ -177,6 +179,7 @@ Give any agent working on the codebase a map of the client/server split, how a s
 - Readiness is GET /health returning 200 within 180 s; a slower start fails.
 - Candidate order: CUDA or Metal with -ngl 99 first, then CPU with -ngl 0 when the GPU start exits before ready (retried once).
 - withLocalLlm(fn) is the entry point for later features: it ensures the server, builds the llmClient and re-arms the idle timer.
+- Batch semantic pass (AUG-163): semanticCheck.runSemanticPass holds the whisper batch slot (whisper.withBatchSlot) while it runs perplexity and corrections through withLocalLlm, so the local model never overlaps the next queued whisper-cli job on the GPU; llama-server runs with one slot (-np 1), so requests are sequential.
 - The idle timer stops llama-server after LLM_IDLE_SHUTDOWN_MINUTES = 10 and never fires while withLocalLlm() calls are in flight.
 - Everything is gated by llmEnabled === true in user-preferences.json, read on each use; with it off nothing downloads and llama-server never spawns.
 - Stop triggers: idle timeout, disable, model change, /engine/switch, DELETE /api/preferences, server close, process exit, and SIGINT/SIGTERM in the CLI entry.
@@ -217,10 +220,11 @@ Give any agent working on the codebase a map of the client/server split, how a s
 - server/src/app.ts — startServer(): Express app, route wiring, orphaned llama-server cleanup, HTTP+WebSocket listen, background CUDA → whisper model → local LLM download chain, returns the bound port; close() stops llama-server first.
 - server/src/index.ts — CLI entry; calls startServer(), exits on failure, and kills llama-server on SIGINT/SIGTERM.
 - server/src/services/llmServer.ts — ensureLlmServer, withLocalLlm, stopLlmServer, killLlmServerSync, cleanupOrphanedLlmServer, idle timer (AUG-162).
-- server/src/services/llmClient.ts — createLlmClient, buildChatCompletionBody, parseChatCompletionResponse, LlmClientError (AUG-162).
+- server/src/services/llmClient.ts — createLlmClient (chat, complete), buildChatCompletionBody, parseChatCompletionResponse, LlmClientError (AUG-162, AUG-163).
 - server/src/routes/llm.ts — /api/llm models, status, enable, disable, download, progress (SSE), test (AUG-162).
 - client/src/services/llm.ts — size formatting, progress SSE subscription, Diagnostics node state (AUG-162).
 - server/src/services/whisper.ts — whisper-cli child_process invocation (runWhisper) and JSON output parsing.
+- server/assets/wordlists/ — en.txt / ru.txt frequency word lists for textStats OOV, shipped via electron-builder files `server/assets/**/*` (AUG-163).
 - server/src/services/transcriptMerger.ts — filtering, dedup, and join logic that turns raw segments into a transcript.
 - server/src/services/confidenceScore.ts — computeConfidence: 0–100 confidence from whisper segment probabilities, merger drops and audio coverage (AUG-152).
 - server/src/services/sessionManager.ts — session folder lifecycle (create, read, update status), isValidSessionId, AUDIO_FILE_PATTERN, listStorage/getSessionStorage, deleteSessionAudio (AUG-150) and autoDeleteDerivedWavs (AUG-152).

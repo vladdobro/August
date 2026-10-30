@@ -620,6 +620,25 @@ export function avgLogProbFromTokens(tokens: Array<{ text: string; p: number }> 
   return n > 0 ? sum / n : undefined;
 }
 
+/// AUG-163: p of each non-special token in order (same filtering as avgLogProbFromTokens), clamped to [1e-9, 1].
+export function tokenProbsFromTokens(tokens: Array<{ text: string; p: number }> | undefined): number[] | undefined {
+  if (!tokens || tokens.length === 0) return undefined;
+  const probs: number[] = [];
+  for (const token of tokens) {
+    if (typeof token.p !== 'number' || !Number.isFinite(token.p)) continue;
+    if (SPECIAL_TOKEN.test(token.text ?? '')) continue;
+    probs.push(Math.min(1, Math.max(1e-9, token.p)));
+  }
+  return probs.length > 0 ? probs : undefined;
+}
+
+/// AUG-163: runs `fn` while holding the shared batch slot, so the post-whisper semantic pass (local LLM) never overlaps
+/// the next queued whisper-cli job on the GPU.
+export async function withBatchSlot<T>(fn: () => Promise<T>): Promise<T> {
+  const release = await acquireBatchSlot();
+  try { return await fn(); } finally { release(); }
+}
+
 /// Runs whisper-cli against `audioPath` and returns the parsed, per-segment
 /// transcript with numeric start/end times in seconds and (when whisper
 /// reports it) each segment's no_speech_prob. GPU mode comes from
@@ -656,6 +675,7 @@ export async function transcribe(
       // is normally undefined — see the runWhisper() doc comment above.
       noSpeechProb: entry.no_speech_prob,
       avgLogProb: typeof entry.avg_logprob === 'number' ? entry.avg_logprob : avgLogProbFromTokens(entry.tokens),
+      tokenProbs: tokenProbsFromTokens(entry.tokens),
     }));
   } finally {
     release();

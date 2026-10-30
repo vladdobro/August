@@ -45,6 +45,67 @@ export interface ConfidenceDetail {
   coverage: number;
   lowLogProbShare: number;
   noSpeechBase: number;
+  // AUG-163: the acoustic score before the semantic penalty; diagnostics only, never shown in the UI.
+  acousticScore?: number;
+  // AUG-163: text-statistics and perplexity findings; diagnostics only, never shown in the UI.
+  semantic?: SemanticDetail;
+}
+
+/// AUG-163: why a segment was marked by the semantic check (textStats.ts / semanticCheck.ts).
+export type SemanticFlag = 'loop' | 'oov' | 'stopwords' | 'script' | 'rate' | 'token-dip' | 'perplexity';
+
+export interface SemanticSegmentDetail {
+  track: number; // index into ConfidenceInput.tracks (0 = single / mic, 1 = system)
+  index: number; // segment index within that track
+  start: number;
+  end: number;
+  flags: SemanticFlag[];
+  compressionRatio: number;
+  oovRatio: number | null; // null when too few words to judge
+  stopWordRatio: number | null;
+  wordsPerSec: number | null;
+  tokenDips: number;
+  perplexity?: number;
+}
+
+export interface PerplexitySummary {
+  model: string;
+  medianPpl: number;
+  k: number;
+  scored: number;
+  skipped: number;
+  ms: number;
+}
+
+export interface SemanticDetail {
+  penalty: number; // points subtracted from the acoustic score (>= 0)
+  textFlaggedShare: number; // duration share of segments with any text flag
+  pplFlaggedShare: number; // duration share of segments flagged only by perplexity
+  loops: number; // segments flagged 'loop' (fixed per-segment penalty: loops are short in time but ruin the text)
+  pplCeilingHit: boolean; // session median PPL above SEMANTIC.pplMedianCeiling (whole-session wrong-language / salad decode)
+  perplexity?: PerplexitySummary;
+  perplexityError?: string;
+  segments: SemanticSegmentDetail[]; // ONLY flagged segments, rounded to 3 decimals
+}
+
+export type CorrectionStatus = 'pending' | 'accepted' | 'rejected';
+
+/// AUG-163: one suggested meaning fix for a merged utterance; the original transcript is never changed.
+export interface CorrectionItem {
+  id: number; // unique within the file; one line can carry several fixes
+  index: number; // utterance index = k-th timestamp line of transcript.md
+  start: number; // start of the flagged whisper segment
+  role: string | null;
+  original: string; // the flagged segment's text, found verbatim inside the line (single-track lines merge many segments)
+  suggested: string;
+  status: CorrectionStatus;
+}
+
+export interface CorrectionsFile {
+  version: 1;
+  createdAt: string;
+  model: string | null;
+  items: CorrectionItem[];
 }
 
 export type SessionSource = 'recording' | 'upload' | 'link' | 'platform';
@@ -60,6 +121,7 @@ export interface TranscriptSegment {
   noSpeechProb?: number;
   // mean ln(token p) over the segment's non-special tokens (AUG-152), or whisper's avg_logprob when exported
   avgLogProb?: number;
+  tokenProbs?: number[]; // AUG-163: p of each non-special token, in order
 }
 
 export interface WhisperJsonOutput {

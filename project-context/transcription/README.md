@@ -35,10 +35,13 @@
 - HTML responses from a pasted link are rejected with "This link is not a direct media file — download it and upload the file instead."
 - The 2 GB size cap applies to URL downloads via Content-Length pre-check and streaming byte count; stall timeout is 60 seconds.
 - After every batch transcription the server computes confidenceScore (0–100) in server/src/services/confidenceScore.ts from whisper's per-segment signals and stores it with a confidenceDetail breakdown in session.json (AUG-152).
-- Confidence formula: 100 × duration-weighted (1 − no_speech_prob) base (neutral 1.0 on whisper-cli 1.8.4, which does not export it), minus 40 × duration share of segments with avg_logprob < −1.0, minus min(30, 100 × merger drop ratio), minus 30 × coverage shortfall below 50 % of the audio length; an empty transcript scores 0 (AUG-152).
+- Confidence formula: acousticScore = 100 × duration-weighted (1 − no_speech_prob) base (neutral 1.0 on whisper-cli 1.8.4), minus 40 × duration share of segments with avg_logprob < −1.0, minus min(30, 100 × merger drop ratio), minus 30 × coverage shortfall below 50 %; then the semantic term (AUG-163) subtracts min(50, 40 × duration share of text-flagged segments + 30 × share flagged only by perplexity + min(30, 15 × loop segments) + 25 when the session median perplexity > 600); the semantic term only lowers the score (score ≤ acousticScore), so the auto-delete WAV rule never gets more aggressive; an empty transcript scores 0 (AUG-152, AUG-163).
+- Semantic layer 1 (always on, AUG-163): server/src/services/textStats.ts flags each raw whisper segment for loop (zlib compression ratio > 2.4, or a near-duplicate of the previous segment whose joined ratio > 2.4), oov (> 45 % of ≥ 5 words missing from the bundled en/ru top-50K lists), stopwords (function-word share outside 8–80 % on ≥ 8 words), script (≥ 60 % letters in the other alphabet when the session language is ru or en), rate (> 6.5 words/s, or < 0.4 words/s on segments ≥ 10 s) and token-dip (≥ 2 tokens with p < 0.05 and ln p 2.5 below their ±3 neighbours, ≥ 10 % of tokens).
+- Semantic layer 2 (only when the local language model is on and downloaded, AUG-163): semanticCheck.scorePerplexity scores every segment of ≥ 3 words in the same batch slot right after whisper, with the two previous segments of the same track as prefix; segments with PPL > 4 × the session median (≥ 5 scored) are flagged; 240 s time budget, the rest is skipped.
+- Meaning corrections (AUG-163): with the Settings → Transcription checkbox llmCorrections on, every flagged segment found verbatim inside a transcript line is sent to the local model (temperature 0, 'fix only misheard words, add/remove/reorder nothing, return unchanged if unsure'); suggestions that add words or differ by more than 40 % (character similarity < 0.6) are discarded; max 40 per session, 180 s budget; results go to transcript.corrected.json, transcript.md is never written.
 - avg_logprob is rebuilt in transcribe() as the mean ln(p) of a segment's non-special tokens from --output-json-full; neither whisper-cli 1.8.4 nor upstream whisper.cpp master writes segment-level no_speech_prob / avg_logprob to JSON, so the binary is not patched and the no-speech term stays neutral until a build exports it (AUG-152).
 - With the Settings → Transcription toggle "Delete audio.wav after transcription" on and confidenceScore ≥ the threshold (50–95, default 70), sessionManager.autoDeleteDerivedWavs removes only converted WAVs that have a non-WAV source beside them; source files and server-captured audio-system.wav are never auto-deleted, and ensureWav rebuilds the WAV on retranscription (AUG-152).
-- Also known as: video upload, MP4/MOV transcription, audio extraction from video (AUG-144), client-side no-audio pre-check, video audio track detection (AUG-146), preparing phase, async extraction (AUG-147), URL transcription, paste link, link download, from-url endpoint (AUG-148), YouTube transcription, video-site link, platform URL, yt-dlp (AUG-149), audio deleted, re-download audio (AUG-150), confidence score, transcription quality score, confidenceScore, auto-delete WAV, wavAutoDeletedAt (AUG-152).
+- Also known as: video upload, MP4/MOV transcription, audio extraction from video (AUG-144), client-side no-audio pre-check, video audio track detection (AUG-146), preparing phase, async extraction (AUG-147), URL transcription, paste link, link download, from-url endpoint (AUG-148), YouTube transcription, video-site link, platform URL, yt-dlp (AUG-149), audio deleted, re-download audio (AUG-150), confidence score, transcription quality score, confidenceScore, auto-delete WAV, wavAutoDeletedAt (AUG-152), semantic confidence, text statistics, perplexity, loop detection, wrong-language decode, meaning corrections, transcript.corrected.json, Accept fix (AUG-163).
 - For WAV uploads, estimatedDuration is computed synchronously in the endpoint; for non-WAV uploads, prepareAndTranscribe sets it after background extraction before starting whisper (AUG-147).
 - Orphaned sessions stuck in "transcribing" or "preparing" with no active process are auto-recovered to "failed" on server startup.
 - Live transcription mode streams real-time audio chunks over WebSocket to whisper-cli or Groq Whisper API (opt-in) — see child route live-transcription/.
@@ -47,7 +50,7 @@
 - Live phantom [Me] lines ("Okay.") are prevented by a frame-based speech gate plus Silero VAD on live local chunks (AUG-127; root cause AUG-126).
 - Live repeated fragments come from the 1 s chunk overlap being decoded twice with no overlap dedup (AUG-126).
 - With --vad, whisper.cpp stretches segment end times across skipped silence, so batch segment ends are unreliable (AUG-126).
-- whisper-cli 1.8.4 JSON lacks no_speech_prob, so the merger no-speech gate is a no-op; token-level p is available and feeds the confidence score (AUG-126, AUG-152).
+- whisper-cli 1.8.4 JSON lacks no_speech_prob, so the merger no-speech gate is a no-op; token-level p is available and feeds the confidence score (AUG-126, AUG-152); the per-token p array is now kept on each segment as tokenProbs for the token-dip check (AUG-163).
 
 This route governs how audio becomes a transcript: the whisper.cpp CLI wrapper, the TranscriptMerger cleanup pass, URL download, and the session states in between.
 
@@ -64,9 +67,11 @@ Document the exact mechanics of turning a recorded or uploaded audio file into a
 - Transcript header lines are exactly "- Date:" and "- Duration:"; renderTranscript takes no offset parameter.
 - The former "- Track offset: ±N ms" header (AUG-108) was removed as a user-facing technical detail; existing transcript.md files keep it until retranscribed.
 - Dual-stream merge: mergeDualStream takes mic and system segments, tags them with roles (Me/Them), sorts chronologically, then applies the same dedup/join pipeline — joinAdjacentSameRole only joins segments with matching roles.
-- Confidence score: server/src/services/confidenceScore.ts computeConfidence({ tracks, dropped, audioDurationSec }) runs in runTranscription and runDualTranscription right after the merge, before status flips to completed; dual-track passes both aligned tracks and the real call length (AUG-152).
+- Confidence score: runTranscription and runDualTranscription call semanticCheck.runSemanticPass({ tracks, utterances, dropped, audioDurationSec, language }) right after the merge, before status flips to completed; it calls computeConfidence({ tracks, dropped, audioDurationSec, language, perplexity }) and, when the local model is ready, runs perplexity and optional corrections inside withBatchSlot + withLocalLlm; any local-model failure falls back to the text-statistics score with detail.semantic.perplexityError set, and never fails the session (AUG-152, AUG-163).
 - Merger drop count: mergeSingleStreamDetailed / mergeDualStreamDetailed return { utterances, dropped } where dropped = raw segments − segments kept by dedupHallucinations (filler, blacklist, repeats, no-speech gate); mergeSingleStream / mergeDualStream stay as wrappers (AUG-152).
-- confidenceDetail { source: 'no-speech-prob' | 'token-logprob' | 'coverage-only', segments, dropped, coverage, lowLogProbShare, noSpeechBase } is a diagnostic kept in session.json and the server log only, never rendered in the UI (AUG-152).
+- confidenceDetail { source, segments, dropped, coverage, lowLogProbShare, noSpeechBase, acousticScore, semantic { penalty, textFlaggedShare, pplFlaggedShare, loops, pplCeilingHit, perplexity { model, medianPpl, k, scored, skipped, ms }, perplexityError, segments[] (flagged only: track, index, start, end, flags, compressionRatio, oovRatio, stopWordRatio, wordsPerSec, tokenDips, perplexity) } } is a diagnostic kept in session.json and the server log only, never rendered in the UI (AUG-152, AUG-163).
+- Perplexity method (AUG-163): llama-server does not echo prompt logprobs, so the segment is forced as the continuation of POST /v1/completions with a GBNF grammar `root ::= " <segment text>"`, temperature 0, logprobs 1; the raw logprob of each forced token is read back; the prompt must not end with a space (the literal starts with one) and the final empty-token entry (forced end, ≈ −16) is dropped.
+- Corrections file: transcript.corrected.json = { version: 1, createdAt, model, items: [{ id, index (k-th timestamp line), start, role, original (the flagged segment text), suggested, status: pending | accepted | rejected }] }; POST /api/sessions/:id/corrections/:itemId { status } updates one item and rewrites transcript.corrected.md (transcript.md with accepted items applied: each replaces the first occurrence of its original inside its line); POST /api/sessions/:id/corrections/bulk { status: accepted | rejected } decides every pending item in one write (Accept all; registered before the :itemId route); GET /api/sessions/:id/corrections and GET /api/sessions/:id/transcript/corrected read them; both files are deleted when a new transcript is written (retranscription) (AUG-163).
 - Process tracking: whisper.ts maintains a Map<string, ChildProcess[]> keyed by session ID. whisper-cli, ffmpeg (ensureWav), ffprobe (assertVideoHasAudio) and yt-dlp (via trackChildProcess, AUG-149) child processes are all registered under the session key and deregistered when they exit.
 - Dual-track tracks run sequentially, so at most one batch whisper-cli process is registered and running at a time.
 - Batch slot: transcribe() acquires a process-wide promise-chain slot in whisper.ts, so two sessions or two tracks never run GPU-backed whisper-cli concurrently.
@@ -112,8 +117,11 @@ Document the exact mechanics of turning a recorded or uploaded audio file into a
 ## Components
 
 - confidenceScore (component): part of the August server; computes confidenceScore from whisper segment probabilities and TranscriptMerger drop counts (AUG-152).
-- sessions route (component): depends on confidenceScore and on sessionManager.autoDeleteDerivedWavs after each batch transcription (AUG-152).
+- sessions route (component): depends on semanticCheck, confidenceScore, transcriptCorrections and sessionManager.autoDeleteDerivedWavs after each batch transcription (AUG-152, AUG-163).
 - TranscriptMerger (component): part of the August server; mergeSingleStreamDetailed / mergeDualStreamDetailed report the drop count that confidenceScore uses (AUG-152).
+- textStats (component): part of the August server; used by confidenceScore for the always-on semantic flags (AUG-163).
+- semanticCheck (component): part of the August server; depends on llmServer (withLocalLlm), llmClient (complete, chat), confidenceScore and whisper.withBatchSlot (AUG-163).
+- transcriptCorrections (component): part of the August server; used by the sessions route to read and write transcript.corrected.json / .md (AUG-163).
 
 ## Invariants
 
@@ -129,7 +137,7 @@ Document the exact mechanics of turning a recorded or uploaded audio file into a
 - DEDUP_WINDOW = 30.0 seconds — near-duplicate text within this window is collapsed to one segment.
 - NO_SPEECH_PROB_THRESHOLD = 0.6 — segments at or above this whisper.cpp no-speech probability are dropped.
 - The no-speech gate drops a segment only when no_speech_prob is high AND the text is blacklisted; in practice it is a no-op because whisper-cli 1.8.4 JSON has no such field (re-verified for AUG-152, upstream master included).
-- confidenceScore and confidenceDetail are reset to undefined when a retranscription starts and recomputed on completion, so a failed re-run never shows a stale score (AUG-152).
+- confidenceScore and confidenceDetail are reset to undefined when a retranscription starts and recomputed on completion, so a failed re-run never shows a stale score (AUG-152), and retranscription deletes transcript.corrected.json / .md when the new transcript is written (AUG-163).
 - Auto-deletion runs only after transcript.md is written and the boosted WAVs are removed; its errors are logged and never fail the session (AUG-152).
 - Auto-deletion skips -boosted / -partial WAVs and any WAV without a same-basename non-WAV sibling, so a direct .wav upload and server-captured audio-system.wav always survive (AUG-152).
 - Auto-deleted files are recorded in session.audioDeletedFiles with auto: true and session.wavAutoDeletedAt is set; audioDeletedAt stays unset, so Redo stays enabled and findAudioFiles picks the remaining source (AUG-152).
@@ -227,12 +235,18 @@ Document the exact mechanics of turning a recorded or uploaded audio file into a
 - Never parse titles or file paths from yt-dlp stdout. On Windows the PyInstaller build writes stdout in the ANSI codepage (cp1251) even with PYTHONIOENCODING=utf-8 (verified in AUG-149). Metadata comes from the UTF-8 ytdlp-info.info.json file, and only the extension is printed (AUGEXT).
 - yt-dlp only downloads audio. Transcription stays local whisper, and neither the URL nor the audio goes to any transcription service. Downloading from video sites may conflict with their terms of service (e.g. YouTube's); the caveat is documented in README.md.
 - Do not patch or rebuild whisper-cli to export no_speech_prob / avg_logprob: Windows CPU and CUDA builds are pinned prebuilt release zips and macOS builds the same tag from source; the confidence score must keep working from token p (AUG-152).
-- CONFIDENCE weights (40 / 30 / 30, logprob floor −1.0, coverage floor 0.5) live in server/src/services/confidenceScore.ts; re-tune only against known audio and keep the computation server-side (AUG-152).
+- CONFIDENCE weights (40 / 30 / 30, logprob floor −1.0, coverage floor 0.5) and SEMANTIC weights (40 / 30 / 15 per loop max 30 / 25 above median PPL 600, cap 50) live in server/src/services/confidenceScore.ts; re-tune only against known audio and keep the computation server-side (AUG-152, AUG-163).
+- SEMANTIC (confidenceScore.ts), TEXT_STATS (textStats.ts), PERPLEXITY and CORRECTIONS (semanticCheck.ts) constants are frozen with 'do not retune without re-validating'; validation on reference audio (AUG-163, Qwen2.5-3B): clean ru 100 → 93, ru audio decoded as en 91 → 63, synthetic loop 100 → 78, junk mic recording 100 → 78.
+- Known false positives (AUG-163): proper names and game/brand terms raise the OOV and perplexity flags on clean speech (≈ −7 points on a clean ru clip); the 3B model's meaning fixes are often wrong (e.g. names 'corrected'), which is why every fix is a suggestion that needs Accept.
 - Auto-deletion must never remove a source file (audio.webm/.m4a/.mp4, audio-mic.webm, audio-system.wav, a direct .wav upload); only derived WAVs with a non-WAV sibling qualify (AUG-152).
 
 ## Key files
 
-- server/src/services/confidenceScore.ts — computeConfidence and the CONFIDENCE weights (AUG-152).
+- server/src/services/confidenceScore.ts — computeConfidence, CONFIDENCE and SEMANTIC weights (AUG-152, AUG-163).
+- server/src/services/textStats.ts — per-segment text statistics and TEXT_STATS thresholds (AUG-163).
+- server/src/services/semanticCheck.ts — runSemanticPass, scorePerplexity, buildCorrectionTargets, suggestCorrections, acceptSuggestion (AUG-163).
+- server/src/services/transcriptCorrections.ts — applyCorrections / applyItemsToText and the corrections files (AUG-163).
+- server/src/scripts/semanticValidate.ts — before/after score validation on a WAV (AUG-163).
 - server/src/services/whisper.ts — runWhisper (single whisper-cli invocation), flags, JSON parsing, avgLogProbFromTokens (AUG-152), ffmpeg helpers.
 - server/src/routes/sessions.ts — session API endpoints including upload and retranscribe.
 - server/src/services/mediaFormats.ts — accepted upload extensions, video detection, ffprobe audio-stream classification and video error messages.
@@ -258,3 +272,7 @@ Directory Path: project-context/transcription/whisper-setup/
 ### Phantom Lines Research
 AUG-126 research: root causes of phantom mic lines and repeated phrases, filter coverage per path, and ranked fixes.
 Directory Path: project-context/transcription/phantom-lines-research/
+
+### Semantic Confidence Research
+AUG-161 research behind AUG-163: why confidenceScore was blind to text meaning, local and cloud options with costs; L1/L2 text statistics and L4 perplexity are implemented (AUG-163).
+Directory Path: project-context/transcription/semantic-confidence-research/

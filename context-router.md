@@ -38,6 +38,7 @@ Match your task keywords to the routes you need to read:
 | whisper, transcription, speech-to-text, audio processing, transcript merging, hallucination filtering | Transcription |
 | live transcription, real-time transcript, WebSocket audio, live recording mode, chunked whisper | Transcription > Live Transcription |
 | whisper setup, npm run setup, whisper binary, model download, macOS, Windows, multiplatform, Metal GPU, ffmpeg install | Transcription > Whisper Setup |
+| confidence score, semantic confidence, transcript quality, text coherence, perplexity, post-processing, ASR error correction, Groq free tier | Transcription > Semantic Confidence Research |
 | UI design, colors, theme, dark mode, light mode, CSS, styling, brandbook, emerald, jade | Frontend Design |
 | preferences, settings, user defaults, auto-save, mic device, language selection, recording mode | Preferences |
 | Electron, desktop app, installer, dmg, msi, tray, global hotkey, native notifications, auto-update, code signing, electron-builder | Desktop Shell |

@@ -31,6 +31,7 @@ const ALLOWED_KEYS = new Set([
   'gpuEngine',
   'autoDeleteWav',
   'autoDeleteWavThreshold',
+  'llmCorrections',
   'compactEnabled',
   'compactMode',
   'compactIndicatorWidget',
@@ -71,6 +72,9 @@ router.patch('/', async (req, res) => {
   }
   if ('autoDeleteWav' in patch) {
     patch.autoDeleteWav = patch.autoDeleteWav === true;
+  }
+  if ('llmCorrections' in patch) {
+    patch.llmCorrections = patch.llmCorrections === true;
   }
   if ('autoDeleteWavThreshold' in patch) {
     const n = Number(patch.autoDeleteWavThreshold);

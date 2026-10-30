@@ -181,6 +181,7 @@ const SettingsModal: React.FC<SettingsModalProps> = ({
   const skipClearConfirmation = preferences.skipClearConfirmation ?? DEFAULT_PREFERENCES.skipClearConfirmation;
   const autoDeleteWav = preferences.autoDeleteWav ?? DEFAULT_PREFERENCES.autoDeleteWav;
   const autoDeleteWavThreshold = preferences.autoDeleteWavThreshold ?? DEFAULT_PREFERENCES.autoDeleteWavThreshold;
+  const llmCorrections = preferences.llmCorrections ?? DEFAULT_PREFERENCES.llmCorrections;
   const [thresholdDraft, setThresholdDraft] = useState<number>(autoDeleteWavThreshold);
   useEffect(() => { setThresholdDraft(autoDeleteWavThreshold); }, [autoDeleteWavThreshold]);
   const commitThreshold = () => { if (thresholdDraft !== autoDeleteWavThreshold) onPreferenceChange({ autoDeleteWavThreshold: thresholdDraft }); };
@@ -523,6 +524,18 @@ const SettingsModal: React.FC<SettingsModalProps> = ({
                       <span className="settings-toggle-label">{toggleOn ? 'On' : 'Off'}</span>
                     </label>
                   </div>
+                  {llmStatus.enabled && (
+                    <>
+                      <div className="settings-row">
+                        <span className="settings-label">Allow the model to correct text by meaning</span>
+                        <label className="settings-toggle">
+                          <input type="checkbox" checked={llmCorrections} onChange={(e) => onPreferenceChange({ llmCorrections: e.target.checked })} />
+                          <span className="settings-toggle-label">{llmCorrections ? 'On' : 'Off'}</span>
+                        </label>
+                      </div>
+                      <div className="settings-hint">Suspicious lines get a suggested fix after transcription. The original transcript is never changed — you accept or reject each fix.</div>
+                    </>
+                  )}
                   <div className="settings-row">
                     <label className="settings-label">Model</label>
                     <SettingsDropdown

@@ -191,7 +191,7 @@ export async function getSessionStorage(session: SessionMetadata): Promise<Sessi
     }
     let kind: StorageFileKind = 'other';
     if (AUDIO_FILE_PATTERN.test(entry.name)) kind = 'audio';
-    else if (entry.name === TRANSCRIPT_FILE) kind = 'transcript';
+    else if (entry.name === TRANSCRIPT_FILE || entry.name === 'transcript.corrected.md' || entry.name === 'transcript.corrected.json') kind = 'transcript';
     else if (entry.name === SESSION_FILE) kind = 'meta';
     files.push({ name: entry.name, bytes, kind });
   }

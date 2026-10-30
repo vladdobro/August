@@ -133,3 +133,23 @@ export interface LlmStatus {
   download: LlmDownloadStatus;
   location: LlmLocation;
 }
+
+/// AUG-163: suggested meaning fixes for a transcript (server: transcript.corrected.json). The original is never changed.
+export type CorrectionStatus = 'pending' | 'accepted' | 'rejected';
+
+export interface CorrectionItem {
+  id: number; // unique within the file; one line can carry several fixes
+  index: number; // utterance index = k-th timestamp line of the transcript
+  start: number;
+  role: string | null;
+  original: string; // flagged segment text, found verbatim inside the line
+  suggested: string;
+  status: CorrectionStatus;
+}
+
+export interface CorrectionsFile {
+  version: 1;
+  createdAt: string;
+  model: string | null;
+  items: CorrectionItem[];
+}

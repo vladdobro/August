@@ -1,4 +1,4 @@
-import type { CaptureCapabilities, HealthStatus, LlmModelId, LlmModelInfo, LlmStatus, ModelSetupStatus, ServerCapture, SessionMetadata, StorageSummary, TranscriptionLanguage } from './types';
+import type { CaptureCapabilities, CorrectionStatus, CorrectionsFile, HealthStatus, LlmModelId, LlmModelInfo, LlmStatus, ModelSetupStatus, ServerCapture, SessionMetadata, StorageSummary, TranscriptionLanguage } from './types';
 
 export interface UploadProgress {
   loaded: number;
@@ -91,6 +91,33 @@ export async function fetchSessions(): Promise<SessionMetadata[]> {
 export async function fetchSession(id: string): Promise<SessionMetadata> {
   const res = await fetch(`${API_BASE}/sessions/${id}`);
   return handleJsonResponse<SessionMetadata>(res);
+}
+
+/// AUG-163: suggested meaning fixes; a session without any returns an empty list.
+export async function fetchCorrections(id: string): Promise<CorrectionsFile> {
+  const res = await fetch(`${API_BASE}/sessions/${id}/corrections`);
+  if (res.status === 404) return { version: 1, createdAt: '', model: null, items: [] };
+  return handleJsonResponse<CorrectionsFile>(res);
+}
+
+export async function setCorrectionStatus(id: string, itemId: number, status: CorrectionStatus): Promise<CorrectionsFile> {
+  const res = await fetch(`${API_BASE}/sessions/${id}/corrections/${itemId}`, {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({ status }),
+  });
+  return handleJsonResponse<CorrectionsFile>(res);
+}
+
+export async function setAllCorrectionsStatus(id: string, status: 'accepted' | 'rejected'): Promise<CorrectionsFile> {
+  const res = await fetch(`${API_BASE}/sessions/${id}/corrections/bulk`, { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ status }) });
+  return handleJsonResponse<CorrectionsFile>(res);
+}
+
+export async function fetchCorrectedTranscript(id: string): Promise<string> {
+  const res = await fetch(`${API_BASE}/sessions/${id}/transcript/corrected`);
+  if (!res.ok) throw new Error(`Failed to load corrected transcript (status ${res.status})`);
+  return res.text();
 }
 
 export async function fetchTranscript(id: string): Promise<string> {
