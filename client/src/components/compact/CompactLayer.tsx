@@ -244,6 +244,9 @@ const CompactLayer: React.FC<CompactLayerProps> = (props) => {
       captureLost: s.captureLost,
       elapsedSeconds: phaseRef.current === 'done' ? lastElapsedRef.current : s.elapsedSeconds,
       skipStopConfirmation: s.skipStopConfirmation,
+      actionItems: s.actionItems,
+      participants: s.participants,
+      actionEnabled: s.actionEnabled,
     };
   }, [kind]);
 
@@ -259,6 +262,13 @@ const CompactLayer: React.FC<CompactLayerProps> = (props) => {
         if (state) channel.postMessage({ type: 'state', state } satisfies GhostMessage);
       } else if (msg.type === 'command') {
         runGhostCommand(msg.command);
+      } else if (msg.type === 'action') {
+        const a = compactStore.actions();
+        switch (msg.action.kind) {
+          case 'add': a?.addActionItem(msg.action.text, msg.action.owner); break;
+          case 'edit': a?.editActionItem(msg.action.id, msg.action.patch); break;
+          case 'delete': a?.deleteActionItem(msg.action.id); break;
+        }
       }
     };
     return () => {

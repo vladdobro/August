@@ -7,9 +7,11 @@
 - Groq text client (AUG-164): server/src/services/groqText.ts calls Groq openai/gpt-oss-20b through llmClient, free tier only, with its own 30 RPM / 6,000 TPM limiter separate from whisper's 20 RPM; any limit, 429 or error is skipped with a log line, never shown to the user and never upgraded to a paid tier. It runs only after the user's consent (/api/groq-text).
 - Sessions are stored as folders on disk for the MVP — no PostgreSQL yet, no auth yet.
 - Session CRUD includes create, list, get, delete, and rename (PATCH title update) via the REST API; the Archive page (AUG-150) adds GET /api/sessions/storage (disk usage), DELETE /api/sessions/:id/audio (strip audio, keep transcript) and POST /api/sessions/:id/redownload.
-- Also known as: Archive page, storage usage, disk usage, delete audio, free space, session cleanup, re-download audio (AUG-150), auto-delete WAV, confidence score, automatic cleanup (AUG-152), local language model, local LLM, llama-server, llm client (AUG-162), Groq text client, groqText, online text correction, createGroqTextClient, Groq batch corrections, resolveCorrectionEngine, batchCorrectionEngine (AUG-164), transcript.corrected.json, corrected transcript, batch semantic pass (AUG-163).
+- Also known as: Archive page, storage usage, disk usage, delete audio, free space, session cleanup, re-download audio (AUG-150), auto-delete WAV, confidence score, automatic cleanup (AUG-152), local language model, local LLM, llama-server, llm client (AUG-162), Groq text client, groqText, online text correction, createGroqTextClient, Groq batch corrections, resolveCorrectionEngine, batchCorrectionEngine (AUG-164), transcript.corrected.json, corrected transcript, batch semantic pass (AUG-163), action items, action-items.json, participants, liveKey, live-action-items (AUG-165).
 - session.json carries confidenceScore (0–100), confidenceDetail and wavAutoDeletedAt; GET /api/sessions/storage entries gain wavAutoDeleted and files[] gain auto: true for WAVs removed by the confidence rule (AUG-152).
 - Session folder (AUG-163): transcript.corrected.json holds the local model's meaning-fix suggestions and the user's accept/reject decisions; transcript.corrected.md is transcript.md with only the accepted fixes applied, regenerated on every decision; transcript.md is never modified by corrections; both files count as kind 'transcript' in GET /api/sessions/storage and are removed when a retranscription writes a new transcript.
+- Session folder (AUG-165): action-items.json holds the live action items {version, participants {me, them}, items [{id, text, owner, source, createdAt, locked?}], updatedAt}; it is written during the live recording to <data>/live-action-items/<liveKey>.json and moved into the session folder by POST /api/sessions/upload (form field liveKey), which also stores participants {me, them} in session.json.
+- action-items.json counts as kind 'other', not 'transcript', in GET /api/sessions/storage (AUG-165).
 - Transcription runs as a background child process; the client polls session status every 5 seconds.
 - Dev mode: server on port 3001 redirects non-API requests to Vite dev server on port 5173; open 5173 for the latest UI.
 - Production mode: server serves the built client from client/dist via express.static; the Electron shell runs this mode on a free port.
@@ -64,11 +66,12 @@ Give any agent working on the codebase a map of the client/server split, how a s
 - groqText route (component): part of the August server; depends on groqText (AUG-164).
 - liveTextCorrection (component): part of the August server; depends on groqText; used by liveTranscription (AUG-164).
 - semanticCheck (component): part of the August server; depends on llmServer and whisper.withBatchSlot (AUG-163) and on groqText for Groq batch corrections (AUG-164).
+- liveActionItems (component): part of the August server; depends on groqText; depends on llmServer; used by liveTranscription and the sessions route (AUG-165).
 
 ## Invariants
 
-- All AI inference runs locally — speech-to-text via whisper.cpp and the opt-in language model via llama-server (AUG-162) — except where the user explicitly opts into Groq (live whisper engine; Online text correction after consent, AUG-164), always on the free tier.
-- Every session is stored as a folder (audio file + session.json + transcript.md, plus optional transcript.corrected.json / transcript.corrected.md from AUG-163 meaning corrections) — never a database row for the MVP.
+- All AI inference runs locally — speech-to-text via whisper.cpp and the opt-in language model via llama-server (AUG-162) — except where the user explicitly opts into Groq (live whisper engine; Online text correction and live action items after consent, AUG-164, AUG-165), always on the free tier.
+- Every session is stored as a folder (audio file + session.json + transcript.md, plus optional transcript.corrected.json / transcript.corrected.md from AUG-163 meaning corrections, plus optional action-items.json from live recordings (AUG-165)) — never a database row for the MVP.
 - Transcription always runs in the background (child process) — the API responds immediately and the client polls for status, never blocking on transcription.
 - FileUpload must never be unmounted while recording is active — MediaRecorder and AudioContext state lives in React refs and is destroyed on unmount.
 - App.tsx lifts `isRecording` from FileUpload via `onRecordingChange` callback to keep FileUpload mounted (hidden via display:none) when navigating to diagnostics or other views.
@@ -115,6 +118,7 @@ Give any agent working on the codebase a map of the client/server split, how a s
 - Windows probe order is the pure function resolveWindowsMethod(WindowsProbeInput) in systemCapture.ts (ffmpeg → helper status → dshow device → none); tests feed it fake inputs so the order is verified on any platform.
 - WASAPI capabilities hint names the default output device, sample rate, channels and format; the helper exe path lives in ResolvedCapabilities.wasapi and is stripped by stripInternal, never sent to the client.
 - Self-test 'silent' for wasapi-loopback means nothing was playing through the default output during the 1 s window; the helper follows the device that was default when the capture started.
+- A 'failed' self-test is retried once after 1 s inside the same probe (logged as "[capture] self-test failed, retrying once"): under app-start load the first byte can miss the 3 s start window once, which used to pin every recording to the screen picker.
 - npm run capture:check on Windows prints the WASAPI helper compile/probe status and the probe JSON before the method and self-test lines.
 - Verified on the dev PC (Bluetooth headphones default, no Stereo Mix, no VB-Cable): method wasapi-loopback, selfTest ok while playing and silent otherwise, a 5 s tone / 5 s silence / 5 s tone capture gives a 16.3 s WAV with 5 s at -91 dB, ffprobe within 78 ms of durationMs, RIFF and data sizes matching the file size.
 - Capture capability results are cached for 30 seconds; pass ?refresh=1 to force a re-probe.
@@ -216,6 +220,7 @@ Give any agent working on the codebase a map of the client/server split, how a s
 - server/src/routes/groqText.ts mounts GET /api/groq-text/status, POST /enable and POST /disable; consent rules live in project-context/preferences/README.md.
 - groqTextState() is active only while groqTextEnabled is true, a key is set and the consent fingerprint matches the current key.
 - Live usage: LiveTextCorrector (liveTextCorrection.ts) is created per WebSocket connection only when isGroqTextActive() at connect time; details live in project-context/transcription/live-transcription/README.md.
+- Live action items (AUG-165): liveActionItems.ts keeps one store per liveKey (refcounted across reconnects), persists every change atomically (tmp + rename), deletes pending files older than 7 days, and exposes GET /api/sessions/:id/action-items, PATCH /api/sessions/:id/action-items/:itemId {text?, owner?} (edited fields become locked) and DELETE /api/sessions/:id/action-items/:itemId with per-session serialized writes; extraction/dedup details live in project-context/transcription/live-transcription/README.md.
 - Batch corrections on Groq (AUG-164): semanticCheck.resolveCorrectionEngine picks who fixes flagged lines — the local model needs llmCorrections, Groq needs Online text correction with a valid consent; both on → preference batchCorrectionEngine ('local' default); neither → no corrections.
 - On Groq, the AUG-163 suggestCorrections runs unchanged (same prompt, same acceptSuggestion guard, transcript.corrected.json, Accept/Reject diff UI) with createGroqTextClient({ waitForBudgetMs: 60_000 }) as its LlmClient; the corrections file records model 'groq/openai/gpt-oss-20b'.
 - createGroqTextClient (groqText.ts) wraps every Groq text request in the free-tier limiter: over budget, a 429 or any failure is logged as skipped and thrown as GroqTextSkipError, so only that line is dropped; after a 429 the rest of that client's calls are skipped; complete() always throws (perplexity scoring stays local).
@@ -252,6 +257,7 @@ Give any agent working on the codebase a map of the client/server split, how a s
 - client/src/services/llm.ts — size formatting, progress SSE subscription, Diagnostics node state (AUG-162).
 - server/src/services/groqText.ts — Groq openai/gpt-oss-20b text client: TextRateLimiter, correctSegments, acceptCorrection guard, groqTextState (AUG-164); createGroqTextClient, GroqTextSkipError (AUG-164).
 - server/src/services/liveTextCorrection.ts — LiveTextCorrector: periodic correction of settled live chunks via groqText (AUG-164).
+- server/src/services/liveActionItems.ts — live action items: store per liveKey, gate, Groq extraction, local dedup, session attach and REST helpers (AUG-165).
 - server/src/routes/groqText.ts — GET /api/groq-text/status, POST /enable, POST /disable consent endpoints (AUG-164).
 - client/src/components/GroqTextConsentModal.tsx — consent modal for the Online text correction toggle (AUG-164).
 - server/src/services/whisper.ts — whisper-cli child_process invocation (runWhisper) and JSON output parsing.
@@ -287,7 +293,7 @@ No Agentation MCP server or backend scripts are configured — only the frontend
 
 ## Route-Specific Constraints
 
-- Do not introduce a third-party transcription or AI API call anywhere in this stack — all inference must go through whisper-cli or the local llama-server (AUG-162); the Groq free tier is the only cloud exception and stays opt-in: live whisper engine and Online text correction (consent required, AUG-164); never a paid tier.
+- Do not introduce a third-party transcription or AI API call anywhere in this stack — all inference must go through whisper-cli or the local llama-server (AUG-162); the Groq free tier is the only cloud exception and stays opt-in: live whisper engine and Online text correction including live action items (consent required, AUG-164, AUG-165); never a paid tier.
 - Do not assume a database exists — session persistence is file-based until PostgreSQL is introduced (see project-context/roadmap/README.md).
 - Do not assume authenticated requests — no auth is implemented yet; all endpoints are open for the MVP.
 - Detailed transcription pipeline rules (whisper flags, TranscriptMerger constants, session lifecycle states) live in project-context/transcription/README.md, not here.

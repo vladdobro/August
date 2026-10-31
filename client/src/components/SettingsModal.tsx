@@ -685,7 +685,7 @@ const SettingsModal: React.FC<SettingsModalProps> = ({
                     <span className="settings-toggle-label">{groqText.enabled ? 'On' : 'Off'}</span>
                   </label>
                 </div>
-                <div className="settings-hint">Fixes live transcript lines a few seconds after they appear. After a recording, doubtful lines get a suggested fix to accept or reject; the original transcript is never changed.</div>
+                <div className="settings-hint">Fixes live transcript lines a few seconds after they appear and collects live action items. After a recording, doubtful lines get a suggested fix to accept or reject; the original transcript is never changed.</div>
                 {groqText.enabled && llmStatus?.enabled && llmCorrections && (
                   <div className="settings-row">
                     <label className="settings-label">Fixes after recording by</label>

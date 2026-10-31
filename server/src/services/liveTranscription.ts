@@ -20,6 +20,8 @@
 // stored in preferences), each transcript frame carries an id and a
 // LiveTextCorrector pushes { type: 'correction', id, text } frames for settled
 // chunks; still nothing is persisted.
+//
+// AUG-165: with an action-items-init frame (liveKey per recording) the connection joins that recording's action-items store; when online text correction is active a LiveActionItemsExtractor collects items. Items and participants are persisted (pending file -> session folder on upload); live text still is not.
 
 import { randomUUID } from 'node:crypto';
 import type { Server as HttpServer } from 'node:http';
@@ -35,6 +37,8 @@ import { attachLiveSink, CaptureError, type LiveSinkHandle } from './systemCaptu
 import { LivePcmFeeder, parseLiveControlFrame, SAMPLE_RATE } from './liveChunking.js';
 import { isGroqTextActive } from './groqText.js';
 import { LiveTextCorrector } from './liveTextCorrection.js';
+import { openLiveActionItems, releaseLiveActionItems, LiveActionItemsExtractor, type LiveActionItemsStore } from './liveActionItems.js';
+import type { ActionItemsFile } from '../types.js';
 
 type Speaker = 'Me' | 'Them';
 
@@ -164,12 +168,37 @@ export function setupLiveTranscription(server: HttpServer): void {
       }
     };
 
+    // AUG-165: action items of this recording (shared store per liveKey) and their extractor.
+    let groqTextActive: boolean | null = null;
+    let actionKey: string | null = null;
+    let actionStore: LiveActionItemsStore | null = null;
+    let actionExtractor: LiveActionItemsExtractor | null = null;
+    let unsubscribeActions: (() => void) | null = null;
+    const sendActionItems = (file: ActionItemsFile) => send({ type: 'action-items', enabled: groqTextActive === true, participants: file.participants, items: file.items });
+    const maybeStartExtractor = () => {
+      if (stopped || !actionStore || groqTextActive !== true || actionExtractor) return;
+      actionExtractor = new LiveActionItemsExtractor(actionStore);
+      actionExtractor.start();
+    };
+    const stopActionItems = () => {
+      actionExtractor?.stop(); actionExtractor = null;
+      unsubscribeActions?.(); unsubscribeActions = null;
+      if (actionStore) { releaseLiveActionItems(actionStore.liveKey); actionStore = null; }
+    };
+
     let corrector: LiveTextCorrector | null = null;
     void isGroqTextActive().then((active) => {
-      if (!active || stopped) return;
-      corrector = new LiveTextCorrector((id, text) => send({ type: 'correction', id, text }));
-      corrector.start();
-    }).catch(() => {});
+      groqTextActive = active;
+      if (active && !stopped) {
+        corrector = new LiveTextCorrector((id, text) => { send({ type: 'correction', id, text }); actionExtractor?.noteCorrection(id, text); });
+        corrector.start();
+      }
+      maybeStartExtractor();
+      if (actionStore) sendActionItems(actionStore.file);
+    }).catch(() => {
+      groqTextActive = false;
+      if (actionStore) sendActionItems(actionStore.file);
+    });
     const stopCorrector = () => {
       corrector?.stop();
       corrector = null;
@@ -228,6 +257,7 @@ export function setupLiveTranscription(server: HttpServer): void {
               const id = randomUUID();
               send({ type: 'transcript', id, speaker: chunk.speaker, text: cleaned });
               corrector?.add(id, cleaned);
+              actionExtractor?.addTranscript(id, chunk.speaker, cleaned);
             }
           }
         } catch (err) {
@@ -239,6 +269,7 @@ export function setupLiveTranscription(server: HttpServer): void {
             });
             stopped = true;
             stopCorrector();
+            stopActionItems();
           }
         } finally {
           fs.unlink(wavPath).catch(() => {});
@@ -300,6 +331,7 @@ export function setupLiveTranscription(server: HttpServer): void {
           queue.length = 0;
           detachCapture();
           stopCorrector();
+          stopActionItems();
           break;
         case 'pause':
           paused = true;
@@ -314,6 +346,29 @@ export function setupLiveTranscription(server: HttpServer): void {
         case 'attach-capture':
           attachCapture(frame.captureId, frame.language);
           break;
+        case 'action-items-init':
+          if (actionKey) break; // one store per connection
+          actionKey = frame.liveKey;
+          void openLiveActionItems(frame.liveKey).then((store) => {
+            if (stopped) { releaseLiveActionItems(frame.liveKey); return; }
+            actionStore = store;
+            if (frame.participants) store.setParticipants(frame.participants);
+            unsubscribeActions = store.subscribe(sendActionItems);
+            maybeStartExtractor();
+          }).catch((err) => console.warn(`[actionItems] could not open store: ${(err as Error).message}`));
+          break;
+        case 'participants':
+          actionStore?.setParticipants({ me: frame.me, them: frame.them });
+          break;
+        case 'action-item-edit':
+          actionStore?.editItem(frame.id, { text: frame.text, owner: frame.owner });
+          break;
+        case 'action-item-delete':
+          actionStore?.removeItem(frame.id);
+          break;
+        case 'action-item-add':
+          actionStore?.addManualItem({ text: frame.text, owner: frame.owner });
+          break;
       }
     });
 
@@ -322,6 +377,7 @@ export function setupLiveTranscription(server: HttpServer): void {
       queue.length = 0;
       detachCapture();
       stopCorrector();
+      stopActionItems();
     });
   });
 }

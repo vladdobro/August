@@ -52,6 +52,7 @@ const SELF_TEST_MIN_DURATION_SEC = 0.5;
 // Windows in AUG-111), so the self-test waits for the first byte before it
 // starts counting its 1 s window; otherwise it would stop before any audio.
 const SELF_TEST_FIRST_BYTE_TIMEOUT_MS = 3_000;
+const SELF_TEST_RETRY_DELAY_MS = 1_000;
 export const SELF_TEST_SILENCE_MEAN_DB = -60;
 const STDERR_EXCERPT_CHARS = 400;
 
@@ -541,7 +542,14 @@ async function probeMethod(): Promise<ResolvedCapabilities> {
 async function probeCapabilities(): Promise<ResolvedCapabilities> {
   const caps = await probeMethod();
   if (!caps.systemCapture || caps.method === 'none') return caps;
-  const result = await runSelfTest(caps.method, { deviceIndex: caps.deviceIndex, deviceName: caps.deviceName, wasapi: caps.wasapi }, caps.sampleFormat);
+  const target = { deviceIndex: caps.deviceIndex, deviceName: caps.deviceName, wasapi: caps.wasapi };
+  let result = await runSelfTest(caps.method, target, caps.sampleFormat);
+  if (result.selfTest === 'failed') {
+    // A cold device or a busy machine (app start) can miss the start window once; one retry avoids a sticky fallback to the screen picker.
+    console.warn(`[capture] self-test failed, retrying once: ${result.selfTestDetail}`);
+    await delay(SELF_TEST_RETRY_DELAY_MS, undefined);
+    result = await runSelfTest(caps.method, target, caps.sampleFormat);
+  }
   return { ...caps, ...result };
 }
 

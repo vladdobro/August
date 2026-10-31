@@ -27,6 +27,7 @@ export interface SessionMetadata {
   audioDeletedFiles?: Array<{ name: string; bytes: number; auto?: boolean }>;
   confidenceScore?: number; // AUG-152: 0–100 transcription confidence
   wavAutoDeletedAt?: string; // AUG-152: converted WAV removed automatically; source audio kept
+  participants?: { me: string; them: string }; // AUG-165: names for Me / Them entered at live recording start
 }
 
 export type SessionSource = 'recording' | 'upload' | 'link' | 'platform';
@@ -163,3 +164,18 @@ export interface CorrectionsFile {
   model: string | null;
   items: CorrectionItem[];
 }
+
+// AUG-165: live action items
+export type ActionItemSource = 'Me' | 'Them';
+export interface ActionItemLock { text?: true; owner?: true }
+export interface ActionItem {
+  id: string; // stable, server-assigned: `ai_` + 8 hex
+  text: string; // <= 300 chars
+  owner: string; // 'Me' | 'Them' | free text name ('' = unassigned); 'Me'/'Them' are shown as participant names
+  source: ActionItemSource; // who said it
+  createdAt: string; // ISO
+  locked?: ActionItemLock; // fields edited by the user - no model operation may change/remove them
+  manual?: true; // AUG-165: added by the user by hand; always fully locked
+}
+export interface Participants { me: string; them: string }
+export interface ActionItemsFile { version: 1; participants: Participants; items: ActionItem[]; updatedAt: string }

@@ -15,6 +15,7 @@ import { getModelStatus } from '../services/modelDownloader.js';
 import { consumeCapture, hasCapture, CaptureError } from '../services/systemCapture.js';
 import { downloadFromUrl, UrlDownloadError } from '../services/urlDownloader.js';
 import { isPlatformUrl, probePlatformVideo, downloadPlatformAudio, YtDlpError, YTDLP_MISSING_MESSAGE, INFO_JSON_NAME } from '../services/ytDlp.js';
+import { attachLiveActionItemsToSession, readSessionActionItems, mutateSessionActionItems, applyUserEdit, createManualItem, isValidLiveKey } from '../services/liveActionItems.js';
 import type { CorrectionStatus, SessionMetadata, SessionStatus, TranscriptionLanguage } from '../types.js';
 
 const router = Router();
@@ -394,6 +395,84 @@ router.post('/:id/corrections/:itemId', async (req, res) => {
   res.json(file);
 });
 
+const ACTION_ITEM_ID_RE = /^[A-Za-z0-9_-]{1,64}$/;
+
+// GET /api/sessions/:id/action-items (AUG-165)
+router.get('/:id/action-items', async (req, res) => {
+  const session = await sessionManager.getSession(req.params.id);
+  if (!session) {
+    res.status(404).json({ error: 'Session not found' });
+    return;
+  }
+  const file = await readSessionActionItems(req.params.id);
+  if (!file) {
+    res.status(404).json({ error: 'No action items' });
+    return;
+  }
+  res.json(file);
+});
+
+// PATCH /api/sessions/:id/action-items/:itemId body { text?, owner? } (AUG-165): user edit; edited fields become locked
+router.patch('/:id/action-items/:itemId', async (req, res) => {
+  const { itemId } = req.params;
+  if (!ACTION_ITEM_ID_RE.test(itemId)) {
+    res.status(400).json({ error: 'Invalid item id' });
+    return;
+  }
+  const session = await sessionManager.getSession(req.params.id);
+  if (!session) {
+    res.status(404).json({ error: 'Session not found' });
+    return;
+  }
+  const file = await mutateSessionActionItems(req.params.id, (items) => applyUserEdit(items, itemId, { text: req.body?.text, owner: req.body?.owner }));
+  if (!file) {
+    res.status(404).json({ error: 'No action items' });
+    return;
+  }
+  res.json(file);
+});
+
+// POST /api/sessions/:id/action-items body { text, owner? } (AUG-165): hand-written item, fully locked; creates the file when the session has none
+router.post('/:id/action-items', async (req, res) => {
+  const session = await sessionManager.getSession(req.params.id);
+  if (!session) {
+    res.status(404).json({ error: 'Session not found' });
+    return;
+  }
+  const item = createManualItem(req.body ?? {});
+  if (!item) {
+    res.status(400).json({ error: 'Text is required' });
+    return;
+  }
+  const file = await mutateSessionActionItems(req.params.id, (items) => { items.push(item); return true; }, { createIfMissing: true });
+  res.status(201).json(file);
+});
+
+// DELETE /api/sessions/:id/action-items/:itemId (AUG-165)
+router.delete('/:id/action-items/:itemId', async (req, res) => {
+  const { itemId } = req.params;
+  if (!ACTION_ITEM_ID_RE.test(itemId)) {
+    res.status(400).json({ error: 'Invalid item id' });
+    return;
+  }
+  const session = await sessionManager.getSession(req.params.id);
+  if (!session) {
+    res.status(404).json({ error: 'Session not found' });
+    return;
+  }
+  const file = await mutateSessionActionItems(req.params.id, (items) => {
+    const i = items.findIndex((x) => x.id === itemId);
+    if (i < 0) return false;
+    items.splice(i, 1);
+    return true;
+  });
+  if (!file) {
+    res.status(404).json({ error: 'No action items' });
+    return;
+  }
+  res.json(file);
+});
+
 // DELETE /api/sessions/:id
 router.delete('/:id', async (req, res) => {
   const session = await sessionManager.getSession(req.params.id);
@@ -590,6 +669,7 @@ router.post('/upload', (req, res, next) => {
   // AUG-105: a server-side capture can stand in for the systemAudio multipart file.
   const captureId = typeof req.body?.captureId === 'string' && req.body.captureId.trim() ? req.body.captureId.trim() : null;
   const micStartedAt = Number(req.body?.micStartedAt);
+  const liveKey = isValidLiveKey(req.body?.liveKey) ? req.body.liveKey : null; // AUG-165
   const isDual = !!systemFile || !!captureId;
 
   if (systemFile && captureId) {
@@ -637,6 +717,16 @@ router.post('/upload', (req, res, next) => {
       isDual,
     );
     createdSessionId = session.id;
+    if (liveKey) {
+      // AUG-165: action items and participants collected during the live recording move into this session.
+      try {
+        const attached = await attachLiveActionItemsToSession(liveKey, session.id);
+        const p = attached?.participants;
+        if (p && (p.me || p.them)) await sessionManager.updateSession(session.id, { participants: p });
+      } catch (err) {
+        console.warn(`[session ${session.id}] action items not attached: ${(err as Error).message}`);
+      }
+    }
     const sessionDir = sessionManager.sessionAudioDir(session.id);
 
     if (isDual) {

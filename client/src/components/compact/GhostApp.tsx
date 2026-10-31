@@ -1,12 +1,18 @@
 import React, { useCallback, useEffect, useLayoutEffect, useRef, useState } from 'react';
 import { formatClock } from '../../services/compact';
-import { GHOST_CHANNEL, statusTag, type GhostCommand, type GhostMessage, type GhostState, type GhostWidget } from './ghostProtocol';
+import ActionItemsPanel from '../ActionItemsPanel';
+import { GHOST_CHANNEL, statusTag, type GhostAction, type GhostCommand, type GhostMessage, type GhostState, type GhostWidget } from './ghostProtocol';
 
 type Send = (command: GhostCommand) => void;
+type SendAction = (action: GhostAction) => void;
 
 interface GhostViewProps {
   state: GhostState;
   send: Send;
+}
+
+interface GhostCaptionProps extends GhostViewProps {
+  sendAction: SendAction;
 }
 
 const COIN_SIZE = 56;
@@ -17,13 +23,15 @@ function setIgnoreMouse(ignore: boolean): void {
   window.august?.ghostSetIgnoreMouse?.(ignore);
 }
 
-const GhostCaption: React.FC<GhostViewProps> = ({ state, send }) => {
+const GhostCaption: React.FC<GhostCaptionProps> = ({ state, send, sendAction }) => {
   const [hovered, setHovered] = useState(false);
   const [leftHover, setLeftHover] = useState(false);
   const [confirming, setConfirming] = useState(false);
   const [dragging, setDragging] = useState(false);
   const [edgeHover, setEdgeHover] = useState(false);
   const [resizing, setResizing] = useState(false);
+  const [actionsHover, setActionsHover] = useState(false);
+  const [actionsFocus, setActionsFocus] = useState(false);
   const linesRef = useRef<HTMLDivElement>(null);
 
   const paused = state.liveStatus === 'paused';
@@ -32,7 +40,7 @@ const GhostCaption: React.FC<GhostViewProps> = ({ state, send }) => {
   const lost = state.captureLost;
   const alert = interrupted || lost || done;
   const tag = statusTag(state.liveStatus, state.live);
-  const interactive = alert || confirming || leftHover || dragging || edgeHover || resizing;
+  const interactive = alert || confirming || leftHover || dragging || edgeHover || resizing || actionsHover || actionsFocus;
   // The resize handle sits on the inner edge: top when the caption is docked at the bottom of the screen, and vice versa.
   // availTop (Chromium) is the display's top in virtual-screen coordinates, so a secondary monitor resolves correctly.
   const scr = window.screen as Screen & { availTop?: number };
@@ -189,6 +197,26 @@ const GhostCaption: React.FC<GhostViewProps> = ({ state, send }) => {
           </div>
         ))}
       </div>
+
+      {state.live && !done && (
+        <div
+          className="ghost-caption-actions"
+          onMouseEnter={() => setActionsHover(true)}
+          onMouseLeave={() => setActionsHover(false)}
+          onFocus={() => setActionsFocus(true)}
+          onBlur={(e) => { if (!e.currentTarget.contains(e.relatedTarget as Node)) setActionsFocus(false); }}
+        >
+          <ActionItemsPanel
+            variant="compact"
+            items={state.actionItems}
+            participants={state.participants}
+            enabled={state.actionEnabled}
+            onAdd={(text, owner) => sendAction({ kind: 'add', text, owner })}
+            onEdit={(id, patch) => sendAction({ kind: 'edit', id, patch })}
+            onDelete={(id) => sendAction({ kind: 'delete', id })}
+          />
+        </div>
+      )}
     </div>
   );
 };
@@ -327,6 +355,9 @@ const PLACEHOLDER = (widget: GhostWidget): GhostState => ({
   captureLost: false,
   elapsedSeconds: 0,
   skipStopConfirmation: false,
+  actionItems: [],
+  participants: { me: '', them: '' },
+  actionEnabled: null,
 });
 
 interface GhostAppProps {
@@ -342,6 +373,10 @@ const GhostApp: React.FC<GhostAppProps> = ({ initialWidget }) => {
     channelRef.current?.postMessage({ type: 'command', command } satisfies GhostMessage);
   }, []);
 
+  const sendAction = useCallback((action: GhostAction) => {
+    channelRef.current?.postMessage({ type: 'action', action } satisfies GhostMessage);
+  }, []);
+
   useEffect(() => {
     document.documentElement.classList.add('ghost-root');
     const channel = new BroadcastChannel(GHOST_CHANNEL);
@@ -352,6 +387,8 @@ const GhostApp: React.FC<GhostAppProps> = ({ initialWidget }) => {
     channel.postMessage({ type: 'hello' } satisfies GhostMessage);
 
     const onKey = (e: KeyboardEvent) => {
+      // Escape inside an input cancels that edit instead of expanding August.
+      if (e.key === 'Escape' && (e.target as HTMLElement | null)?.closest?.('input, textarea')) return;
       if (e.key === 'Escape' || ((e.ctrlKey || e.metaKey) && e.shiftKey && e.code === 'KeyC')) {
         e.preventDefault();
         channel.postMessage({ type: 'command', command: 'expand' } satisfies GhostMessage);
@@ -369,7 +406,7 @@ const GhostApp: React.FC<GhostAppProps> = ({ initialWidget }) => {
   const current = state ?? PLACEHOLDER(initialWidget);
   return current.widget === 'ghost-coin'
     ? <GhostCoin state={current} send={send} />
-    : <GhostCaption state={current} send={send} />;
+    : <GhostCaption state={current} send={send} sendAction={sendAction} />;
 };
 
 export default GhostApp;

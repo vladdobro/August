@@ -129,16 +129,27 @@ export class LivePcmFeeder {
   }
 }
 
+const ACTION_ITEM_ID_RE = /^[A-Za-z0-9_-]{1,64}$/;
+const frameName = (v: unknown): string => (typeof v === 'string' ? v.trim().slice(0, 60) : '');
+
 export type LiveControlFrame =
   | { type: 'stop' }
   | { type: 'pause' }
   | { type: 'resume' }
   | { type: 'config'; engine: 'local' | 'groq' }
-  | { type: 'attach-capture'; captureId: string; language: string };
+  | { type: 'attach-capture'; captureId: string; language: string }
+  | { type: 'action-items-init'; liveKey: string; participants: { me: string; them: string } | null }
+  | { type: 'participants'; me: string; them: string }
+  | { type: 'action-item-edit'; id: string; text?: string; owner?: string }
+  | { type: 'action-item-delete'; id: string }
+  | { type: 'action-item-add'; text: string; owner?: string };
 
 /// Parses one text WebSocket frame. Returns null for malformed JSON, unknown
 /// types, a config frame with an unknown engine, or an attach-capture frame
 /// without a non-empty string captureId. attach-capture's language defaults to 'auto'.
+/// AUG-165: also action-items-init (valid liveKey, optional participants), participants, action-item-edit
+/// (valid id and a string text and/or owner), action-item-delete (valid id) and action-item-add (non-empty string text,
+/// optional string owner); anything else is null.
 export function parseLiveControlFrame(text: string): LiveControlFrame | null {
   let msg: unknown;
   try {
@@ -161,6 +172,33 @@ export function parseLiveControlFrame(text: string): LiveControlFrame | null {
       const language = typeof o.language === 'string' && o.language.trim() ? o.language.trim() : 'auto';
       return { type: 'attach-capture', captureId, language };
     }
+    case 'action-items-init': {
+      if (typeof o.liveKey !== 'string' || !/^[A-Za-z0-9-]{8,64}$/.test(o.liveKey)) return null;
+      const p = o.participants;
+      const participants = p && typeof p === 'object'
+        ? { me: frameName((p as Record<string, unknown>).me), them: frameName((p as Record<string, unknown>).them) }
+        : null;
+      return { type: 'action-items-init', liveKey: o.liveKey, participants };
+    }
+    case 'participants':
+      return { type: 'participants', me: frameName(o.me), them: frameName(o.them) };
+    case 'action-item-edit': {
+      if (typeof o.id !== 'string' || !ACTION_ITEM_ID_RE.test(o.id)) return null;
+      const hasText = typeof o.text === 'string';
+      const hasOwner = typeof o.owner === 'string';
+      if (!hasText && !hasOwner) return null;
+      return {
+        type: 'action-item-edit',
+        id: o.id,
+        ...(hasText ? { text: o.text as string } : {}),
+        ...(hasOwner ? { owner: o.owner as string } : {}),
+      };
+    }
+    case 'action-item-delete':
+      return typeof o.id === 'string' && ACTION_ITEM_ID_RE.test(o.id) ? { type: 'action-item-delete', id: o.id } : null;
+    case 'action-item-add':
+      if (typeof o.text !== 'string' || !o.text.trim()) return null;
+      return { type: 'action-item-add', text: o.text, ...(typeof o.owner === 'string' ? { owner: o.owner } : {}) };
     default:
       return null;
   }

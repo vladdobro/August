@@ -2,6 +2,7 @@ import React, { useCallback, useEffect, useRef, useState } from 'react';
 import type { CompactActions, CompactSnapshot } from '../../services/compactStore';
 import { formatClock } from '../../services/compact';
 import { statusTag } from './ghostProtocol';
+import ActionItemsPanel from '../ActionItemsPanel';
 
 interface DockProps {
   snap: CompactSnapshot;
@@ -100,6 +101,20 @@ export const DockStrip: React.FC<DockProps> = ({ snap, actions, onExpand }) => {
           <button type="button" className="compact-jump" onClick={jump} aria-label="Jump to latest">↓ LIVE</button>
         )}
       </div>
+
+      {snap.live && (
+        <div className="compact-strip-actions">
+          <ActionItemsPanel
+            variant="compact"
+            items={snap.actionItems}
+            participants={snap.participants}
+            enabled={snap.actionEnabled}
+            onAdd={(t, o) => actions?.addActionItem(t, o)}
+            onEdit={(id, p) => actions?.editActionItem(id, p)}
+            onDelete={(id) => actions?.deleteActionItem(id)}
+          />
+        </div>
+      )}
 
       <div className="compact-strip-foot">
         <button

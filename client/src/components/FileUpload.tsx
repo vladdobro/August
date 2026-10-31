@@ -1,10 +1,11 @@
 import React, { useCallback, useEffect, useRef, useState } from 'react';
-import { uploadAudio, uploadDualAudio, uploadDualAudioWithCapture, startServerCapture, stopServerCapture, transcribeFromUrl, type UploadProgress } from '../api';
-import type { CaptureCapabilities, ServerCapture, TranscriptionLanguage } from '../types';
+import { uploadAudio, uploadDualAudio, uploadDualAudioWithCapture, fetchCaptureCapabilities, startServerCapture, stopServerCapture, transcribeFromUrl, type UploadProgress } from '../api';
+import type { ActionItem, CaptureCapabilities, Participants, ServerCapture, TranscriptionLanguage } from '../types';
 import { useTheme } from '../theme';
 import RecordingModePicker, { type RecordingMode } from './RecordingModePicker';
 import LanguagePicker from './LanguagePicker';
 import MicPicker from './MicPicker';
+import ActionItemsPanel from './ActionItemsPanel';
 import LiveTranscriptPanel, { type LiveLine, type LiveStatus } from './LiveTranscriptPanel';
 import { LiveTranscriptionClient, type LiveEngine } from '../services/liveTranscriptionClient';
 import { saveRecordingProgress, getRecoveredRecording, clearRecoveredRecording, type RecoveredRecording } from '../services/recordingRecovery';
@@ -29,6 +30,8 @@ interface FileUploadProps {
   onPreferenceChange?: (patch: Partial<UserPreferences>) => void;
   audioDevicesFromApp?: MediaDeviceInfo[];
   captureCapabilities?: CaptureCapabilities | null;
+  // A failed self-test is re-checked before a recording; the fresh result is reported back so Settings shows it too.
+  onCaptureCapabilitiesChange?: (caps: CaptureCapabilities) => void;
   onOpenSettings?: () => void;
   // Desktop shell: a timestamp per global-hotkey/tray toggle request; consumed once via onDesktopToggleHandled.
   desktopToggleRequest?: number | null;
@@ -51,7 +54,7 @@ function formatBytes(bytes: number): string {
   return `${Math.round(bytes / (1024 * 1024))} MB`;
 }
 
-const FileUpload: React.FC<FileUploadProps> = ({ onUploaded, onRecordingChange, groqAvailable, onGroqKeySaved, preferences, onPreferenceChange, audioDevicesFromApp, captureCapabilities, onOpenSettings, desktopToggleRequest, onDesktopToggleHandled }) => {
+const FileUpload: React.FC<FileUploadProps> = ({ onUploaded, onRecordingChange, groqAvailable, onGroqKeySaved, preferences, onPreferenceChange, audioDevicesFromApp, captureCapabilities, onCaptureCapabilitiesChange, onOpenSettings, desktopToggleRequest, onDesktopToggleHandled }) => {
   const { theme, toggle: toggleTheme } = useTheme();
   const [language, setLanguage] = useState<TranscriptionLanguage>('ru');
   const [isDragging, setIsDragging] = useState(false);
@@ -84,6 +87,12 @@ const FileUpload: React.FC<FileUploadProps> = ({ onUploaded, onRecordingChange, 
   const [recoveredRecording, setRecoveredRecording] = useState<RecoveredRecording | null>(null);
   const [showDefaultsInfo, setShowDefaultsInfo] = useState(false);
   const liveClientRef = useRef<LiveTranscriptionClient | null>(null);
+  // AUG-165: action items + participants of the current live recording (persisted server-side by liveKey).
+  const [liveActionItems, setLiveActionItems] = useState<ActionItem[]>([]);
+  const [liveActionEnabled, setLiveActionEnabled] = useState<boolean | null>(null);
+  const [liveParticipants, setLiveParticipants] = useState<Participants>({ me: '', them: '' });
+  const liveParticipantsRef = useRef<Participants>({ me: '', them: '' });
+  const liveKeyRef = useRef<string | null>(null);
   const liveStartArgsRef = useRef<{ micStream: MediaStream | null; systemStream: MediaStream | null; engine: LiveEngine; captureId: string | null } | null>(null);
 
   const fileInputRef = useRef<HTMLInputElement>(null);
@@ -259,7 +268,7 @@ const FileUpload: React.FC<FileUploadProps> = ({ onUploaded, onRecordingChange, 
 
   const startLiveTranscription = useCallback(
     (micStream: MediaStream | null, systemStream: MediaStream | null, engine: LiveEngine = 'local', captureId: string | null = null, keepLines = false) => {
-      if (!keepLines) setLiveLines([]);
+      if (!keepLines) { setLiveLines([]); setLiveActionItems([]); setLiveActionEnabled(null); }
       setLiveError(null);
       setLiveWarning(null);
       setLiveMicUnavailable(false);
@@ -290,13 +299,19 @@ const FileUpload: React.FC<FileUploadProps> = ({ onUploaded, onRecordingChange, 
             return updated;
           });
         },
+        onActionItems: (st) => {
+          setLiveActionItems(st.items);
+          setLiveActionEnabled(st.enabled);
+          setLiveParticipants(st.participants);
+          liveParticipantsRef.current = st.participants;
+        },
         onStatusChange: setLiveStatus,
         onError: setLiveError,
         onWarning: setLiveWarning,
         onMicUnavailable: () => setLiveMicUnavailable(true),
       });
       liveClientRef.current = client;
-      client.start(micStream, systemStream, language, engine, captureId);
+      client.start(micStream, systemStream, language, engine, captureId, liveKeyRef.current, liveParticipantsRef.current);
     },
     [language],
   );
@@ -309,6 +324,13 @@ const FileUpload: React.FC<FileUploadProps> = ({ onUploaded, onRecordingChange, 
     const autoLive = !liveMode && shouldAutoEnableLive(preferences ?? {}, Boolean(window.august));
     const useLive = liveMode || autoLive;
     const liveEngine: LiveEngine = autoLive ? (preferences?.liveEngine === 'groq' && groqAvailable ? 'groq' : 'local') : engine;
+    // AUG-165: one key per live recording; the upload carries it so the server moves the collected action items into the session.
+    const recordingLiveKey = useLive ? crypto.randomUUID() : null;
+    liveKeyRef.current = recordingLiveKey;
+    if (useLive) {
+      liveParticipantsRef.current = { me: '', them: '' };
+      setLiveParticipants({ me: '', them: '' });
+    }
     try {
       void clearRecoveredRecording();
       setRecoveredRecording(null);
@@ -324,9 +346,21 @@ const FileUpload: React.FC<FileUploadProps> = ({ onUploaded, onRecordingChange, 
       // AUG-113: live mode no longer forces the picker — the server tees its
       // capture into the live pipeline, so the same decision applies to both modes.
       let serverCapture: ServerCapture | null = null;
-      const useServerCapture = captureSystemAudio && resolvedSystemSource === 'system';
-      if (captureSystemAudio && preferences?.systemAudioSource === 'system' && resolvedSystemSource === 'browser') {
-        setCaptureNotice(`Direct system capture is unavailable — using the browser screen picker. ${captureCapabilities?.hint ?? ''}`.trim());
+      // The self-test runs once at app start and can fail transiently under load (cold device, dev build): re-check a
+      // failed result now instead of falling back to the screen picker for the whole app session.
+      let caps = captureCapabilities;
+      if (captureSystemAudio && preferences?.systemAudioSource !== 'browser' && caps?.systemCapture && caps.selfTest === 'failed') {
+        try {
+          caps = await fetchCaptureCapabilities(true);
+          onCaptureCapabilitiesChange?.(caps);
+        } catch {
+          // keep the cached result
+        }
+      }
+      const systemSource = resolveSystemAudioSource(preferences?.systemAudioSource, caps);
+      const useServerCapture = captureSystemAudio && systemSource === 'system';
+      if (captureSystemAudio && preferences?.systemAudioSource === 'system' && systemSource === 'browser') {
+        setCaptureNotice(`Direct system capture is unavailable — using the browser screen picker. ${caps?.hint ?? ''}`.trim());
       }
 
       const mimeType = MediaRecorder.isTypeSupported('audio/webm')
@@ -371,7 +405,7 @@ const FileUpload: React.FC<FileUploadProps> = ({ onUploaded, onRecordingChange, 
         setIsUploading(true);
         setUploadProgress(null);
         try {
-          await uploadDualAudio(micFile, sysFile, language, setUploadProgress);
+          await uploadDualAudio(micFile, sysFile, language, setUploadProgress, recordingLiveKey);
           onUploaded();
         } catch (err) {
           setError((err as Error).message || 'Upload failed');
@@ -396,9 +430,9 @@ const FileUpload: React.FC<FileUploadProps> = ({ onUploaded, onRecordingChange, 
             setCaptureNotice(`System audio track was lost (${(err as Error).message}) — saving the microphone track only.`);
           }
           if (captureStopped) {
-            await uploadDualAudioWithCapture(micFile, capture.captureId, micStartedAtRef.current, language, setUploadProgress);
+            await uploadDualAudioWithCapture(micFile, capture.captureId, micStartedAtRef.current, language, setUploadProgress, recordingLiveKey);
           } else {
-            await uploadAudio(micFile, language, setUploadProgress);
+            await uploadAudio(micFile, language, setUploadProgress, recordingLiveKey);
           }
           onUploaded();
         } catch (err) {
@@ -492,7 +526,7 @@ const FileUpload: React.FC<FileUploadProps> = ({ onUploaded, onRecordingChange, 
           setIsUploading(true);
           setUploadProgress(null);
           try {
-            await uploadAudio(file, language, setUploadProgress);
+            await uploadAudio(file, language, setUploadProgress, recordingLiveKey);
             onUploaded();
           } catch (err) {
             setError((err as Error).message || 'Upload failed');
@@ -618,7 +652,7 @@ const FileUpload: React.FC<FileUploadProps> = ({ onUploaded, onRecordingChange, 
         'Could not access audio device: ' + ((err as Error).message || 'unknown error'),
       );
     }
-  }, [language, onUploaded, selectedMicId, captureSystemAudio, startLiveTranscription, resolvedSystemSource, preferences?.systemAudioSource, captureCapabilities?.hint, preferences?.compactEnabled, preferences?.compactMode, preferences?.liveEngine, groqAvailable]);
+  }, [language, onUploaded, selectedMicId, captureSystemAudio, startLiveTranscription, preferences?.systemAudioSource, captureCapabilities, onCaptureCapabilitiesChange, preferences?.compactEnabled, preferences?.compactMode, preferences?.liveEngine, groqAvailable]);
 
   const stopRecording = useCallback(() => {
     mediaRecorderRef.current?.stop();
@@ -632,6 +666,7 @@ const FileUpload: React.FC<FileUploadProps> = ({ onUploaded, onRecordingChange, 
       liveClientRef.current.stop();
       liveClientRef.current = null;
     }
+    liveKeyRef.current = null; // the recording's onstop closure keeps its own copy for the upload
     liveStartArgsRef.current = null;
     setCaptureLost(false);
     setLiveActive(false);
@@ -767,6 +802,15 @@ const FileUpload: React.FC<FileUploadProps> = ({ onUploaded, onRecordingChange, 
     setLiveMicUnavailable(false);
   }, []);
 
+  const handleActionParticipants = useCallback((p: Participants) => {
+    liveParticipantsRef.current = p;
+    setLiveParticipants(p);
+    liveClientRef.current?.setParticipants(p);
+  }, []);
+  const handleActionEdit = useCallback((id: string, patch: { text?: string; owner?: string }) => liveClientRef.current?.editActionItem(id, patch), []);
+  const handleActionDelete = useCallback((id: string) => liveClientRef.current?.deleteActionItem(id), []);
+  const handleActionAdd = useCallback((text: string, owner: string) => liveClientRef.current?.addActionItem(text, owner || undefined), []);
+
   const handleLiveClearAll = useCallback(() => {
     setLiveLines([]);
   }, []);
@@ -792,11 +836,14 @@ const FileUpload: React.FC<FileUploadProps> = ({ onUploaded, onRecordingChange, 
       levels: audioLevels,
       dualTrack: captureSystemAudio,
       skipStopConfirmation: preferences?.skipStopConfirmation ?? false,
+      actionItems: liveActionItems,
+      participants: liveParticipants,
+      actionEnabled: liveActionEnabled,
     });
-  }, [isRecording, liveActive, liveLines, liveStatus, liveError, captureLost, elapsedSeconds, audioLevels, captureSystemAudio, preferences?.skipStopConfirmation]);
+  }, [isRecording, liveActive, liveLines, liveStatus, liveError, captureLost, elapsedSeconds, audioLevels, captureSystemAudio, preferences?.skipStopConfirmation, liveActionItems, liveParticipants, liveActionEnabled]);
 
-  const compactActionsRef = useRef({ stopRecording, handleLivePause, handleLiveResume, handleLiveStop, handleLiveRetry, handleLiveCopyAll });
-  compactActionsRef.current = { stopRecording, handleLivePause, handleLiveResume, handleLiveStop, handleLiveRetry, handleLiveCopyAll };
+  const compactActionsRef = useRef({ stopRecording, handleLivePause, handleLiveResume, handleLiveStop, handleLiveRetry, handleLiveCopyAll, handleActionAdd, handleActionEdit, handleActionDelete });
+  compactActionsRef.current = { stopRecording, handleLivePause, handleLiveResume, handleLiveStop, handleLiveRetry, handleLiveCopyAll, handleActionAdd, handleActionEdit, handleActionDelete };
   useEffect(() => {
     compactStore.setActions({
       end: () => compactActionsRef.current.stopRecording(),
@@ -806,6 +853,9 @@ const FileUpload: React.FC<FileUploadProps> = ({ onUploaded, onRecordingChange, 
       retryLive: () => compactActionsRef.current.handleLiveRetry(),
       copyAll: () => compactActionsRef.current.handleLiveCopyAll(),
       showLivePanel: () => setLiveHidden(false),
+      addActionItem: (text, owner) => compactActionsRef.current.handleActionAdd(text, owner),
+      editActionItem: (id, patch) => compactActionsRef.current.handleActionEdit(id, patch),
+      deleteActionItem: (id) => compactActionsRef.current.handleActionDelete(id),
     });
     return () => compactStore.setActions(null);
   }, []);
@@ -1102,6 +1152,18 @@ const FileUpload: React.FC<FileUploadProps> = ({ onUploaded, onRecordingChange, 
           elapsed={formatTime(elapsedSeconds)}
           onEndRecording={stopRecording}
           onCompact={canCompact ? () => compactStore.requestCompact() : undefined}
+          aside={
+            <ActionItemsPanel
+              variant="live"
+              items={liveActionItems}
+              participants={liveParticipants}
+              enabled={liveActionEnabled}
+              onParticipantsChange={handleActionParticipants}
+              onAdd={handleActionAdd}
+              onEdit={handleActionEdit}
+              onDelete={handleActionDelete}
+            />
+          }
         />
       )}
     </div>

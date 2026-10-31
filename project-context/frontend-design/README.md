@@ -35,7 +35,9 @@
 - Confidence badge (.confidence-badge, AUG-152): terminal-font 10px outline chip with 0 radius and a 5px square marker; green ≥ 80 (--status-completed), amber 60–79 (--status-uploading), red < 60 (--status-failed); shown in the sidebar session meta and the transcript header for completed sessions only.
 - Compact Mode (AUG-156, implemented; designed in AUG-155): 300 ms after a recording starts, the desktop app collapses to a widget chosen in Settings → Compact mode — Variant A in the same window (Dock Strip for the transcript, Dock Square for the indicator) or Variant B as a ghost overlay with August in the tray (Ghost Caption / Ghost Coin); it restores on End Recording or stays as DONE until clicked.
 - Correction diff cards (.correction-card, AUG-163): under a transcript line, one card per pending meaning fix — 'Was' / 'Now' rows with a word-level LCS diff (removed words <del class=correction-del> red line-through, inserted <ins class=correction-ins> green bold), outline 0-radius Accept (green, --status-completed) and Reject buttons; amber 3px left border (--status-uploading); decided fixes collapse to a 'Fix accepted · Undo' / 'Fix rejected · Undo' row; accepted text is shown in the line; no scores or flags are rendered.
-- Also known as: Bold Layout, transcript-first layout, overlay panels, pin bar, panel layout, layout overlays (AUG-154), Compact Mode, compact layout, dock strip, timer square, Ghost HUD, auto-collapse on recording (AUG-155), Ghost Caption, Ghost Coin, Dock Square, Compact mode settings tab, CompactLayer (AUG-156), Archive page, storage page, delete audio UI, bulk delete (AUG-150), confidence badge, auto-deleted label, threshold slider (AUG-152), hamburger menu, ≡ menu, sidebar menu, update menu (removed AUG-160 → ControlsPanel), correction card, diff card, Accept / Reject fix (AUG-163).
+- Live Action items column (AUG-165): ActionItemsPanel sits right of the live transcript canvas, 340 px wide, border-left, terminal font, 0 radius.
+- Action items column stacks under the live transcript canvas below 900 px; TranscriptView reuses it as a card at the top when a session has action items (AUG-165).
+- Also known as: Bold Layout, transcript-first layout, overlay panels, pin bar, panel layout, layout overlays (AUG-154), Compact Mode, compact layout, dock strip, timer square, Ghost HUD, auto-collapse on recording (AUG-155), Ghost Caption, Ghost Coin, Dock Square, Compact mode settings tab, CompactLayer (AUG-156), Archive page, storage page, delete audio UI, bulk delete (AUG-150), confidence badge, auto-deleted label, threshold slider (AUG-152), hamburger menu, ≡ menu, sidebar menu, update menu (removed AUG-160 → ControlsPanel), correction card, diff card, Accept / Reject fix (AUG-163), Action items panel, ActionItemsPanel, participants fields, inline owner edit (AUG-165).
 
 The frontend design system defines the Necron-themed visual language, color tokens, theme switching, and component styling rules for the August web app.
 
@@ -312,6 +314,22 @@ Confidence badge (.confidence-badge, AUG-152, client/src/components/ConfidenceBa
 - the title attribute explains the inputs (token probabilities, audio coverage, filtered hallucinations); no breakdown numbers appear in the UI
 
 Correction cards (AUG-163, client/src/components/TranscriptView.tsx): TranscriptView fetches GET /api/sessions/:id/corrections when a completed session opens; items are grouped by line index and filtered to those whose original text is still inside the line (applyItemsToText mirrors the server); the card sits under the text column (margin-left 84px = timestamp 68px + gap 16px); while any fix is pending a sticky .corrections-bar ('N suggested fixes' + green 'Accept all', amber left border, opaque var(--main-bg) because --card-bg is translucent) sits at the top of .transcript-lines so long recordings are not reviewed card by card; Export menu gets 'Download corrected .txt' (from GET /api/sessions/:id/transcript/corrected) only when at least one fix is accepted; Copy / Download .txt / .srt keep using the original transcript.
+
+Action items panel (AUG-165, client/src/components/ActionItemsPanel.tsx):
+- Live variant: a 340 px column with border-left to the right of the live transcript canvas, inside the .live-panel-main wrapper that LiveTranscriptPanel fills through its aside prop; below 900 px it stacks under the canvas (max-height 40%).
+- Header shows "Action items" and the item count; terminal font and 0 border-radius everywhere.
+- Participants fields (Me / Them names, both optional) commit on blur or Enter.
+- When Online text correction is off, a yellow-framed hint says to turn it on in Settings → Transcription.
+- Each item has an inline-editable text (textarea), a Me / Them source tag (Me var(--accent), Them #d4a843 like the live speakers), an arrow and an owner input.
+- The owner input shows the participant names for Me / Them owners.
+- Delete is a × button that turns red only on hover.
+- Escape reverts an inline edit; empty text is not committed.
+- A user-edited item gets a green left border and the tooltip "Edited by you — the model will not change it".
+- Session variant (TranscriptView): card style, a read-only participants line "Me = … · Them = …", and the panel is the first block of .transcript-body when the session has action-items.json or is completed (so notes can be added to any finished session).
+- "+ Add an item" sits in the panel header ([ + ADD ] in compact) and opens an inline form right under it (task textarea, optional owner, green Add, Cancel); Enter or Add adds the item and closes the form, Escape or Cancel closes it without adding; manual items show a dashed "Manual" tag instead of Me/Them.
+- The header and the add form never scroll; only the item list does (session card: list max-height 40vh), and items render newest first, so a new item appears right under the form.
+- Compact variant: no participants fields, header "ACTION ITEMS" + count + [ + ADD ], 11 px text; shown only while live is active — in Dock Strip as a block between the transcript and the footer (max 40 % height), in Ghost Caption as a 240 px right column.
+- Ghost Caption stops being click-through while the pointer is over the Action items column or an input in it has focus; Escape inside an input cancels the edit instead of expanding August.
 
 Recording indicator:
 - Red dot: 10px circle, var(--status-failed) bg, pulse animation
@@ -704,7 +722,7 @@ Status badge colors (uploading, transcribing, completed, failed) must remain dis
 - client/src/theme.tsx — ThemeProvider, ThemeToggle, useTheme hook
 - client/src/main.tsx — ThemeProvider mounting point
 - client/index.html — Inline SVG favicon with necron dark background and gauss green text
-- client/src/components/TranscriptView.tsx — Transcript display, export dropdown with copy/download options, AUG-163 correction diff cards and 'Download corrected .txt'; includes the ChronoRing local component for transcription ETA countdown.
+- client/src/components/TranscriptView.tsx — Transcript display, export dropdown with copy/download options, AUG-163 correction diff cards and 'Download corrected .txt'; AUG-165 Action items card; includes the ChronoRing local component for transcription ETA countdown.
 - client/src/components/FileUpload.tsx — Circuit-node radial layout for recording and upload controls
 - client/src/components/OverlayLayer.tsx — edge triggers, backdrop, left/right overlay panels and the bottom pin bar (AUG-154)
 - client/src/components/ControlsPanel.tsx — right overlay list and the only app menu: New session, Settings, Archive, API Keys, Diagnostics, desktop-only update item, with active-item highlight (AUG-154, AUG-160)
@@ -715,6 +733,7 @@ Status badge colors (uploading, transcribing, completed, failed) must remain dis
 - client/src/components/PraxisProjectsPage.tsx — Settings Projects tab: master-detail layout with a project list, default-prompt and per-project editors, and a New project mode.
 - client/src/components/ArchivePage.tsx — Archive page: storage card, session list with per-file breakdown, bulk delete bar, confirm dialogs (AUG-150)
 - client/src/components/ConfidenceBadge.tsx — confidence percentage chip with tier colouring (AUG-152)
+- client/src/components/ActionItemsPanel.tsx — Action items panel (live column and TranscriptView card), InlineField, displayOwner (AUG-165).
 - client/src/components/compact/CompactLayer.tsx — compact phase machine (full | compact | done), auto-collapse and expand triggers (AUG-156)
 - client/src/components/compact/DockWidgets.tsx — Dock Strip and Dock Square widgets (AUG-156)
 - client/src/components/compact/GhostApp.tsx — Ghost Caption and Ghost Coin overlay app loaded with ?ghost=caption|coin (AUG-156)

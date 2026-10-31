@@ -33,6 +33,7 @@ interface LiveTranscriptPanelProps {
   onEndRecording: () => void;
   // Compact Mode (AUG-156): shrink August to a widget. Set only on the desktop shell.
   onCompact?: () => void;
+  aside?: React.ReactNode; // AUG-165: Action items column next to the transcript
 }
 
 const STATUS_LABEL: Record<LiveStatus, string> = {
@@ -44,7 +45,7 @@ const STATUS_LABEL: Record<LiveStatus, string> = {
 };
 
 const LiveTranscriptPanel: React.FC<LiveTranscriptPanelProps> = ({
-  lines, status, error, warning, micUnavailable, onPause, onResume, onCopyAll, onClose, onStop, onClearAll, elapsed, onEndRecording, onCompact,
+  lines, status, error, warning, micUnavailable, onPause, onResume, onCopyAll, onClose, onStop, onClearAll, elapsed, onEndRecording, onCompact, aside,
 }) => {
   const bodyRef = useRef<HTMLDivElement>(null);
   const [autoScroll, setAutoScroll] = useState(true);
@@ -124,48 +125,51 @@ const LiveTranscriptPanel: React.FC<LiveTranscriptPanelProps> = ({
           {warning && <div className="live-panel-notice">{warning}</div>}
         </div>
       )}
-      <div className="live-panel-canvas">
-        <svg className="live-panel-hex-bg" viewBox="0 0 300 800" preserveAspectRatio="none" aria-hidden="true">
-          <defs>
-            <pattern id="live-hex-grid" width="28" height="48.5" patternUnits="userSpaceOnUse" patternTransform="scale(1.2)">
-              <path d="M14 0L28 8.1V24.2L14 32.3L0 24.2V8.1Z" fill="none" stroke="currentColor" strokeWidth="0.5"/>
-              <path d="M14 16.2L28 24.3V40.4L14 48.5L0 40.4V24.3Z" fill="none" stroke="currentColor" strokeWidth="0.5"/>
-            </pattern>
-          </defs>
-          <rect width="100%" height="100%" fill="url(#live-hex-grid)"/>
-        </svg>
-        <div className="live-panel-body" ref={bodyRef} onScroll={handleScroll}>
-          {lines.length === 0 && (status === 'listening' || status === 'connecting') && (
-            <div className="live-panel-empty">Waiting for speech…</div>
+      <div className="live-panel-main">
+        <div className="live-panel-canvas">
+          <svg className="live-panel-hex-bg" viewBox="0 0 300 800" preserveAspectRatio="none" aria-hidden="true">
+            <defs>
+              <pattern id="live-hex-grid" width="28" height="48.5" patternUnits="userSpaceOnUse" patternTransform="scale(1.2)">
+                <path d="M14 0L28 8.1V24.2L14 32.3L0 24.2V8.1Z" fill="none" stroke="currentColor" strokeWidth="0.5"/>
+                <path d="M14 16.2L28 24.3V40.4L14 48.5L0 40.4V24.3Z" fill="none" stroke="currentColor" strokeWidth="0.5"/>
+              </pattern>
+            </defs>
+            <rect width="100%" height="100%" fill="url(#live-hex-grid)"/>
+          </svg>
+          <div className="live-panel-body" ref={bodyRef} onScroll={handleScroll}>
+            {lines.length === 0 && (status === 'listening' || status === 'connecting') && (
+              <div className="live-panel-empty">Waiting for speech…</div>
+            )}
+            {lines.map((line, i) => (
+              <div key={i} className="live-line">
+                <span className={`live-line-speaker live-line-speaker--${line.speaker.toLowerCase()}`}>
+                  {line.speaker}:
+                </span>
+                <span className="live-line-text">
+                  {line.parts && line.parts.length > 0
+                    ? line.parts.map((p, j) => (
+                      <React.Fragment key={`${p.id ?? j}-${p.correctedAt ?? 0}`}>
+                        {j > 0 && ' '}
+                        <span
+                          className={p.correctedAt ? 'live-line-part live-line-part--corrected' : 'live-line-part'}
+                          data-original={p.correctedAt && p.original ? p.original : undefined}
+                        >
+                          {p.text}
+                        </span>
+                      </React.Fragment>
+                    ))
+                    : line.text}
+                </span>
+              </div>
+            ))}
+          </div>
+          {!autoScroll && (
+            <button type="button" className="live-panel-jump" onClick={jumpToLive} aria-label="Jump to latest">
+              ↓ Live
+            </button>
           )}
-          {lines.map((line, i) => (
-            <div key={i} className="live-line">
-              <span className={`live-line-speaker live-line-speaker--${line.speaker.toLowerCase()}`}>
-                {line.speaker}:
-              </span>
-              <span className="live-line-text">
-                {line.parts && line.parts.length > 0
-                  ? line.parts.map((p, j) => (
-                    <React.Fragment key={`${p.id ?? j}-${p.correctedAt ?? 0}`}>
-                      {j > 0 && ' '}
-                      <span
-                        className={p.correctedAt ? 'live-line-part live-line-part--corrected' : 'live-line-part'}
-                        data-original={p.correctedAt && p.original ? p.original : undefined}
-                      >
-                        {p.text}
-                      </span>
-                    </React.Fragment>
-                  ))
-                  : line.text}
-              </span>
-            </div>
-          ))}
         </div>
-        {!autoScroll && (
-          <button type="button" className="live-panel-jump" onClick={jumpToLive} aria-label="Jump to latest">
-            ↓ Live
-          </button>
-        )}
+        {aside}
       </div>
     </section>
   );

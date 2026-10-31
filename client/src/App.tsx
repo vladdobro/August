@@ -388,6 +388,7 @@ const App: React.FC = () => {
                 onPreferenceChange={handlePreferenceChange}
                 audioDevicesFromApp={audioDevices}
                 captureCapabilities={captureCapabilities}
+                onCaptureCapabilitiesChange={setCaptureCapabilities}
                 onOpenSettings={() => setShowSettings(true)}
                 desktopToggleRequest={desktopToggleRequest}
                 onDesktopToggleHandled={() => setDesktopToggleRequest(null)}

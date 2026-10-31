@@ -1,4 +1,4 @@
-import type { CaptureCapabilities, CorrectionStatus, CorrectionsFile, HealthStatus, LlmModelId, LlmModelInfo, LlmStatus, GroqTextStatus, ModelSetupStatus, ServerCapture, SessionMetadata, StorageSummary, TranscriptionLanguage } from './types';
+import type { ActionItemsFile, CaptureCapabilities, CorrectionStatus, CorrectionsFile, HealthStatus, LlmModelId, LlmModelInfo, LlmStatus, GroqTextStatus, ModelSetupStatus, ServerCapture, SessionMetadata, StorageSummary, TranscriptionLanguage } from './types';
 
 export interface UploadProgress {
   loaded: number;
@@ -119,6 +119,37 @@ export async function fetchCorrections(id: string): Promise<CorrectionsFile> {
   return handleJsonResponse<CorrectionsFile>(res);
 }
 
+/// AUG-165: action items collected during a live recording; null when the session has none.
+export async function fetchActionItems(id: string): Promise<ActionItemsFile | null> {
+  const res = await fetch(`${API_BASE}/sessions/${id}/action-items`);
+  if (res.status === 404) return null;
+  return handleJsonResponse<ActionItemsFile>(res);
+}
+
+export async function updateActionItem(id: string, itemId: string, patch: { text?: string; owner?: string }): Promise<ActionItemsFile> {
+  const res = await fetch(`${API_BASE}/sessions/${id}/action-items/${encodeURIComponent(itemId)}`, {
+    method: 'PATCH',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify(patch),
+  });
+  return handleJsonResponse<ActionItemsFile>(res);
+}
+
+/// AUG-165: hand-written item (fully locked); creates action-items.json when the session has none.
+export async function addActionItem(id: string, item: { text: string; owner?: string }): Promise<ActionItemsFile> {
+  const res = await fetch(`${API_BASE}/sessions/${id}/action-items`, {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify(item),
+  });
+  return handleJsonResponse<ActionItemsFile>(res);
+}
+
+export async function deleteActionItem(id: string, itemId: string): Promise<ActionItemsFile> {
+  const res = await fetch(`${API_BASE}/sessions/${id}/action-items/${encodeURIComponent(itemId)}`, { method: 'DELETE' });
+  return handleJsonResponse<ActionItemsFile>(res);
+}
+
 export async function setCorrectionStatus(id: string, itemId: number, status: CorrectionStatus): Promise<CorrectionsFile> {
   const res = await fetch(`${API_BASE}/sessions/${id}/corrections/${itemId}`, {
     method: 'POST',
@@ -187,10 +218,12 @@ export function uploadAudio(
   file: File,
   language: TranscriptionLanguage | string,
   onProgress?: (progress: UploadProgress) => void,
+  liveKey?: string | null,
 ): Promise<SessionMetadata> {
   const formData = new FormData();
   formData.append('audio', file);
   formData.append('language', language);
+  if (liveKey) formData.append('liveKey', liveKey);
   return postSessionUpload(formData, onProgress);
 }
 
@@ -199,11 +232,13 @@ export function uploadDualAudio(
   systemFile: File,
   language: TranscriptionLanguage | string,
   onProgress?: (progress: UploadProgress) => void,
+  liveKey?: string | null,
 ): Promise<SessionMetadata> {
   const formData = new FormData();
   formData.append('audio', micFile);
   formData.append('systemAudio', systemFile);
   formData.append('language', language);
+  if (liveKey) formData.append('liveKey', liveKey);
   return postSessionUpload(formData, onProgress);
 }
 
@@ -216,12 +251,14 @@ export function uploadDualAudioWithCapture(
   micStartedAt: number,
   language: TranscriptionLanguage | string,
   onProgress?: (progress: UploadProgress) => void,
+  liveKey?: string | null,
 ): Promise<SessionMetadata> {
   const formData = new FormData();
   formData.append('audio', micFile);
   formData.append('captureId', captureId);
   formData.append('micStartedAt', String(micStartedAt));
   formData.append('language', language);
+  if (liveKey) formData.append('liveKey', liveKey);
   return postSessionUpload(formData, onProgress);
 }
 
@@ -329,8 +366,9 @@ export async function browsePraxisFolder(): Promise<{ path: string | null }> {
   return handleJsonResponse<{ path: string | null }>(res);
 }
 
-export async function fetchCaptureCapabilities(): Promise<CaptureCapabilities> {
-  const res = await fetch(`${API_BASE}/capture/capabilities`);
+/// refresh=true makes the server re-run the probe and self-test instead of answering from its 30 s cache.
+export async function fetchCaptureCapabilities(refresh = false): Promise<CaptureCapabilities> {
+  const res = await fetch(`${API_BASE}/capture/capabilities${refresh ? '?refresh=1' : ''}`);
   return handleJsonResponse<CaptureCapabilities>(res);
 }
 

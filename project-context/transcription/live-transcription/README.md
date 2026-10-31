@@ -17,7 +17,11 @@
 - Online text correction (AUG-164, opt-in with consent): when Settings → Transcription → Online text correction (Groq) is on, settled live chunks go to Groq openai/gpt-oss-20b.
 - Settled chunks are at least 8 s old, never the newest, sent every 12 s, and replaced in place with a 2 s yellow flash.
 - Live corrections are never persisted, and Groq limits or errors skip silently.
-- Also known as: online text correction, live text correction, Groq LLM correction, groqText (AUG-164).
+- Live action items (AUG-165): an Action items column next to the live transcript collects agreements and tasks with an owner.
+- Groq extracts new action items behind a cheap gate, and the local model or the same Groq call merges duplicates by id.
+- User edits of action items are locked, so model operations never overwrite them (AUG-165).
+- Action items and participants are the only live data that is saved: per recording liveKey on the server, moved to the session folder as action-items.json on upload.
+- Also known as: online text correction, live text correction, Groq LLM correction, groqText (AUG-164), action items, agreements, tasks from meeting, participants, liveKey, action-items.json, dedup, merge/delete operations (AUG-165).
 - Live transcript fills the whole main area while visible (AUG-154): a 48px top bar holds the rec dot + timer, status, Pause/Resume (yellow), Copy All (green), Clear All (red frame), Stop Live (red frame), End Recording (red filled) and × hide; the circuit diagram is hidden (not unmounted) behind it.
 - Stop and Clear All require a confirmation dialog ("Are you sure?") before executing.
 - Live local chunks run whisper-cli with Silero VAD (vad: true in transcribeChunk); a chunk with no detected speech emits no line (AUG-127).
@@ -61,7 +65,7 @@ Document the mechanics of the live transcription mode — how audio is captured 
 - Server WebSocket handler: server/src/services/liveTranscription.ts upgrades HTTP connections at /api/live-transcribe using the ws library.
 - Server-side transcription: each chunk is written as a temporary 16kHz mono 16-bit WAV file in server/data/live-tmp/, routed to either local whisper-cli or Groq based on the connection's engine setting, then the temp files are deleted.
 - Filler and hallucination filtering: the server reuses FILLER_ONLY_TEXTS, isHallucination, and normalize from transcriptMerger.ts to filter live chunks identically to the batch pipeline.
-- JSON control messages: the client sends {type: "config", engine}, {type: "pause"}, {type: "resume"}, {type: "stop"} as text frames; the server sends {type: "transcript", id, speaker, text}, {type: "correction", id, text} (AUG-164), {type: "warning", message}, and {type: "error", message} back.
+- JSON control messages: the client sends {type: "config", engine}, {type: "pause"}, {type: "resume"}, {type: "stop"}, {type: "action-items-init", liveKey, participants}, {type: "participants", me, them}, {type: "action-item-edit", id, text?, owner?}, {type: "action-item-delete", id} (AUG-165) as text frames; the server sends {type: "transcript", id, speaker, text}, {type: "correction", id, text} (AUG-164), {type: "action-items", enabled, participants, items} (AUG-165), {type: "warning", message}, and {type: "error", message} back.
 - attach-capture control frame (AUG-113): the client sends {type: "attach-capture", captureId, language} as a text frame right after the config frame when the recording uses a server capture; the server replies {type: "capture-attached", captureId} or a {type: "warning"} ("System audio not attached (...) — live transcript continues with the microphone only") when the captureId is unknown, already stopped, not started with live: true, or already attached.
 - Server PCM tee: POST /api/capture/start { live: true } adds a second ffmpeg output (-f s16le -ac 1 -ar 16000 pipe:1) next to the unchanged WAV; systemCapture.ts drains stdout from spawn and forwards bytes to at most one CaptureLiveSink.
 - LivePcmFeeder (server/src/services/liveChunking.ts) converts the s16le bytes to Float32 (carrying an odd trailing byte between chunks) and feeds a server-side ChunkAccumulator with the same 64000/16000/0.006 constants as the browser one; full windows are queued as speaker Them on the same per-connection queue and engine as mic chunks.
@@ -88,9 +92,44 @@ Document the mechanics of the live transcription mode — how audio is captured 
 - The corrected part stays in var(--status-uploading) with a dotted underline; hovering shows the recognized original in a CSS tooltip (data-original + ::after, "Original: …"; native title is unreliable in Electron; kept in LiveLinePart.original); the underline flashes for 2 s on arrival (CSS animation live-line-corrected); no dialog.
 - Corrected text goes through Groq openai/gpt-oss-20b via groqText; consent, limits and skip reasons are documented in the architecture and preferences routes.
 
+### Action items (AUG-165)
+
+- Manual items: "Add an item" (live panel, Dock Strip, Ghost Caption, TranscriptView) creates an item with manual: true, source Me and both fields locked, so model merge/delete operations never touch it; live sends {type: "action-item-add", text, owner?}, a saved session uses POST /api/sessions/:id/action-items {text, owner?} (creates action-items.json when missing, participants taken from session.json).
+- Manual items go to the extraction prompt inside "items", so the model does not re-extract them as new.
+- No session exists during a live recording; it is created by POST /api/sessions/upload after stop.
+- The client generates a liveKey (crypto.randomUUID) per live recording; items and participants are kept server-side per liveKey.
+- The liveKey registry is shared by reconnects and Retry, so the same store is reused; Stop Live keeps the items.
+- Every change is persisted atomically (tmp + rename) to <sessionsDir>/../live-action-items/<liveKey>.json.
+- The upload form field liveKey moves that file to <session dir>/action-items.json and writes participants {me, them} into session.json; items attach at End Recording upload.
+- Pending files older than 7 days are deleted when a new store opens.
+- Recovery uploads (recordingRecovery) and file uploads carry no liveKey, so they get no action items.
+- Extraction runs only when Online text correction (Groq, AUG-164 consent) is active at connect time, through createGroqTextClient with openai/gpt-oss-20b and the shared free-tier limiter.
+- The gate is checked every 5 s and never calls sooner than 45 s after the previous call (ACTION_MIN_INTERVAL_MS), a hard bound of at most 80 calls per hour.
+- A call fires when at least 25 new words arrived with a trigger phrase, or when 60 s passed with at least 8 new words.
+- Trigger phrases are the ACTION_TRIGGERS constant list (for example «договорил», «сделаю», «к пятнице», "I'll", "by friday").
+- The model receives participants, the current items with ids (newest 40) and only the new speech (buffer of at most 4000 chars, oldest dropped).
+- It also receives "context": the last ~600 chars of already-sent speech (ACTION_CONTEXT_CHARS), because a call can fire mid-phrase — a commitment started in one call and confirmed in the next ("…давай запишем, что это моя задача") was lost without it; items must be made or confirmed in the new speech.
+- The model returns only new items {text, owner, source}; exact-duplicate texts are skipped.
+- AUG-164 live corrections update the text still in the action-items buffer.
+- Dedup with the local model (AUG-162): when it is enabled and downloaded, every 20 s (if the list changed and has at least 2 items) withLocalLlm returns merge(into, from) or delete operations by id.
+- Dedup never returns a new list, only operations by id.
+- Without the local model, or after LlmUnavailableError, the Groq extraction request carries dedup and returns the same operations.
+- Locks: a user edit of text or owner sets locked.text or locked.owner; model operations never delete a locked item.
+- In a merge the item with a manual edit survives; if both were edited, the merge is skipped; users may delete any item.
+- Rate-budget skips are retried on the next tick with no request sent; 429 and errors drop that speech and count as a call; nothing is surfaced to the user.
+- Log lines `[actionItems] cloud call #N (trigger|timeout, dedup=cloud|local|none): +k new, m op(s), T total` count calls per meeting; transcript text is never logged.
+- WebSocket frames: the client sends action-items-init (on open when liveKey is set), participants, action-item-edit and action-item-delete; the server sends the full action-items list after every change.
+- The action-items frame field enabled is true when Online text correction was active at connect time.
+- Editing after stop uses GET /api/sessions/:id/action-items (404 when none), PATCH /api/sessions/:id/action-items/:itemId and DELETE on the same path; PATCH locks edited fields.
+- REST writes are serialized per session, or routed through the live store if it still targets that session.
+- action-items.json holds version 1, participants {me, them}, items and updatedAt; an item has id ('ai_' + 8 hex), text (at most 300 chars), owner, source, createdAt and optional locked.
+- Owner is 'Me', 'Them', a free-text name or empty; source is 'Me' or 'Them' (who said it); Me and Them owners are shown as the participant names when set.
+
 ## Components
 
 - LiveTextCorrector (component): part of liveTranscription; depends on groqText (AUG-164).
+- liveActionItems (component): part of liveTranscription; depends on groqText; depends on llmServer (AUG-165).
+- ActionItemsPanel (component): part of LiveTranscriptPanel; used by TranscriptView (AUG-165).
 
 ## Invariants
 
@@ -118,11 +157,13 @@ Document the mechanics of the live transcription mode — how audio is captured 
 - Detach/flush order on stop: stopCapture() ends the tee first (sink.onEnd('stop') flushes the accumulator's partial window into the transcription queue when ≥0.5 s of fresh audio arrived), then stops ffmpeg and finalizes the WAV, so the post-recording dual-track transcript is produced exactly as for a non-live capture.
 - Closing the WebSocket or sending stop only detaches the sink — the server capture keeps recording until POST /api/capture/stop; a WAV from a live-attached capture is format-identical (16 kHz mono pcm_s16le, 44-byte header) to a non-live one.
 - One sink per capture: a second attach-capture for the same captureId gets a warning and the first binding stays.
+- Live action items never change a field the user edited: model operations are only merge/delete by id and skip locked items (AUG-165).
+- Cloud action-item extraction is never called more often than once per 45 s per connection (at most 80 calls per hour) (AUG-165).
 
 ## Route-Specific Constraints
 
-- Data goes to Groq only through an explicit user choice: live audio only when the user selects the Groq engine, transcript text only when the user turned on Online text correction and accepted its consent (AUG-164). Neither is a default.
-- Live corrections apply in place without dialogs and are never saved; transcript.md is built only by the batch path (AUG-164).
+- Data goes to Groq only through an explicit user choice: live audio only when the user selects the Groq engine, transcript text, participant names and action items only when the user turned on Online text correction and accepted its consent (AUG-164, AUG-165). Neither is a default.
+- Live corrections apply in place without dialogs and are never saved; transcript.md is built only by the batch path (AUG-164). Live text is still never saved; only action items and participants are (AUG-165).
 - Post-recording transcription remains strictly local whisper-cli — Groq is never used for full-file transcription (25MB limit makes it impractical).
 - The Groq API key (GROQ_API_KEY) is read from environment variables only — never hardcoded or committed.
 - The binary frame format is alignment-sensitive: Float32 samples are written sample-by-sample via DataView to avoid TypedArray 4-byte alignment issues with variable-length headers.
@@ -146,3 +187,5 @@ Document the mechanics of the live transcription mode — how audio is captured 
 - server/src/services/liveTextCorrection.ts — LiveTextCorrector: per-connection batching of settled chunks, retry/drop by age, correction frames (AUG-164).
 - server/src/services/groqText.ts — Groq openai/gpt-oss-20b text client with its own rate limiter and correction guard (AUG-164).
 - client/src/components/GroqTextConsentModal.tsx — consent modal shown when the Online text correction toggle is turned on (AUG-164).
+- server/src/services/liveActionItems.ts — action items store/registry per liveKey, gate, Groq extraction, local dedup, lock rules, session attach and REST helpers (AUG-165).
+- client/src/components/ActionItemsPanel.tsx — Action items panel shared by the live panel and TranscriptView (AUG-165).

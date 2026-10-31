@@ -7,6 +7,9 @@
 // pipeline already captured; this class only taps them, it never touches
 // the tracks used for the normal recording/upload path.
 // AUG-113: when the system track is a server capture, start() receives its captureId; the client then sends an attach-capture control frame instead of tapping a system MediaStream, so only mic chunks travel over the socket.
+// AUG-165: start() also receives a liveKey (UUID per recording) and the participant names; an action-items-init frame joins the server-side action-items store, action-items frames come back, and edits/deletes/participant names go out as control frames.
+
+import type { ActionItem, Participants } from '../types';
 
 export type Speaker = 'Me' | 'Them';
 export type LiveStatus = 'connecting' | 'listening' | 'paused' | 'interrupted' | 'stopped';
@@ -25,9 +28,16 @@ const MIN_SPEECH_RUN_MS = 160;
 const MIN_SPEECH_MS = 200;
 const PROCESSOR_BUFFER_SIZE = 4096;
 
+export interface LiveActionItemsState {
+  enabled: boolean;
+  participants: Participants;
+  items: ActionItem[];
+}
+
 interface LiveTranscriptionCallbacks {
   onTranscript: (speaker: Speaker, text: string, id?: string) => void;
   onCorrection?: (id: string, text: string) => void;
+  onActionItems?: (state: LiveActionItemsState) => void;
   onStatusChange: (status: LiveStatus) => void;
   onError: (message: string) => void;
   onWarning: (message: string) => void;
@@ -147,16 +157,20 @@ export class LiveTranscriptionClient {
   private language = 'auto';
   private engine: LiveEngine = 'local';
   private captureId: string | null = null;
+  private liveKey: string | null = null;
+  private participants: Participants | null = null;
   private callbacks: LiveTranscriptionCallbacks;
 
   constructor(callbacks: LiveTranscriptionCallbacks) {
     this.callbacks = callbacks;
   }
 
-  start(micStream: MediaStream | null, systemStream: MediaStream | null, language: string, engine: LiveEngine = 'local', captureId: string | null = null): void {
+  start(micStream: MediaStream | null, systemStream: MediaStream | null, language: string, engine: LiveEngine = 'local', captureId: string | null = null, liveKey: string | null = null, participants: Participants | null = null): void {
     this.language = language;
     this.engine = engine;
     this.captureId = captureId;
+    this.liveKey = liveKey;
+    this.participants = participants;
     this.stopped = false;
     this.paused = false;
     this.callbacks.onStatusChange('connecting');
@@ -175,6 +189,9 @@ export class LiveTranscriptionClient {
       if (this.captureId) {
         ws.send(JSON.stringify({ type: 'attach-capture', captureId: this.captureId, language: this.language }));
       }
+      if (this.liveKey) {
+        ws.send(JSON.stringify({ type: 'action-items-init', liveKey: this.liveKey, participants: this.participants }));
+      }
       this.callbacks.onStatusChange('listening');
       this.attachAudio(micStream, systemStream);
     };
@@ -187,6 +204,12 @@ export class LiveTranscriptionClient {
           this.callbacks.onTranscript(msg.speaker === 'Me' ? 'Me' : 'Them', msg.text, typeof msg.id === 'string' ? msg.id : undefined);
         } else if (msg.type === 'correction' && typeof msg.id === 'string' && typeof msg.text === 'string') {
           this.callbacks.onCorrection?.(msg.id, msg.text);
+        } else if (msg.type === 'action-items' && Array.isArray(msg.items)) {
+          this.callbacks.onActionItems?.({
+            enabled: msg.enabled === true,
+            participants: { me: String(msg.participants?.me ?? ''), them: String(msg.participants?.them ?? '') },
+            items: msg.items,
+          });
         } else if (msg.type === 'error') {
           this.callbacks.onError(msg.message || 'Live transcription error');
           this.callbacks.onStatusChange('interrupted');
@@ -281,6 +304,31 @@ export class LiveTranscriptionClient {
     this.callbacks.onStatusChange('listening');
     if (this.ws?.readyState === WebSocket.OPEN) {
       this.ws.send(JSON.stringify({ type: 'resume' }));
+    }
+  }
+
+  setParticipants(p: Participants): void {
+    this.participants = p;
+    if (this.ws?.readyState === WebSocket.OPEN) {
+      this.ws.send(JSON.stringify({ type: 'participants', me: p.me, them: p.them }));
+    }
+  }
+
+  editActionItem(id: string, patch: { text?: string; owner?: string }): void {
+    if (this.ws?.readyState === WebSocket.OPEN) {
+      this.ws.send(JSON.stringify({ type: 'action-item-edit', id, ...patch }));
+    }
+  }
+
+  addActionItem(text: string, owner?: string): void {
+    if (this.ws?.readyState === WebSocket.OPEN) {
+      this.ws.send(JSON.stringify({ type: 'action-item-add', text, owner }));
+    }
+  }
+
+  deleteActionItem(id: string): void {
+    if (this.ws?.readyState === WebSocket.OPEN) {
+      this.ws.send(JSON.stringify({ type: 'action-item-delete', id }));
     }
   }
 

@@ -1,8 +1,9 @@
 import React, { useMemo, useState, useRef, useEffect } from 'react';
-import type { CorrectionItem, CorrectionStatus, SessionMetadata } from '../types';
-import { fetchCorrectedTranscript, fetchCorrections, setAllCorrectionsStatus, setCorrectionStatus } from '../api';
+import type { ActionItemsFile, CorrectionItem, CorrectionStatus, SessionMetadata } from '../types';
+import { addActionItem, deleteActionItem, fetchActionItems, fetchCorrectedTranscript, fetchCorrections, setAllCorrectionsStatus, setCorrectionStatus, updateActionItem } from '../api';
 import PraxisModal from './PraxisModal';
 import ConfidenceBadge from './ConfidenceBadge';
+import ActionItemsPanel from './ActionItemsPanel';
 import type { PraxisProject } from '../services/preferences';
 
 interface TranscriptViewProps {
@@ -340,6 +341,7 @@ const TranscriptView: React.FC<TranscriptViewProps> = ({ session, transcript, on
   const [showPraxisModal, setShowPraxisModal] = useState(false);
   const [redownloading, setRedownloading] = useState(false);
   const [corrections, setCorrections] = useState<CorrectionItem[]>([]);
+  const [actionItems, setActionItems] = useState<ActionItemsFile | null>(null);
   const [correctionBusy, setCorrectionBusy] = useState<number | null>(null);
   const audioDeleted = !!session.audioDeletedAt;
 
@@ -429,6 +431,25 @@ const TranscriptView: React.FC<TranscriptViewProps> = ({ session, transcript, on
       .catch(() => { if (alive) setCorrections([]); });
     return () => { alive = false; };
   }, [session.id, session.status, transcript]);
+
+  // AUG-165: action items collected during a live recording (any session status).
+  useEffect(() => {
+    let alive = true;
+    fetchActionItems(session.id)
+      .then((f) => { if (alive) setActionItems(f); })
+      .catch(() => { if (alive) setActionItems(null); });
+    return () => { alive = false; };
+  }, [session.id]);
+
+  const handleActionEdit = (itemId: string, patch: { text?: string; owner?: string }) => {
+    updateActionItem(session.id, itemId, patch).then(setActionItems).catch(() => {});
+  };
+  const handleActionAdd = (text: string, owner: string) => {
+    addActionItem(session.id, { text, owner: owner || undefined }).then(setActionItems).catch(() => {});
+  };
+  const handleActionDelete = (itemId: string) => {
+    deleteActionItem(session.id, itemId).then(setActionItems).catch(() => {});
+  };
 
   const correctionsByIndex = useMemo(() => {
     const map = new Map<number, CorrectionItem[]>();
@@ -662,6 +683,18 @@ const TranscriptView: React.FC<TranscriptViewProps> = ({ session, transcript, on
       </div>
 
       <div className="transcript-body">
+        {(actionItems !== null || session.status === 'completed') && (
+          <div className="transcript-action-items">
+            <ActionItemsPanel
+              variant="session"
+              items={actionItems?.items ?? []}
+              participants={actionItems?.participants ?? { me: session.participants?.me ?? '', them: session.participants?.them ?? '' }}
+              onAdd={handleActionAdd}
+              onEdit={handleActionEdit}
+              onDelete={handleActionDelete}
+            />
+          </div>
+        )}
         {session.status === 'uploading' && (
           <div className="transcript-status-panel">
             {session.sourceUrl ? (

@@ -1,3 +1,4 @@
+import type { ActionItem, Participants } from '../types';
 import type { LiveLine, LiveStatus } from '../components/LiveTranscriptPanel';
 
 export interface CompactSnapshot {
@@ -11,6 +12,9 @@ export interface CompactSnapshot {
   levels: number[];
   dualTrack: boolean;
   skipStopConfirmation: boolean;
+  actionItems: ActionItem[]; // AUG-165
+  participants: Participants;
+  actionEnabled: boolean | null;
 }
 
 export interface CompactActions {
@@ -21,6 +25,9 @@ export interface CompactActions {
   retryLive(): void;
   copyAll(): void;
   showLivePanel(): void;
+  addActionItem(text: string, owner: string): void;
+  editActionItem(id: string, patch: { text?: string; owner?: string }): void;
+  deleteActionItem(id: string): void;
 }
 
 export interface CompactController {
@@ -40,6 +47,9 @@ let snapshot: CompactSnapshot = {
   levels: new Array(12).fill(0),
   dualTrack: false,
   skipStopConfirmation: false,
+  actionItems: [],
+  participants: { me: '', them: '' },
+  actionEnabled: null,
 };
 const listeners = new Set<() => void>();
 let currentActions: CompactActions | null = null;

@@ -1,3 +1,4 @@
+import type { ActionItem, Participants } from '../../types';
 import type { LiveLine, LiveStatus } from '../LiveTranscriptPanel';
 
 /// BroadcastChannel shared by the main window (CompactLayer) and the ghost window (GhostApp).
@@ -21,14 +22,24 @@ export interface GhostState {
   captureLost: boolean;
   elapsedSeconds: number;
   skipStopConfirmation: boolean;
+  actionItems: ActionItem[]; // AUG-165
+  participants: Participants;
+  actionEnabled: boolean | null;
 }
 
 export type GhostCommand = 'expand' | 'pause' | 'resume' | 'end' | 'retry' | 'show-transcript';
 
+/// AUG-165: action item edits made in the ghost window; the main window applies them through compactStore actions.
+export type GhostAction =
+  | { kind: 'add'; text: string; owner: string }
+  | { kind: 'edit'; id: string; patch: { text?: string; owner?: string } }
+  | { kind: 'delete'; id: string };
+
 export type GhostMessage =
   | { type: 'state'; state: GhostState }
   | { type: 'hello' }
-  | { type: 'command'; command: GhostCommand };
+  | { type: 'command'; command: GhostCommand }
+  | { type: 'action'; action: GhostAction };
 
 /// Short status tag shared by every widget. Never exposes engine or audio internals.
 export function statusTag(liveStatus: LiveStatus | null, live: boolean): { label: string; tone: 'ok' | 'pause' | 'error' | 'idle' } {
