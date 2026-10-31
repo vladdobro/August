@@ -1,0 +1,20 @@
+{
+  "id": "AUG-168-qv52pc",
+  "assignee": "jarvis.json",
+  "priority": "medium",
+  "status": "to_review",
+  "title": "[AUG-168] Local-model fallback for live action items extraction when Groq call fails",
+  "why_we_need_this": "Live action items are extracted only by Groq. When a Groq call is refused (429 cooldown, error/timeout, 403 block) or the shared budget stays exhausted, the speech of that window yields no items — a missed action item is lost for good. Users who enabled and downloaded the local model (AUG-162, Qwen2.5 1.5B/3B via llama-server) could get those items extracted locally. Without strict rate rules, the single llama-server process (already used every 20 s for action-items dedup) would choke and could slow live transcription.",
+  "acceptance_criteria": "- [ ] Fallback triggers only when the local model is enabled and downloaded (existing localReady) AND one of: Groq skip `rate-limited`, `error`/timeout, Groq blocked (403 ×3), or `rate-budget` with the gate open > 30 s without a successful call\n- [ ] Groq is always tried first on each new gate opening; local is used only after a Groq refusal from the conditions above\n- [ ] Without Groq consent (Online text correction off) behaviour is unchanged: no live action items, no local extraction\n- [ ] One local LLM call at a time app-wide: a shared semaphore covers local extraction and local dedup; dedup does not start while a local extraction runs\n- [ ] At least 60 s between local extractions per session; 120 s when the live engine is local whisper\n- [ ] Local request limits: transcript buffer ≤ 2000 chars, maxTokens 400, timeout 45 s\n- [ ] On local timeout the local interval doubles (60 → 120 → 240 s max); first local success resets it to the base interval\n- [ ] Items from local extraction go through the same parse/lock/dedup path as cloud items (user-edited items never overwritten)\n- [ ] Log lines show the path: `[actionItems] local fallback #N (<groq reason>): +k new, T total` and `[actionItems] local fallback skipped: <reason>`; no transcript text in logs\n- [ ] AUG-167 priority applies to Groq calls only: once the extractor switches to a local call, `cloudCallPending` is cleared and live correction resumes\n- [ ] Works on Windows x64 and macOS arm64/x64 (no platform branches expected; verify none added)\n- [ ] Existing tests pass; new tests cover trigger conditions, semaphore exclusivity, interval/backoff",
+  "important_constraints": "**Agreed with user (2026-10-31):** fallback only (no local-only mode), rules above as-is.\n\n**Code facts:**\n- `server/src/services/liveActionItems.ts` — `LiveActionItemsExtractor.tick()` (Groq extraction, skip reasons via `GroqTextSkipError`), `localDedupTick()` every 20 s via `deps.withLocal`, `localInFlight`, `cloudCallPending` (AUG-167)\n- `server/src/services/llmServer.ts` — `withLocalLlm()`, one llama-server process, idle shutdown\n- Groq `blocked` state: `groqText.ts` `consecutiveForbidden` / `groqTextState().blocked`\n\n**Risks to check:**\n- Quality: AUG-161 research notes small local models tend to fabricate content; local extraction prompt may need to be stricter (only explicit commitments) — validate on a real transcript before shipping\n- llama-server is also used by the batch semantic pass (`semanticCheck.ts`, AUG-163) — decide whether the app-wide semaphore covers it or only live calls; do not change semanticCheck behaviour without noting it\n- CPU/GPU contention with local whisper live engine — measure transcription lag with fallback active\n\n**Do NOT:** change `TextRateLimiter`, Groq intervals, or AUG-167 priority semantics; send anything new to Groq.",
+  "labels": [
+    "live",
+    "groq",
+    "local-llm",
+    "action-items"
+  ],
+  "on_hold_reason": "",
+  "contextRouterIncluded": true,
+  "created_at": 1793458800494,
+  "column_entered_at": 1793459341467
+}

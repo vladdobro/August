@@ -21,7 +21,7 @@
 // LiveTextCorrector pushes { type: 'correction', id, text } frames for settled
 // chunks; still nothing is persisted.
 //
-// AUG-165: with an action-items-init frame (liveKey per recording) the connection joins that recording's action-items store; when online text correction is active a LiveActionItemsExtractor collects items. Items and participants are persisted (pending file -> session folder on upload); live text still is not.
+// AUG-165: with an action-items-init frame (liveKey per recording) the connection joins that recording's action-items store; when online text correction is active a LiveActionItemsExtractor collects items. Items and participants are persisted (pending file -> session folder on upload); live text still is not. AUG-168: the extractor knows the live engine to space local fallback calls (120 s on local whisper).
 
 import { randomUUID } from 'node:crypto';
 import type { Server as HttpServer } from 'node:http';
@@ -177,7 +177,7 @@ export function setupLiveTranscription(server: HttpServer): void {
     const sendActionItems = (file: ActionItemsFile) => send({ type: 'action-items', enabled: groqTextActive === true, participants: file.participants, items: file.items });
     const maybeStartExtractor = () => {
       if (stopped || !actionStore || groqTextActive !== true || actionExtractor) return;
-      actionExtractor = new LiveActionItemsExtractor(actionStore);
+      actionExtractor = new LiveActionItemsExtractor(actionStore, undefined, { liveEngine: () => engine });
       actionExtractor.start();
     };
     const stopActionItems = () => {

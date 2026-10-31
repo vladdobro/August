@@ -21,9 +21,10 @@
 - Live action items (AUG-165): an Action items column next to the live transcript collects agreements and tasks with an owner.
 - Groq extracts new action items behind a cheap gate, and the local model or the same Groq call merges duplicates by id.
 - User edits of action items are locked, so model operations never overwrite them (AUG-165).
+- Local fallback (AUG-168): when the Groq action-items call is refused and the local model is ready, the same speech is extracted by llama-server, rate-limited and serialized with local dedup.
 - Action items and participants are the only live data that is saved: per recording liveKey on the server, moved to the session folder as action-items.json on upload.
 - Export (AUG-166): selected action items go to a Praxis project as separate cards or one checklist card, live or from a saved session; sent items show the created task id. The session's transcript.md ends with a "## Action items" section kept in step with the list.
-- Also known as: online text correction, live text correction, Groq LLM correction, groqText (AUG-164), action items, agreements, tasks from meeting, participants, liveKey, action-items.json, dedup, merge/delete operations (AUG-165), export to Praxis, Separate tasks, One task, Action items section in transcript.md (AUG-166), LiveTextCorrector, Groq priority, correction yields to action-items, shared Groq rate limit starvation (AUG-167).
+- Also known as: online text correction, live text correction, Groq LLM correction, groqText (AUG-164), action items, agreements, tasks from meeting, participants, liveKey, action-items.json, dedup, merge/delete operations (AUG-165), export to Praxis, Separate tasks, One task, Action items section in transcript.md (AUG-166), LiveTextCorrector, Groq priority, correction yields to action-items, shared Groq rate limit starvation (AUG-167), local fallback, local extraction, liveLocalSlot, llama-server action items (AUG-168).
 - Live transcript fills the whole main area while visible (AUG-154): a 48px top bar holds the rec dot + timer, status, Pause/Resume (yellow), Copy All (green), Clear All (red frame), Stop Live (red frame), End Recording (red filled) and × hide; the circuit diagram is hidden (not unmounted) behind it.
 - Stop and Clear All require a confirmation dialog ("Are you sure?") before executing.
 - Live local chunks run whisper-cli with Silero VAD (vad: true in transcribeChunk); a chunk with no detected speech emits no line (AUG-127).
@@ -107,7 +108,7 @@ Document the mechanics of the live transcription mode — how audio is captured 
 - Pending files older than 7 days are deleted when a new store opens.
 - Recovery uploads (recordingRecovery) and file uploads carry no liveKey, so they get no action items.
 - Extraction runs only when Online text correction (Groq, AUG-164 consent) is active at connect time, through createGroqTextClient with openai/gpt-oss-20b and the shared free-tier limiter.
-- cloudCallPending (AUG-167) is set when the gate opens and cleared when the call goes through (success, unparseable, rate-limited, error), when the gate is closed on a tick, and on stop(). A rate-budget skip keeps it set: the gate stays open and retries on the next 5 s tick, so correction cannot spend the budget in between. The limiter itself (one TextRateLimiter in groqText.ts) has no priority; do not split it into two instances, that breaks the 30 RPM / 6000 TPM ceiling.
+- cloudCallPending (AUG-167) is set when the gate opens and cleared when the call goes through (success, unparseable, rate-limited, error) or when the extractor switches to a local fallback call (AUG-168: the priority covers Groq calls only), when the gate is closed on a tick, and on stop(). A rate-budget skip keeps it set: the gate stays open and retries on the next 5 s tick, so correction cannot spend the budget in between. The limiter itself (one TextRateLimiter in groqText.ts) has no priority; do not split it into two instances, that breaks the 30 RPM / 6000 TPM ceiling.
 - The gate is checked every 5 s and never calls sooner than 45 s after the previous call (ACTION_MIN_INTERVAL_MS), a hard bound of at most 80 calls per hour.
 - A call fires when at least 25 new words arrived with a trigger phrase, or when 60 s passed with at least 8 new words.
 - Trigger phrases are the ACTION_TRIGGERS constant list (for example «договорил», «сделаю», «к пятнице», "I'll", "by friday").
@@ -120,7 +121,17 @@ Document the mechanics of the live transcription mode — how audio is captured 
 - Without the local model, or after LlmUnavailableError, the Groq extraction request carries dedup and returns the same operations.
 - Locks: a user edit of text or owner sets locked.text or locked.owner; model operations never delete a locked item.
 - In a merge the item with a manual edit survives; if both were edited, the merge is skipped; users may delete any item.
-- Rate-budget skips are retried on the next tick with no request sent; 429 and errors drop that speech and count as a call; nothing is surfaced to the user.
+- Rate-budget skips are retried on the next tick with no request sent; 429 and errors count as a call; nothing is surfaced to the user. Without a ready local model, 429/error/no-key drop that speech (AUG-165 behaviour).
+- Local fallback (AUG-168, LiveActionItemsExtractor.runLocalFallback): triggers only when localReady (llmEnabled + model downloaded) AND Groq refused with rate-limited, error (includes timeouts), blocked (isGroqTextBlocked: 403 x3) or rate-budget with the gate open > 30 s (ACTION_BUDGET_FALLBACK_MS). Pure rule: localFallbackTrigger(). no-key never falls back.
+- Groq is always tried first on every new gate opening; after any refusal lastCallAt is set, so the next opening (>= 45 s) tries Groq again before local.
+- Without Online text correction consent there is no extractor at all, so no live action items and no local extraction.
+- liveLocalSlot: one live local LLM call app-wide (non-blocking try-acquire) shared by local fallback extraction and local dedup of every session; a busy slot skips the call. The batch semantic pass (semanticCheck, AUG-163) is deliberately not covered — it runs after recording and keeps its own behaviour.
+- Local spacing per session: >= 60 s between local extractions, 120 s when the live engine is local whisper (extractor gets liveEngine: () => engine from liveTranscription.ts; default when absent is 120 s). A timeout doubles the interval up to 240 s (localFallbackIntervalMs); the first local success resets it.
+- Local request: LOCAL_EXTRACT_SYSTEM_PROMPT (stricter: explicit promises/assignments only, never invent — small models fabricate, AUG-161), oldest speech first up to 2000 chars (takeLocalChunk), maxTokens 400, timeout 45 s, no dedup in the request. The 45 s covers the HTTP call only; a cold llama-server start inside withLocalLlm can take longer and holds the slot.
+- When the local call is skipped by interval or busy slot, the speech stays in the buffer (cap 4000 chars) for the next attempt; only speech actually sent is dropped after a local call.
+- Local results go through parseExtractionResponse and store.addItems — the same exact-duplicate skip and lock rules as cloud items; the 20 s local dedup merges later.
+- Log lines: `[actionItems] local fallback #N (<groq reason>): +k new, T total`, `... : unparseable`, `[actionItems] local fallback skipped: interval|busy|timeout, next local call in >= N s|local model unavailable|error`. No transcript text.
+- [UNVERIFIED] Quality of local extraction on a real transcript and transcription lag with local whisper + fallback were not measured at implementation (AUG-168).
 - Log lines `[actionItems] cloud call #N (trigger|timeout, dedup=cloud|local|none): +k new, m op(s), T total` count calls per meeting; transcript text is never logged.
 - WebSocket frames: the client sends action-items-init (on open when liveKey is set), participants, action-item-edit and action-item-delete; the server sends the full action-items list after every change.
 - The action-items frame field enabled is true when Online text correction was active at connect time.
@@ -135,7 +146,7 @@ Document the mechanics of the live transcription mode — how audio is captured 
 ## Components
 
 - LiveTextCorrector (component): part of liveTranscription; depends on groqText; yields to liveActionItems (AUG-164, AUG-167).
-- liveActionItems (component): part of liveTranscription; depends on groqText; depends on llmServer (AUG-165).
+- liveActionItems (component): part of liveTranscription; depends on groqText; depends on llmServer (AUG-165); falls back to llmServer for extraction when Groq refuses (AUG-168).
 - ActionItemsPanel (component): part of LiveTranscriptPanel; used by TranscriptView (AUG-165).
 - transcriptActionItems (component): used by liveActionItems (AUG-166).
 
@@ -195,6 +206,6 @@ Document the mechanics of the live transcription mode — how audio is captured 
 - server/src/services/liveTextCorrection.ts — LiveTextCorrector: per-connection batching of settled chunks, retry/drop by age, correction frames (AUG-164).
 - server/src/services/groqText.ts — Groq openai/gpt-oss-20b text client with its own rate limiter and correction guard (AUG-164).
 - client/src/components/GroqTextConsentModal.tsx — consent modal shown when the Online text correction toggle is turned on (AUG-164).
-- server/src/services/liveActionItems.ts — action items store/registry per liveKey, gate, Groq extraction, local dedup, lock rules, session attach and REST helpers (AUG-165).
+- server/src/services/liveActionItems.ts — action items store/registry per liveKey, gate, Groq extraction, local fallback extraction and liveLocalSlot (AUG-168), local dedup, lock rules, session attach and REST helpers (AUG-165).
 - client/src/components/ActionItemsPanel.tsx — Action items panel shared by the live panel and TranscriptView (AUG-165).
 - server/src/services/transcriptActionItems.ts — transcript.md Action items section and Praxis card drafts (AUG-166).

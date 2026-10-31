@@ -91,6 +91,9 @@ function noteRequestOutcome(status: 'ok' | number | null): void {
   else if (status === 403) consecutiveForbidden += 1;
 }
 
+/// AUG-168: Groq refused the last BLOCKED_AFTER requests with 403.
+export function isGroqTextBlocked(): boolean { return consecutiveForbidden >= BLOCKED_AFTER; }
+
 export function groqTextState(prefs: PreferencesRecord, apiKey: string | null = config.groqApiKey): GroqTextState {
   const raw = prefs.groqTextConsent as Partial<GroqTextConsent> | null | undefined;
   const consent: GroqTextConsent | null =
@@ -106,7 +109,7 @@ export function groqTextState(prefs: PreferencesRecord, apiKey: string | null = 
     consentAt: valid && consent ? consent.acceptedAt : null,
     groqAvailable: !!apiKey,
     model: GROQ_TEXT_MODEL,
-    blocked: consecutiveForbidden >= BLOCKED_AFTER,
+    blocked: isGroqTextBlocked(),
   };
 }
 

@@ -1,4 +1,4 @@
-/// Live action items (AUG-165): cloud model (Groq, inside the AUG-164 consent) extracts NEW items behind a cheap gate; the local model (AUG-162), when enabled and downloaded, returns merge/delete operations by id every 20 s; without it the cloud call carries the dedup in the same request. User-edited fields are locked. Items persist continuously (pending file per liveKey, moved into the session folder on upload). Transcript text and items are never logged.
+/// Live action items (AUG-165): cloud model (Groq, inside the AUG-164 consent) extracts NEW items behind a cheap gate; the local model (AUG-162), when enabled and downloaded, returns merge/delete operations by id every 20 s; without it the cloud call carries the dedup in the same request. User-edited fields are locked. Items persist continuously (pending file per liveKey, moved into the session folder on upload). Transcript text and items are never logged. AUG-168: when a Groq call is refused (rate-limited, error/timeout, blocked, or rate-budget for > 30 s) and the local model is ready, the same window is extracted locally (one live local call app-wide, >= 60/120 s apart, backoff on timeout).
 
 import { randomUUID } from 'node:crypto';
 import fs from 'node:fs/promises';
@@ -6,8 +6,8 @@ import path from 'node:path';
 
 import { config } from '../config.js';
 import type { ActionItem, ActionItemSource, ActionItemsFile, Participants } from '../types.js';
-import { GroqTextSkipError, createGroqTextClient } from './groqText.js';
-import type { ChatCompletionRequest, ChatCompletionResult, LlmClient } from './llmClient.js';
+import { GroqTextSkipError, createGroqTextClient, isGroqTextBlocked, type GroqTextSkipReason } from './groqText.js';
+import { LlmClientError, type ChatCompletionRequest, type ChatCompletionResult, type LlmClient } from './llmClient.js';
 import { llmInstallState, readLlmSettings } from './llmInstaller.js';
 import { LlmUnavailableError, withLocalLlm } from './llmServer.js';
 import * as sessionManager from './sessionManager.js';
@@ -24,6 +24,13 @@ export const ACTION_LOCAL_DEDUP_INTERVAL_MS = 20_000; // 15-30 s per spec
 export const ACTION_MAX_BUFFER_CHARS = 4_000; // oldest new speech is dropped beyond this
 export const ACTION_MAX_ITEMS_IN_PROMPT = 40; // newest items only
 export const ACTION_CONTEXT_CHARS = 600; // tail of already-sent speech repeated as context (a call can fire mid-phrase)
+export const ACTION_BUDGET_FALLBACK_MS = 30_000; // rate-budget: gate open this long without a Groq call -> local fallback
+export const ACTION_LOCAL_INTERVAL_MS = 60_000; // min gap between local extractions per session
+export const ACTION_LOCAL_INTERVAL_LOCAL_WHISPER_MS = 120_000; // ... when live transcription itself runs on local whisper
+export const ACTION_LOCAL_MAX_INTERVAL_MS = 240_000; // timeout backoff cap
+export const ACTION_LOCAL_MAX_CHARS = 2_000; // transcript chars per local request
+export const ACTION_LOCAL_MAX_TOKENS = 400;
+export const ACTION_LOCAL_TIMEOUT_MS = 45_000;
 const MAX_TEXT = 300;
 const MAX_OWNER = 60;
 const MAX_NAME = 60;
@@ -537,11 +544,61 @@ Find items that describe the same task (same action and object, possibly in diff
 Never invent ids and never rewrite text. If there is nothing to do, return [].
 Reply with only a JSON array of operations.`;
 
+/// AUG-168: small local models invent content (AUG-161), so the local prompt allows explicit commitments only and never asks for dedup.
+export const LOCAL_EXTRACT_SYSTEM_PROMPT = `You find action items in a fragment of a live meeting transcript.
+Speakers: "Me" is the app user, "Them" is the other side. Input JSON: {"participants":{"Me":string|null,"Them":string|null},"items":[{"id","text","owner"}],"context":[{"speaker","text"}],"transcript":[{"speaker","text"}]}.
+"items" are already known; "context" is earlier speech for reference only.
+Add an item only when someone in "transcript" explicitly promises to do something or explicitly assigns a task. Never invent tasks, names or deadlines that were not said. Skip ideas, questions, small talk and anything already in "items". When in doubt, add nothing.
+Each item: {"text": a short task in the transcript's language with the deadline if one was said, "owner": "Me", "Them" or a name said explicitly, "source": the speaker who said it, "Me" or "Them"}. When Me says "I will", the owner is Me; when Me says "you will", the owner is Them; the other way round for Them.
+Reply with only JSON: {"new":[...]}.`;
+
+interface BufferEntry { id: string; speaker: ActionItemSource; text: string }
+
+/// AUG-168: one live local LLM call at a time app-wide — local fallback extraction and local dedup of every session share it. Non-blocking: a busy slot skips the call. The batch semantic pass (semanticCheck, AUG-163) is deliberately not covered.
+export const liveLocalSlot = {
+  busy: false,
+  tryAcquire(): boolean { if (this.busy) return false; this.busy = true; return true; },
+  release(): void { this.busy = false; },
+};
+
+export type LocalFallbackTrigger = 'rate-limited' | 'error' | 'blocked' | 'rate-budget';
+
+/// Which Groq refusal allows a local extraction. Timeouts arrive as 'error'. Null: no fallback.
+export function localFallbackTrigger(s: { skipReason: GroqTextSkipReason; groqBlocked: boolean; gateOpenMs: number }): LocalFallbackTrigger | null {
+  if (s.skipReason === 'no-key') return null;
+  if (s.groqBlocked) return 'blocked';
+  if (s.skipReason === 'rate-budget') return s.gateOpenMs > ACTION_BUDGET_FALLBACK_MS ? 'rate-budget' : null;
+  return s.skipReason;
+}
+
+/// Min gap between local extractions: base 60 s (120 s on local whisper), doubled per consecutive timeout, capped at 240 s.
+export function localFallbackIntervalMs(liveEngine: 'local' | 'groq', backoff: number): number {
+  const base = liveEngine === 'local' ? ACTION_LOCAL_INTERVAL_LOCAL_WHISPER_MS : ACTION_LOCAL_INTERVAL_MS;
+  return Math.min(base * backoff, ACTION_LOCAL_MAX_INTERVAL_MS);
+}
+
+/// Oldest speech first, up to maxChars (the first entry is cut when it alone is longer). `sent` are the buffer entries to drop after the call.
+export function takeLocalChunk(entries: BufferEntry[], maxChars: number): { sent: BufferEntry[]; transcript: Array<{ speaker: ActionItemSource; text: string }> } {
+  const sent: BufferEntry[] = [];
+  const transcript: Array<{ speaker: ActionItemSource; text: string }> = [];
+  let used = 0;
+  for (const e of entries) {
+    if (sent.length > 0 && used + e.text.length > maxChars) break;
+    const text = e.text.slice(0, maxChars - used);
+    sent.push(e);
+    transcript.push({ speaker: e.speaker, text });
+    used += text.length;
+    if (used >= maxChars) break;
+  }
+  return { sent, transcript };
+}
+
 interface ExtractorDeps {
   cloudChat: (req: ChatCompletionRequest) => Promise<ChatCompletionResult>;
   withLocal: <T>(fn: (client: LlmClient) => Promise<T>) => Promise<T>;
   localReady: () => Promise<boolean>;
   now: () => number;
+  groqBlocked?: () => boolean;
 }
 
 const defaultDeps: ExtractorDeps = {
@@ -557,9 +614,8 @@ const defaultDeps: ExtractorDeps = {
     }
   },
   now: () => Date.now(),
+  groqBlocked: isGroqTextBlocked,
 };
-
-interface BufferEntry { id: string; speaker: ActionItemSource; text: string }
 
 export class LiveActionItemsExtractor {
   private buffer: BufferEntry[] = [];
@@ -572,13 +628,17 @@ export class LiveActionItemsExtractor {
   private localReady = false;
   private lastDedupVersion = -1;
   private cloudCalls = 0;
+  private gateOpenedAt = 0;
+  private lastLocalAt = 0;
+  private localBackoff = 1;
+  private localCalls = 0;
   private controller = new AbortController();
   private gateTimer: NodeJS.Timeout | null = null;
   private dedupTimer: NodeJS.Timeout | null = null;
 
-  constructor(private readonly store: LiveActionItemsStore, private readonly deps: ExtractorDeps = defaultDeps) {}
+  constructor(private readonly store: LiveActionItemsStore, private readonly deps: ExtractorDeps = defaultDeps, private readonly opts: { liveEngine?: () => 'local' | 'groq' } = {}) {}
 
-  /// AUG-167: true from the moment the gate opens until the cloud call goes through; LiveTextCorrector yields while it is set. A rate-budget skip keeps it set (the gate stays open and retries on the next 5 s tick).
+  /// AUG-167: true from the moment the gate opens until the cloud call goes through; LiveTextCorrector yields while it is set. A rate-budget skip keeps it set (the gate stays open and retries on the next 5 s tick). AUG-168: cleared as soon as the extractor switches to a local call — the priority covers Groq calls only.
   get cloudCallPending(): boolean { return this.priorityPending; }
 
   start(): void {
@@ -638,7 +698,8 @@ export class LiveActionItemsExtractor {
     const newWords = this.buffer.reduce((n, e) => n + countWords(e.text), 0);
     const triggerSeen = this.buffer.some((e) => hasTrigger(e.text));
     const sinceLastMs = this.deps.now() - this.lastCallAt;
-    if (!actionGateOpen({ newWords, triggerSeen, sinceLastMs })) { this.priorityPending = false; return; }
+    if (!actionGateOpen({ newWords, triggerSeen, sinceLastMs })) { this.priorityPending = false; this.gateOpenedAt = 0; return; }
+    if (this.gateOpenedAt === 0) this.gateOpenedAt = this.deps.now();
     this.priorityPending = true;
 
     this.inFlight = true;
@@ -669,6 +730,7 @@ export class LiveActionItemsExtractor {
       if (this.stopped) return;
       this.cloudCalls++;
       this.lastCallAt = this.deps.now();
+      this.gateOpenedAt = 0;
       this.dropSent(snapshot);
       const parsed = parseExtractionResponse(result.content, new Set(sentItems.map((i) => i.id)));
       if (!parsed) {
@@ -680,19 +742,83 @@ export class LiveActionItemsExtractor {
       }
     } catch (err) {
       if (this.stopped) return;
-      if (err instanceof GroqTextSkipError && err.reason === 'rate-budget') {
+      const skipReason: GroqTextSkipReason = err instanceof GroqTextSkipError ? err.reason : 'error';
+      const trigger = localFallbackTrigger({ skipReason, groqBlocked: this.deps.groqBlocked?.() ?? false, gateOpenMs: this.deps.now() - this.gateOpenedAt });
+      if (skipReason === 'rate-budget' && !trigger) {
         keepPending = true;
         console.log('[actionItems] cloud call skipped: rate-budget');
       } else {
-        const skipReason = err instanceof GroqTextSkipError ? err.reason : 'error';
         if (skipReason === 'rate-limited' || skipReason === 'error') this.cloudCalls++;
         this.lastCallAt = this.deps.now();
-        this.dropSent(snapshot);
+        this.gateOpenedAt = 0;
         console.log(`[actionItems] cloud call skipped: ${skipReason}`);
+        if (trigger) await this.runLocalFallback(trigger, snapshot);
+        else this.dropSent(snapshot);
       }
     } finally {
       this.inFlight = false;
       if (!keepPending) this.priorityPending = false;
+    }
+  }
+
+  private localIntervalMs(): number {
+    return localFallbackIntervalMs(this.opts.liveEngine?.() ?? 'local', this.localBackoff);
+  }
+
+  /// AUG-168: extraction of a refused window through the local model. Without a ready local model the window is dropped exactly as before; when the interval or the shared slot blocks the call, the speech stays in the buffer for the next attempt.
+  private async runLocalFallback(trigger: LocalFallbackTrigger, snapshot: BufferEntry[]): Promise<void> {
+    this.priorityPending = false; // AUG-167 priority covers Groq calls only
+    const skip = (reason: string) => console.log(`[actionItems] local fallback skipped: ${reason}`);
+    await this.refreshLocalReady();
+    if (this.stopped) return;
+    if (!this.localReady) { this.dropSent(snapshot); return; }
+    const now = this.deps.now();
+    if (this.lastLocalAt > 0 && now - this.lastLocalAt < this.localIntervalMs()) { skip('interval'); return; }
+    if (!liveLocalSlot.tryAcquire()) { skip('busy'); return; }
+    this.lastLocalAt = now;
+    const n = ++this.localCalls;
+    try {
+      const { sent, transcript } = takeLocalChunk(snapshot, ACTION_LOCAL_MAX_CHARS);
+      const sentItems = this.store.file.items.slice(-ACTION_MAX_ITEMS_IN_PROMPT).map(({ id, text, owner }) => ({ id, text, owner }));
+      const p = this.store.file.participants;
+      const payload = {
+        participants: { Me: p.me || null, Them: p.them || null },
+        items: sentItems,
+        context: this.context.map(({ speaker, text }) => ({ speaker, text })),
+        transcript,
+      };
+      const content = (
+        await this.deps.withLocal((client) =>
+          client.chat({
+            messages: [
+              { role: 'system', content: LOCAL_EXTRACT_SYSTEM_PROMPT },
+              { role: 'user', content: JSON.stringify(payload) },
+            ],
+            temperature: 0,
+            maxTokens: ACTION_LOCAL_MAX_TOKENS,
+            timeoutMs: ACTION_LOCAL_TIMEOUT_MS,
+            signal: this.controller.signal,
+          }),
+        )
+      ).content;
+      if (this.stopped) return;
+      this.localBackoff = 1;
+      this.dropSent(sent);
+      const parsed = parseExtractionResponse(content, new Set(sentItems.map((i) => i.id)));
+      if (!parsed) console.log(`[actionItems] local fallback #${n} (${trigger}): unparseable`);
+      else {
+        const added = this.store.addItems(parsed.newItems);
+        console.log(`[actionItems] local fallback #${n} (${trigger}): +${added} new, ${this.store.file.items.length} total`);
+      }
+    } catch (err) {
+      if (this.stopped) return;
+      if (err instanceof LlmUnavailableError) { this.localReady = false; skip('local model unavailable'); }
+      else if (err instanceof LlmClientError && err.status === null && err.message.includes('timed out')) {
+        this.localBackoff = Math.min(this.localBackoff * 2, 4);
+        skip(`timeout, next local call in >= ${Math.round(this.localIntervalMs() / 1000)} s`);
+      } else skip('error');
+    } finally {
+      liveLocalSlot.release();
     }
   }
 
@@ -702,6 +828,7 @@ export class LiveActionItemsExtractor {
     if (!this.localReady) return;
     const items = this.store.file.items;
     if (items.length < 2 || this.store.version === this.lastDedupVersion) return;
+    if (!liveLocalSlot.tryAcquire()) return; // AUG-168: a local extraction (any session) is running
 
     this.localInFlight = true;
     try {
@@ -731,6 +858,7 @@ export class LiveActionItemsExtractor {
       console.log(`[actionItems] local dedup skipped: ${(err as Error).message}`);
     } finally {
       this.localInFlight = false;
+      liveLocalSlot.release();
     }
   }
 }
