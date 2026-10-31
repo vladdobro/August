@@ -190,7 +190,7 @@ export function setupLiveTranscription(server: HttpServer): void {
     void isGroqTextActive().then((active) => {
       groqTextActive = active;
       if (active && !stopped) {
-        corrector = new LiveTextCorrector((id, text) => { send({ type: 'correction', id, text }); actionExtractor?.noteCorrection(id, text); });
+        corrector = new LiveTextCorrector((id, text) => { send({ type: 'correction', id, text }); actionExtractor?.noteCorrection(id, text); }, undefined, undefined, () => actionExtractor?.cloudCallPending === true);
         corrector.start();
       }
       maybeStartExtractor();

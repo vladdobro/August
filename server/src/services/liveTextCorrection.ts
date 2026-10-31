@@ -1,6 +1,7 @@
 /// Live-panel text correction (AUG-164): every LIVE_CORRECTION_INTERVAL_MS, settled live chunks are sent to Groq
 /// (groqText.correctSegments) and corrected text is pushed back to the client as { type: 'correction', id, text }.
 /// Only the client's in-memory live panel changes — nothing is persisted; transcript.md is still built by the batch path.
+/// AUG-167: yields its tick while the session's action-items call is pending (shouldYield).
 
 import { correctSegments } from './groqText.js';
 
@@ -26,6 +27,7 @@ export class LiveTextCorrector {
     private readonly onCorrection: (id: string, text: string) => void,
     private readonly correct: typeof correctSegments = correctSegments,
     private readonly now: () => number = Date.now,
+    private readonly shouldYield: () => boolean = () => false,
   ) {}
 
   add(id: string, text: string): void {
@@ -48,6 +50,11 @@ export class LiveTextCorrector {
 
   async tick(): Promise<void> {
     if (this.inFlight || this.stopped) return;
+    // AUG-167: a missed action item is lost for good, a missed correction is only unfixed text — give the shared Groq budget to action items.
+    if (this.shouldYield()) {
+      console.log('[correction] yielded to action-items');
+      return;
+    }
     const t = this.now();
     this.entries = this.entries.filter((e) => t - e.emittedAt <= LIVE_MAX_AGE_MS);
     // Never the newest chunk — it is the line currently being read.

@@ -1,0 +1,19 @@
+{
+  "id": "AUG-167-2lyqhv",
+  "assignee": "jarvis.json",
+  "priority": "high",
+  "status": "to_review",
+  "title": "[AUG-167] Action items extraction gets starved by text correction under shared Groq rate limit",
+  "why_we_need_this": "During a live session, LiveTextCorrector (12 s ticks, up to 8 segments) and LiveActionItemsExtractor share one global TextRateLimiter (30 RPM / 6000 TPM). Correction fires more often and eats the budget; action items calls silently get `rate-budget` or `rate-limited` skips. A missed action item is lost forever, while a missed correction is just un-fixed text — action items must have priority.",
+  "acceptance_criteria": "- [ ] When `LiveActionItemsExtractor.tick()` gate opens, the next `LiveTextCorrector.tick()` yields (skips its cycle) so the action items call goes through first\n- [ ] After the action items call completes (success or skip), correction resumes normally on its next interval\n- [ ] The priority mechanism is a simple flag/signal between the two services, not a change to `TextRateLimiter` itself\n- [ ] No new rate limiter instances — the shared singleton stays as-is\n- [ ] Logs show `[correction] yielded to action-items` when a correction tick is skipped due to priority\n- [ ] Existing tests for LiveTextCorrector and LiveActionItemsExtractor still pass\n- [ ] New test: when action items gate is open, correction tick is a no-op; after action items call finishes, correction resumes",
+  "important_constraints": "**Architecture (confirmed from code):**\n- `server/src/services/groqText.ts:58` — `const limiter = new TextRateLimiter()` is the shared singleton\n- `server/src/services/liveTextCorrection.ts` — `LiveTextCorrector`, ticks every 12 s (`LIVE_CORRECTION_INTERVAL_MS`), calls `correctSegments()` → `createGroqTextClient().chat()`\n- `server/src/services/liveActionItems.ts` — `LiveActionItemsExtractor`, ticks by gate (word count + time), calls `createGroqTextClient().chat()` via `deps.cloudChat`\n- Both are instantiated per live session in `liveTranscription.ts`\n\n**Approach — priority flag:**\n1. Export a simple signal from `liveActionItems.ts` (e.g. `actionItemsPending: boolean` or an event) that is set `true` when the gate opens (before the cloud call) and `false` after the call completes/skips\n2. In `LiveTextCorrector.tick()`, check the signal at the top — if action items are pending, `return` early (log and skip)\n3. Both services belong to the same live session — wire the signal when creating them in `liveTranscription.ts`\n\n**Do NOT:**\n- Split the limiter into two instances (breaks the 30 RPM ceiling guarantee)\n- Change `TextRateLimiter` API\n- Change correction or action items intervals\n- Touch `semanticCheck.ts` (batch path, separate concern)",
+  "labels": [
+    "bug",
+    "live",
+    "groq"
+  ],
+  "on_hold_reason": "",
+  "contextRouterIncluded": true,
+  "created_at": 1793454542664,
+  "column_entered_at": 1793454907988
+}

@@ -566,6 +566,7 @@ export class LiveActionItemsExtractor {
   private context: BufferEntry[] = [];
   private lastCallAt = 0;
   private inFlight = false;
+  private priorityPending = false;
   private localInFlight = false;
   private stopped = false;
   private localReady = false;
@@ -576,6 +577,9 @@ export class LiveActionItemsExtractor {
   private dedupTimer: NodeJS.Timeout | null = null;
 
   constructor(private readonly store: LiveActionItemsStore, private readonly deps: ExtractorDeps = defaultDeps) {}
+
+  /// AUG-167: true from the moment the gate opens until the cloud call goes through; LiveTextCorrector yields while it is set. A rate-budget skip keeps it set (the gate stays open and retries on the next 5 s tick).
+  get cloudCallPending(): boolean { return this.priorityPending; }
 
   start(): void {
     this.lastCallAt = this.deps.now();
@@ -588,6 +592,7 @@ export class LiveActionItemsExtractor {
 
   stop(): void {
     this.stopped = true;
+    this.priorityPending = false;
     if (this.gateTimer) clearInterval(this.gateTimer);
     if (this.dedupTimer) clearInterval(this.dedupTimer);
     this.gateTimer = null;
@@ -633,11 +638,13 @@ export class LiveActionItemsExtractor {
     const newWords = this.buffer.reduce((n, e) => n + countWords(e.text), 0);
     const triggerSeen = this.buffer.some((e) => hasTrigger(e.text));
     const sinceLastMs = this.deps.now() - this.lastCallAt;
-    if (!actionGateOpen({ newWords, triggerSeen, sinceLastMs })) return;
+    if (!actionGateOpen({ newWords, triggerSeen, sinceLastMs })) { this.priorityPending = false; return; }
+    this.priorityPending = true;
 
     this.inFlight = true;
     const snapshot = this.buffer.slice();
     const reason = triggerSeen && newWords >= ACTION_MIN_NEW_WORDS ? 'trigger' : 'timeout';
+    let keepPending = false;
     try {
       const dedup = !this.localReady && this.store.file.items.length >= 2;
       const sentItems = this.store.file.items.slice(-ACTION_MAX_ITEMS_IN_PROMPT).map(({ id, text, owner }) => ({ id, text, owner }));
@@ -674,6 +681,7 @@ export class LiveActionItemsExtractor {
     } catch (err) {
       if (this.stopped) return;
       if (err instanceof GroqTextSkipError && err.reason === 'rate-budget') {
+        keepPending = true;
         console.log('[actionItems] cloud call skipped: rate-budget');
       } else {
         const skipReason = err instanceof GroqTextSkipError ? err.reason : 'error';
@@ -684,6 +692,7 @@ export class LiveActionItemsExtractor {
       }
     } finally {
       this.inFlight = false;
+      if (!keepPending) this.priorityPending = false;
     }
   }
 

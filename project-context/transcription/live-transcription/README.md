@@ -17,12 +17,13 @@
 - Online text correction (AUG-164, opt-in with consent): when Settings → Transcription → Online text correction (Groq) is on, settled live chunks go to Groq openai/gpt-oss-20b.
 - Settled chunks are at least 8 s old, never the newest, sent every 12 s, and replaced in place with a 2 s yellow flash.
 - Live corrections are never persisted, and Groq limits or errors skip silently.
+- Action items have priority on the shared Groq text limiter (AUG-167): LiveTextCorrector yields its tick while the session's action-items call is pending, because a missed item is lost for good and a missed correction is only unfixed text.
 - Live action items (AUG-165): an Action items column next to the live transcript collects agreements and tasks with an owner.
 - Groq extracts new action items behind a cheap gate, and the local model or the same Groq call merges duplicates by id.
 - User edits of action items are locked, so model operations never overwrite them (AUG-165).
 - Action items and participants are the only live data that is saved: per recording liveKey on the server, moved to the session folder as action-items.json on upload.
 - Export (AUG-166): selected action items go to a Praxis project as separate cards or one checklist card, live or from a saved session; sent items show the created task id. The session's transcript.md ends with a "## Action items" section kept in step with the list.
-- Also known as: online text correction, live text correction, Groq LLM correction, groqText (AUG-164), action items, agreements, tasks from meeting, participants, liveKey, action-items.json, dedup, merge/delete operations (AUG-165), export to Praxis, Separate tasks, One task, Action items section in transcript.md (AUG-166).
+- Also known as: online text correction, live text correction, Groq LLM correction, groqText (AUG-164), action items, agreements, tasks from meeting, participants, liveKey, action-items.json, dedup, merge/delete operations (AUG-165), export to Praxis, Separate tasks, One task, Action items section in transcript.md (AUG-166), LiveTextCorrector, Groq priority, correction yields to action-items, shared Groq rate limit starvation (AUG-167).
 - Live transcript fills the whole main area while visible (AUG-154): a 48px top bar holds the rec dot + timer, status, Pause/Resume (yellow), Copy All (green), Clear All (red frame), Stop Live (red frame), End Recording (red filled) and × hide; the circuit diagram is hidden (not unmounted) behind it.
 - Stop and Clear All require a confirmation dialog ("Are you sure?") before executing.
 - Live local chunks run whisper-cli with Silero VAD (vad: true in transcribeChunk); a chunk with no detected speech emits no line (AUG-127).
@@ -86,6 +87,7 @@ Document the mechanics of the live transcription mode — how audio is captured 
 - It applies to both live engines (local and Groq whisper); the Settings toggle is the opt-in.
 - Every 12 s (LIVE_CORRECTION_INTERVAL_MS) it takes up to 8 chunks at least 8 s old (LIVE_SETTLE_MS), never the newest chunk, oldest first.
 - Skipped batches are retried on the next tick until chunks are 90 s old (LIVE_MAX_AGE_MS), then dropped.
+- Yield to action items (AUG-167): the corrector gets shouldYield = () => actionExtractor?.cloudCallPending (wired in liveTranscription.ts); while it is true the tick is skipped and logs `[correction] yielded to action-items`. Entries stay and are retried on the next 12 s tick under the same 90 s age limit.
 - Server transcript frames carry an id; corrections are sent as {type: "correction", id, text}.
 - Client LiveLine has parts[] ({id, text, correctedAt}); a speaker line still merges consecutive chunks.
 - A correction replaces one part in place and the line text is rebuilt.
@@ -105,6 +107,7 @@ Document the mechanics of the live transcription mode — how audio is captured 
 - Pending files older than 7 days are deleted when a new store opens.
 - Recovery uploads (recordingRecovery) and file uploads carry no liveKey, so they get no action items.
 - Extraction runs only when Online text correction (Groq, AUG-164 consent) is active at connect time, through createGroqTextClient with openai/gpt-oss-20b and the shared free-tier limiter.
+- cloudCallPending (AUG-167) is set when the gate opens and cleared when the call goes through (success, unparseable, rate-limited, error), when the gate is closed on a tick, and on stop(). A rate-budget skip keeps it set: the gate stays open and retries on the next 5 s tick, so correction cannot spend the budget in between. The limiter itself (one TextRateLimiter in groqText.ts) has no priority; do not split it into two instances, that breaks the 30 RPM / 6000 TPM ceiling.
 - The gate is checked every 5 s and never calls sooner than 45 s after the previous call (ACTION_MIN_INTERVAL_MS), a hard bound of at most 80 calls per hour.
 - A call fires when at least 25 new words arrived with a trigger phrase, or when 60 s passed with at least 8 new words.
 - Trigger phrases are the ACTION_TRIGGERS constant list (for example «договорил», «сделаю», «к пятнице», "I'll", "by friday").
@@ -131,7 +134,7 @@ Document the mechanics of the live transcription mode — how audio is captured 
 
 ## Components
 
-- LiveTextCorrector (component): part of liveTranscription; depends on groqText (AUG-164).
+- LiveTextCorrector (component): part of liveTranscription; depends on groqText; yields to liveActionItems (AUG-164, AUG-167).
 - liveActionItems (component): part of liveTranscription; depends on groqText; depends on llmServer (AUG-165).
 - ActionItemsPanel (component): part of LiveTranscriptPanel; used by TranscriptView (AUG-165).
 - transcriptActionItems (component): used by liveActionItems (AUG-166).
