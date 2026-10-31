@@ -92,6 +92,7 @@ export async function createPraxisTask(
   title: string,
   why: string,
   criteria: string,
+  opts: { constraints?: string; labels?: string[] } = {},
 ): Promise<PraxisTaskResult> {
   const configDir = path.join(projectRoot, '.praxis', 'config');
   const tasksDir = path.join(projectRoot, '.praxis', 'tasks');
@@ -128,8 +129,8 @@ export async function createPraxisTask(
     title: formattedTitle,
     why_we_need_this: why,
     acceptance_criteria: criteria,
-    important_constraints: '',
-    labels: ['meeting-transcript'],
+    important_constraints: opts.constraints ?? '',
+    labels: opts.labels ?? ['meeting-transcript'],
     on_hold_reason: '',
     contextRouterIncluded: false,
     created_at: now,

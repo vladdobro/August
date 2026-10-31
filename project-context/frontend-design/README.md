@@ -37,7 +37,8 @@
 - Correction diff cards (.correction-card, AUG-163): under a transcript line, one card per pending meaning fix — 'Was' / 'Now' rows with a word-level LCS diff (removed words <del class=correction-del> red line-through, inserted <ins class=correction-ins> green bold), outline 0-radius Accept (green, --status-completed) and Reject buttons; amber 3px left border (--status-uploading); decided fixes collapse to a 'Fix accepted · Undo' / 'Fix rejected · Undo' row; accepted text is shown in the line; no scores or flags are rendered.
 - Live Action items column (AUG-165): ActionItemsPanel sits right of the live transcript canvas, 340 px wide, border-left, terminal font, 0 radius.
 - Action items column stacks under the live transcript canvas below 900 px; TranscriptView reuses it as a card at the top when a session has action items (AUG-165).
-- Also known as: Bold Layout, transcript-first layout, overlay panels, pin bar, panel layout, layout overlays (AUG-154), Compact Mode, compact layout, dock strip, timer square, Ghost HUD, auto-collapse on recording (AUG-155), Ghost Caption, Ghost Coin, Dock Square, Compact mode settings tab, CompactLayer (AUG-156), Archive page, storage page, delete audio UI, bulk delete (AUG-150), confidence badge, auto-deleted label, threshold slider (AUG-152), hamburger menu, ≡ menu, sidebar menu, update menu (removed AUG-160 → ControlsPanel), correction card, diff card, Accept / Reject fix (AUG-163), Action items panel, ActionItemsPanel, participants fields, inline owner edit (AUG-165).
+- Action items export (AUG-166): live and session panels have checkboxes, Select all, a green 'Separate tasks' button, an outline 'One task' button and a per-item '→ Praxis' button; sent items show a short task-id badge such as AUG-12 (AUG-166).
+- Also known as: Bold Layout, transcript-first layout, overlay panels, pin bar, panel layout, layout overlays (AUG-154), Compact Mode, compact layout, dock strip, timer square, Ghost HUD, auto-collapse on recording (AUG-155), Ghost Caption, Ghost Coin, Dock Square, Compact mode settings tab, CompactLayer (AUG-156), Archive page, storage page, delete audio UI, bulk delete (AUG-150), confidence badge, auto-deleted label, threshold slider (AUG-152), hamburger menu, ≡ menu, sidebar menu, update menu (removed AUG-160 → ControlsPanel), correction card, diff card, Accept / Reject fix (AUG-163), Action items panel, ActionItemsPanel, participants fields, inline owner edit (AUG-165), Separate tasks, One task, → Praxis, select all, praxis badge, Send again (AUG-166).
 
 The frontend design system defines the Necron-themed visual language, color tokens, theme switching, and component styling rules for the August web app.
 
@@ -330,6 +331,10 @@ Action items panel (AUG-165, client/src/components/ActionItemsPanel.tsx):
 - The header and the add form never scroll; only the item list does (session card: list max-height 40vh), and items render newest first, so a new item appears right under the form.
 - Compact variant: no participants fields, header "ACTION ITEMS" + count + [ + ADD ], 11 px text; shown only while live is active — in Dock Strip as a block between the transcript and the footer (max 40 % height), in Ghost Caption as a 240 px right column.
 - Ghost Caption stops being click-through while the pointer is over the Action items column or an input in it has focus; Escape inside an input cancels the edit instead of expanding August.
+- Export bar (AUG-166, live and session variants only, not compact): .action-items-export under the header with a Select all checkbox (indeterminate when some are selected), 'N selected', .action-items-praxis-btn--primary 'Separate tasks' (accent background, like .praxis-btn--send) and outline .action-items-praxis-btn 'One task'; both are disabled with nothing selected.
+- Selectable items (AUG-166): li gets .action-item--selectable (flex row) with a .action-item-check checkbox and the content wrapped in .action-item-body; the compact variant keeps the old layout.
+- Per-item (AUG-166): .action-item-praxis '→ Praxis' button before delete (= Separate tasks for one item) and .action-item-praxis-badge with the task id without its random suffix; the badge title holds the project path.
+- TranscriptView stops rendering transcript lines at the "## Action items" heading — the panel shows those items (AUG-166).
 
 Recording indicator:
 - Red dot: 10px circle, var(--status-failed) bg, pulse animation
@@ -645,7 +650,9 @@ Clickable whisper/models/ path opens the native file manager via POST /api/setup
 
 ### Praxis Modal
 
-PraxisModal (.praxis-backdrop + .praxis-modal) opens from the "Send to Praxis" export menu item in TranscriptView.
+PraxisModal (.praxis-backdrop + .praxis-modal) opens from the "Send to Praxis" export menu item in TranscriptView, and from the Action items export buttons in TranscriptView and the live panel (AUG-166).
+PraxisModal action-items mode (AUG-166): with the actionItems prop it is titled 'Action items → Praxis', hides Task name, shows 'N separate task(s), one per item' or 'One task with an N-item checklist', and the button reads 'Create N tasks' / 'Create task'.
+When some selected items were already sent, the modal shows .praxis-warning (amber var(--status-uploading)) 'Already sent: … Sending again creates new tasks.' and the button becomes 'Send again'; that click is the re-send confirmation (AUG-166).
 With 1 to 5 registered projects the Project field is a row of chips (.praxis-chips, .praxis-chip, .praxis-chip--on): name plus "default" or the folder name, then an "Other…" chip.
 With more than 5 registered projects the Project field falls back to the SettingsDropdown, which ends with an "Other…" entry.
 The Project path input is always visible; choosing a chip fills it, and typing into it or using Open switches the selection to Other.
@@ -659,7 +666,7 @@ The modal reuses the same backdrop pattern as ModelDownloadModal: fixed overlay 
 The task-name field shows the note "Also becomes the session name".
 After a successful export, if the task name differs from the session title, the modal calls onRenameSession, which updates the sessions state optimistically and then PATCHes the session title.
 The sidebar and TranscriptView title update without a reload; a failed rename shows "Task created, but the session could not be renamed." on the success screen.
-Success state shows a checkmark icon with the created task ID in a code-style badge (.praxis-task-id).
+Success state shows a checkmark icon with the created task ID (comma-separated IDs for several action-item cards) in a code-style badge (.praxis-task-id).
 The "Send to Praxis" export menu item is accent-colored (.export-menu-item--praxis) to distinguish it from download actions.
 
 ### Settings Tabs and Projects Tab (master-detail)
@@ -728,12 +735,12 @@ Status badge colors (uploading, transcribing, completed, failed) must remain dis
 - client/src/components/ControlsPanel.tsx — right overlay list and the only app menu: New session, Settings, Archive, API Keys, Diagnostics, desktop-only update item, with active-item highlight (AUG-154, AUG-160)
 - client/src/components/SessionList.tsx — Sidebar with V3 Bracketed session items, hex grid SVG, orbital-circle filter chips, August logo New Session button
 - client/src/components/RecordingModePicker.tsx — Radial expanding mode picker (DEFAULT / LIVE inner ring, LOCAL / GROQ outer right-side sub-arcs) rendered inside circuit-diagram with SVG connection lines
-- client/src/components/PraxisModal.tsx — Modal with project chips (SettingsDropdown above 5 projects), an always-visible path input with browse, a prompt note, task creation from a session transcript, and session rename sync.
+- client/src/components/PraxisModal.tsx — Modal with project chips (SettingsDropdown above 5 projects), an always-visible path input with browse, a prompt note, task creation from a session transcript, session rename sync, and the action-items mode with the Send again confirmation (AUG-166).
 - client/src/components/SettingsDropdown.tsx — shared angular dropdown with optional per-option sublabel and placeholder, used by SettingsModal and PraxisModal.
 - client/src/components/PraxisProjectsPage.tsx — Settings Projects tab: master-detail layout with a project list, default-prompt and per-project editors, and a New project mode.
 - client/src/components/ArchivePage.tsx — Archive page: storage card, session list with per-file breakdown, bulk delete bar, confirm dialogs (AUG-150)
 - client/src/components/ConfidenceBadge.tsx — confidence percentage chip with tier colouring (AUG-152)
-- client/src/components/ActionItemsPanel.tsx — Action items panel (live column and TranscriptView card), InlineField, displayOwner (AUG-165).
+- client/src/components/ActionItemsPanel.tsx — Action items panel (live column and TranscriptView card), InlineField, displayOwner (AUG-165); selection and Praxis export bar (AUG-166).
 - client/src/components/compact/CompactLayer.tsx — compact phase machine (full | compact | done), auto-collapse and expand triggers (AUG-156)
 - client/src/components/compact/DockWidgets.tsx — Dock Strip and Dock Square widgets (AUG-156)
 - client/src/components/compact/GhostApp.tsx — Ghost Caption and Ghost Coin overlay app loaded with ?ghost=caption|coin (AUG-156)

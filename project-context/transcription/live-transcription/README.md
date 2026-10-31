@@ -21,7 +21,8 @@
 - Groq extracts new action items behind a cheap gate, and the local model or the same Groq call merges duplicates by id.
 - User edits of action items are locked, so model operations never overwrite them (AUG-165).
 - Action items and participants are the only live data that is saved: per recording liveKey on the server, moved to the session folder as action-items.json on upload.
-- Also known as: online text correction, live text correction, Groq LLM correction, groqText (AUG-164), action items, agreements, tasks from meeting, participants, liveKey, action-items.json, dedup, merge/delete operations (AUG-165).
+- Export (AUG-166): selected action items go to a Praxis project as separate cards or one checklist card, live or from a saved session; sent items show the created task id. The session's transcript.md ends with a "## Action items" section kept in step with the list.
+- Also known as: online text correction, live text correction, Groq LLM correction, groqText (AUG-164), action items, agreements, tasks from meeting, participants, liveKey, action-items.json, dedup, merge/delete operations (AUG-165), export to Praxis, Separate tasks, One task, Action items section in transcript.md (AUG-166).
 - Live transcript fills the whole main area while visible (AUG-154): a 48px top bar holds the rec dot + timer, status, Pause/Resume (yellow), Copy All (green), Clear All (red frame), Stop Live (red frame), End Recording (red filled) and × hide; the circuit diagram is hidden (not unmounted) behind it.
 - Stop and Clear All require a confirmation dialog ("Are you sure?") before executing.
 - Live local chunks run whisper-cli with Silero VAD (vad: true in transcribeChunk); a chunk with no detected speech emits no line (AUG-127).
@@ -122,7 +123,10 @@ Document the mechanics of the live transcription mode — how audio is captured 
 - The action-items frame field enabled is true when Online text correction was active at connect time.
 - Editing after stop uses GET /api/sessions/:id/action-items (404 when none), PATCH /api/sessions/:id/action-items/:itemId and DELETE on the same path; PATCH locks edited fields.
 - REST writes are serialized per session, or routed through the live store if it still targets that session.
-- action-items.json holds version 1, participants {me, them}, items and updatedAt; an item has id ('ai_' + 8 hex), text (at most 300 chars), owner, source, createdAt and optional locked.
+- action-items.json holds version 1, participants {me, them}, items and updatedAt; an item has id ('ai_' + 8 hex), text (at most 300 chars), owner, source, createdAt and optional locked, manual and praxis (AUG-166).
+- Praxis export (AUG-166): the live panel sends {liveKey, transcript} (the in-memory live lines as `Speaker: text`, attached to separate cards as context; nothing is saved by August) and TranscriptView sends {sessionId} to POST /api/praxis/action-items; marking an item in the live store notifies the WebSocket listeners, so the live panel shows the task id without a reload.
+- An item's optional praxis {taskId, projectPath, sentAt} is kept by the tolerant reader; the last send wins.
+- transcript.md section (AUG-166): once a session has transcript.md, every item change (live store after upload, REST PATCH/POST/DELETE) rewrites the trailing "## Action items" section; transcription writes transcript.md together with the section. Before transcription finishes there is no transcript.md, so ending a live recording adds the section when the transcript is written.
 - Owner is 'Me', 'Them', a free-text name or empty; source is 'Me' or 'Them' (who said it); Me and Them owners are shown as the participant names when set.
 
 ## Components
@@ -130,6 +134,7 @@ Document the mechanics of the live transcription mode — how audio is captured 
 - LiveTextCorrector (component): part of liveTranscription; depends on groqText (AUG-164).
 - liveActionItems (component): part of liveTranscription; depends on groqText; depends on llmServer (AUG-165).
 - ActionItemsPanel (component): part of LiveTranscriptPanel; used by TranscriptView (AUG-165).
+- transcriptActionItems (component): used by liveActionItems (AUG-166).
 
 ## Invariants
 
@@ -163,7 +168,7 @@ Document the mechanics of the live transcription mode — how audio is captured 
 ## Route-Specific Constraints
 
 - Data goes to Groq only through an explicit user choice: live audio only when the user selects the Groq engine, transcript text, participant names and action items only when the user turned on Online text correction and accepted its consent (AUG-164, AUG-165). Neither is a default.
-- Live corrections apply in place without dialogs and are never saved; transcript.md is built only by the batch path (AUG-164). Live text is still never saved; only action items and participants are (AUG-165).
+- Live corrections apply in place without dialogs and are never saved; transcript.md is built only by the batch path (AUG-164), apart from the trailing Action items section (AUG-166). Live text is still never saved; only action items and participants are (AUG-165).
 - Post-recording transcription remains strictly local whisper-cli — Groq is never used for full-file transcription (25MB limit makes it impractical).
 - The Groq API key (GROQ_API_KEY) is read from environment variables only — never hardcoded or committed.
 - The binary frame format is alignment-sensitive: Float32 samples are written sample-by-sample via DataView to avoid TypedArray 4-byte alignment issues with variable-length headers.
@@ -189,3 +194,4 @@ Document the mechanics of the live transcription mode — how audio is captured 
 - client/src/components/GroqTextConsentModal.tsx — consent modal shown when the Online text correction toggle is turned on (AUG-164).
 - server/src/services/liveActionItems.ts — action items store/registry per liveKey, gate, Groq extraction, local dedup, lock rules, session attach and REST helpers (AUG-165).
 - client/src/components/ActionItemsPanel.tsx — Action items panel shared by the live panel and TranscriptView (AUG-165).
+- server/src/services/transcriptActionItems.ts — transcript.md Action items section and Praxis card drafts (AUG-166).

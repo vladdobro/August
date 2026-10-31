@@ -166,6 +166,7 @@ export interface CaptureCapabilities {
 // AUG-165: live action items
 export type ActionItemSource = 'Me' | 'Them';
 export interface ActionItemLock { text?: true; owner?: true }
+export interface ActionItemPraxisRef { taskId: string; projectPath: string; sentAt: string }
 export interface ActionItem {
   id: string; // stable, server-assigned: `ai_` + 8 hex
   text: string; // <= 300 chars
@@ -174,6 +175,7 @@ export interface ActionItem {
   createdAt: string; // ISO
   locked?: ActionItemLock; // fields edited by the user - no model operation may change/remove them
   manual?: true; // AUG-165: added by the user by hand; always fully locked
+  praxis?: ActionItemPraxisRef; // AUG-166: set when the item was sent to Praxis (last send wins)
 }
 export interface Participants { me: string; them: string }
 export interface ActionItemsFile { version: 1; participants: Participants; items: ActionItem[]; updatedAt: string }

@@ -355,6 +355,23 @@ export async function sendToPraxis(sessionId: string, projectPath: string, taskN
   return handleJsonResponse<{ ok: boolean; taskId: string; taskPath: string; projectTag: string | null; promptSource?: 'project' | 'default' | 'built-in' }>(res);
 }
 
+export interface ActionItemsPraxisResult {
+  ok: boolean;
+  tasks: Array<{ taskId: string; itemIds: string[] }>;
+  projectTag: string | null;
+  promptSource?: 'project' | 'default' | 'built-in';
+  file: ActionItemsFile;
+}
+
+export async function sendActionItemsToPraxis(body: { projectPath: string; mode: 'separate' | 'common'; itemIds: string[]; sessionId?: string; liveKey?: string; force?: boolean; transcript?: string }): Promise<ActionItemsPraxisResult> {
+  const res = await fetch(`${API_BASE}/praxis/action-items`, {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify(body),
+  });
+  return handleJsonResponse<ActionItemsPraxisResult>(res);
+}
+
 export async function fetchPraxisDefaultPrompt(): Promise<{ prompt: string; variables: string[] }> {
   const res = await fetch(`${API_BASE}/praxis/default-prompt`);
   if (!res.ok) throw new Error('Failed to load default prompt');

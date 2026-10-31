@@ -68,6 +68,13 @@ interface PraxisModalProps {
   defaultPromptCustom?: boolean;
   onClose: () => void;
   onRenameSession?: (title: string) => Promise<void>;
+  /// AUG-166: export of action items instead of the transcript card.
+  actionItems?: {
+    mode: 'separate' | 'common';
+    count: number;
+    alreadySent: string[]; // task ids of selected items already sent
+    onSubmit: (projectPath: string, force: boolean) => Promise<{ taskIds: string[] }>;
+  };
 }
 
 const STORAGE_KEY = 'august-praxis-project-path';
@@ -79,7 +86,7 @@ const shortPath = (p: string): string => p.replace(/[\\/]+$/, '').split(/[\\/]/)
 const samePath = (a: string, b: string): boolean =>
   a.trim().replace(/[\\/]+$/, '').toLowerCase() === b.trim().replace(/[\\/]+$/, '').toLowerCase();
 
-const PraxisModal: React.FC<PraxisModalProps> = ({ sessionId, sessionTitle, projects, defaultPromptCustom, onClose, onRenameSession }) => {
+const PraxisModal: React.FC<PraxisModalProps> = ({ sessionId, sessionTitle, projects, defaultPromptCustom, onClose, onRenameSession, actionItems }) => {
   const [projectPath, setProjectPath] = useState('');
   const [selected, setSelected] = useState<string>(OTHER);
   const [renameNote, setRenameNote] = useState<string | null>(null);
@@ -174,6 +181,16 @@ const PraxisModal: React.FC<PraxisModalProps> = ({ sessionId, sessionTitle, proj
     setSending(true);
 
     try {
+      if (actionItems) {
+        const out = await actionItems.onSubmit(trimmed, actionItems.alreadySent.length > 0);
+        try {
+          localStorage.setItem(STORAGE_KEY, trimmed);
+        } catch {
+          // localStorage unavailable
+        }
+        setSuccess({ taskId: out.taskIds.join(', '), projectTag: null });
+        return;
+      }
       const result = await sendToPraxis(sessionId, trimmed, taskName.trim() || undefined);
       try {
         localStorage.setItem(STORAGE_KEY, trimmed);
@@ -211,7 +228,7 @@ const PraxisModal: React.FC<PraxisModalProps> = ({ sessionId, sessionTitle, proj
     <div className="praxis-backdrop" ref={backdropRef} onClick={handleBackdropClick}>
       <div className="praxis-modal" onKeyDown={handleKeyDown}>
         <div className="praxis-modal-header">
-          <h3 className="praxis-modal-title">Send to Praxis</h3>
+          <h3 className="praxis-modal-title">{actionItems ? 'Action items → Praxis' : 'Send to Praxis'}</h3>
           <button type="button" className="praxis-modal-close" onClick={onClose} aria-label="Close">
             <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
               <line x1="18" y1="6" x2="6" y2="18" />
@@ -222,7 +239,7 @@ const PraxisModal: React.FC<PraxisModalProps> = ({ sessionId, sessionTitle, proj
 
         {!success ? (
           <>
-            <label className="praxis-label">
+            {!actionItems && <label className="praxis-label">
               Task name
               <input
                 ref={inputRef}
@@ -234,7 +251,7 @@ const PraxisModal: React.FC<PraxisModalProps> = ({ sessionId, sessionTitle, proj
                 disabled={sending || validating}
               />
               {onRenameSession && <span className="praxis-field-note">Also becomes the session name</span>}
-            </label>
+            </label>}
 
             <label className="praxis-label">
               Project
@@ -300,6 +317,16 @@ const PraxisModal: React.FC<PraxisModalProps> = ({ sessionId, sessionTitle, proj
               <span className="praxis-field-note">{promptHint}</span>
             </label>
 
+            {actionItems && (
+              <span className="praxis-field-note">
+                {actionItems.mode === 'separate'
+                  ? `${actionItems.count} separate task${actionItems.count === 1 ? '' : 's'}, one per item`
+                  : `One task with a ${actionItems.count}-item checklist`}
+              </span>
+            )}
+            {actionItems && actionItems.alreadySent.length > 0 && (
+              <p className="praxis-warning">Already sent: {actionItems.alreadySent.join(', ')}. Sending again creates new tasks.</p>
+            )}
             {error && <p className="praxis-error">{error}</p>}
 
             <div className="praxis-actions">
@@ -307,7 +334,7 @@ const PraxisModal: React.FC<PraxisModalProps> = ({ sessionId, sessionTitle, proj
                 Cancel
               </button>
               <button type="button" className="praxis-btn praxis-btn--send" onClick={handleSend} disabled={sending || validating}>
-                {validating ? 'Validating...' : sending ? 'Creating...' : 'Create Task'}
+                {validating ? 'Validating...' : sending ? 'Creating...' : actionItems ? (actionItems.alreadySent.length > 0 ? 'Send again' : actionItems.mode === 'separate' ? `Create ${actionItems.count} task${actionItems.count === 1 ? '' : 's'}` : 'Create task') : 'Create Task'}
               </button>
             </div>
           </>
@@ -319,7 +346,7 @@ const PraxisModal: React.FC<PraxisModalProps> = ({ sessionId, sessionTitle, proj
                 <PraxisLogo />
                 <CheckCircleLogo />
               </div>
-              <p>Task created successfully</p>
+              <p>{actionItems && actionItems.mode === 'separate' && actionItems.count > 1 ? 'Tasks created' : 'Task created successfully'}</p>
               <span className="praxis-task-id">{success.taskId}</span>
               {renameNote && <p className="praxis-error">{renameNote}</p>}
             </div>

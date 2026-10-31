@@ -1,6 +1,6 @@
 import React, { useMemo, useState, useRef, useEffect } from 'react';
 import type { ActionItemsFile, CorrectionItem, CorrectionStatus, SessionMetadata } from '../types';
-import { addActionItem, deleteActionItem, fetchActionItems, fetchCorrectedTranscript, fetchCorrections, setAllCorrectionsStatus, setCorrectionStatus, updateActionItem } from '../api';
+import { sendActionItemsToPraxis, addActionItem, deleteActionItem, fetchActionItems, fetchCorrectedTranscript, fetchCorrections, setAllCorrectionsStatus, setCorrectionStatus, updateActionItem } from '../api';
 import PraxisModal from './PraxisModal';
 import ConfidenceBadge from './ConfidenceBadge';
 import ActionItemsPanel from './ActionItemsPanel';
@@ -31,6 +31,8 @@ function parseTranscript(markdown: string): ParsedLine[] {
   const result: ParsedLine[] = [];
 
   for (const line of lines) {
+    // AUG-166: the trailing Action items section is rendered by the panel, not as transcript lines.
+    if (/^## Action items\s*$/.test(line)) break;
     if (!line.trim()) continue;
     if (line.startsWith('#')) continue;
     if (line.startsWith('- Date:') || line.startsWith('- Duration:')) continue;
@@ -339,6 +341,7 @@ const TranscriptView: React.FC<TranscriptViewProps> = ({ session, transcript, on
   const [failedMenuOpen, setFailedMenuOpen] = useState(false);
   const failedMenuRef = useRef<HTMLDivElement>(null);
   const [showPraxisModal, setShowPraxisModal] = useState(false);
+  const [praxisExport, setPraxisExport] = useState<{ ids: string[]; mode: 'separate' | 'common' } | null>(null);
   const [redownloading, setRedownloading] = useState(false);
   const [corrections, setCorrections] = useState<CorrectionItem[]>([]);
   const [actionItems, setActionItems] = useState<ActionItemsFile | null>(null);
@@ -692,6 +695,7 @@ const TranscriptView: React.FC<TranscriptViewProps> = ({ session, transcript, on
               onAdd={handleActionAdd}
               onEdit={handleActionEdit}
               onDelete={handleActionDelete}
+              onSendToPraxis={(ids, mode) => setPraxisExport({ ids, mode })}
             />
           </div>
         )}
@@ -928,6 +932,27 @@ const TranscriptView: React.FC<TranscriptViewProps> = ({ session, transcript, on
           defaultPromptCustom={praxisDefaultPromptCustom}
           onRenameSession={onRename}
           onClose={() => setShowPraxisModal(false)}
+        />
+      )}
+      {praxisExport && (
+        <PraxisModal
+          sessionId={session.id}
+          sessionTitle={session.title}
+          projects={praxisProjects ?? []}
+          defaultPromptCustom={praxisDefaultPromptCustom}
+          onClose={() => setPraxisExport(null)}
+          actionItems={{
+            mode: praxisExport.mode,
+            count: praxisExport.ids.length,
+            alreadySent: (actionItems?.items ?? [])
+              .filter((i) => praxisExport.ids.includes(i.id) && i.praxis)
+              .map((i) => i.praxis!.taskId),
+            onSubmit: async (projectPath, force) => {
+              const r = await sendActionItemsToPraxis({ projectPath, mode: praxisExport.mode, itemIds: praxisExport.ids, sessionId: session.id, force });
+              setActionItems(r.file);
+              return { taskIds: r.tasks.map((t) => t.taskId) };
+            },
+          }}
         />
       )}
     </div>

@@ -1,11 +1,12 @@
 import React, { useCallback, useEffect, useRef, useState } from 'react';
-import { uploadAudio, uploadDualAudio, uploadDualAudioWithCapture, fetchCaptureCapabilities, startServerCapture, stopServerCapture, transcribeFromUrl, type UploadProgress } from '../api';
+import { sendActionItemsToPraxis, uploadAudio, uploadDualAudio, uploadDualAudioWithCapture, fetchCaptureCapabilities, startServerCapture, stopServerCapture, transcribeFromUrl, type UploadProgress } from '../api';
 import type { ActionItem, CaptureCapabilities, Participants, ServerCapture, TranscriptionLanguage } from '../types';
 import { useTheme } from '../theme';
 import RecordingModePicker, { type RecordingMode } from './RecordingModePicker';
 import LanguagePicker from './LanguagePicker';
 import MicPicker from './MicPicker';
 import ActionItemsPanel from './ActionItemsPanel';
+import PraxisModal from './PraxisModal';
 import LiveTranscriptPanel, { type LiveLine, type LiveStatus } from './LiveTranscriptPanel';
 import { LiveTranscriptionClient, type LiveEngine } from '../services/liveTranscriptionClient';
 import { saveRecordingProgress, getRecoveredRecording, clearRecoveredRecording, type RecoveredRecording } from '../services/recordingRecovery';
@@ -93,6 +94,7 @@ const FileUpload: React.FC<FileUploadProps> = ({ onUploaded, onRecordingChange, 
   const [liveParticipants, setLiveParticipants] = useState<Participants>({ me: '', them: '' });
   const liveParticipantsRef = useRef<Participants>({ me: '', them: '' });
   const liveKeyRef = useRef<string | null>(null);
+  const [praxisExport, setPraxisExport] = useState<{ ids: string[]; mode: 'separate' | 'common'; liveKey: string } | null>(null);
   const liveStartArgsRef = useRef<{ micStream: MediaStream | null; systemStream: MediaStream | null; engine: LiveEngine; captureId: string | null } | null>(null);
 
   const fileInputRef = useRef<HTMLInputElement>(null);
@@ -1162,8 +1164,37 @@ const FileUpload: React.FC<FileUploadProps> = ({ onUploaded, onRecordingChange, 
               onAdd={handleActionAdd}
               onEdit={handleActionEdit}
               onDelete={handleActionDelete}
+              onSendToPraxis={(ids, mode) => {
+                const liveKey = liveKeyRef.current;
+                if (liveKey) setPraxisExport({ ids, mode, liveKey });
+              }}
             />
           }
+        />
+      )}
+      {praxisExport && (
+        <PraxisModal
+          sessionId=""
+          sessionTitle="Live recording"
+          projects={preferences?.praxisProjects ?? []}
+          defaultPromptCustom={Boolean(preferences?.praxisDefaultPrompt?.trim())}
+          onClose={() => setPraxisExport(null)}
+          actionItems={{
+            mode: praxisExport.mode,
+            count: praxisExport.ids.length,
+            alreadySent: liveActionItems
+              .filter((i) => praxisExport.ids.includes(i.id) && i.praxis)
+              .map((i) => i.praxis!.taskId),
+            onSubmit: async (projectPath, force) => {
+              // AUG-166: live text exists only in memory; separate cards attach it as context
+              const r = await sendActionItemsToPraxis({
+                projectPath, mode: praxisExport.mode, itemIds: praxisExport.ids, liveKey: praxisExport.liveKey, force,
+                transcript: liveLines.map((l) => `${l.speaker}: ${l.text}`).join('\n'),
+              });
+              setLiveActionItems(r.file.items);
+              return { taskIds: r.tasks.map((t) => t.taskId) };
+            },
+          }}
         />
       )}
     </div>

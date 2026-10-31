@@ -13,6 +13,14 @@ interface ActionItemsPanelProps {
   onAdd?: (text: string, owner: string) => void;
   onEdit: (id: string, patch: { text?: string; owner?: string }) => void;
   onDelete: (id: string) => void;
+  /// AUG-166: when set (live + session variants), items get checkboxes and the Praxis export bar.
+  onSendToPraxis?: (ids: string[], mode: 'separate' | 'common') => void;
+}
+
+/// AUG-166: `AUG-12-ab12cd` -> `AUG-12`.
+function shortTaskId(id: string): string {
+  const m = id.match(/^(.*\d)-[a-z0-9]+$/i);
+  return m ? m[1] : id;
 }
 
 /// 'Me' / 'Them' are shown as the participant names entered at recording start.
@@ -139,9 +147,22 @@ const AddItemForm: React.FC<AddItemFormProps> = ({ onAdd, onCancel }) => {
   );
 };
 
-const ActionItemsPanel: React.FC<ActionItemsPanelProps> = ({ items, participants, variant, enabled, onParticipantsChange, onAdd, onEdit, onDelete }) => {
+const ActionItemsPanel: React.FC<ActionItemsPanelProps> = ({ items, participants, variant, enabled, onParticipantsChange, onAdd, onEdit, onDelete, onSendToPraxis }) => {
   const [adding, setAdding] = useState(false);
   const compact = variant === 'compact';
+  const exportEnabled = Boolean(onSendToPraxis) && !compact;
+  const [selected, setSelected] = useState<Set<string>>(new Set());
+  const selectedIds = items.filter((i) => selected.has(i.id)).map((i) => i.id);
+  const allSelected = items.length > 0 && selectedIds.length === items.length;
+  const selectAllRef = useRef<HTMLInputElement>(null);
+  useEffect(() => {
+    if (selectAllRef.current) selectAllRef.current.indeterminate = selectedIds.length > 0 && !allSelected;
+  }, [selectedIds.length, allSelected]);
+  const toggleOne = (id: string) => setSelected((prev) => {
+    const next = new Set(prev);
+    if (next.has(id)) next.delete(id); else next.add(id);
+    return next;
+  });
   const addForm = onAdd && adding ? <AddItemForm onAdd={onAdd} onCancel={() => setAdding(false)} /> : null;
   const disabledHint = compact
     ? 'Groq off — only manual items'
@@ -162,6 +183,22 @@ const ActionItemsPanel: React.FC<ActionItemsPanelProps> = ({ items, participants
           )}
         </div>
         {addForm}
+        {exportEnabled && items.length > 0 && (
+          <div className="action-items-export">
+            <label className="action-items-select-all">
+              <input
+                ref={selectAllRef}
+                type="checkbox"
+                checked={allSelected}
+                onChange={() => setSelected(allSelected ? new Set() : new Set(items.map((i) => i.id)))}
+              />
+              Select all
+            </label>
+            <span className="action-items-selected-count">{selectedIds.length} selected</span>
+            <button type="button" className="action-items-praxis-btn action-items-praxis-btn--primary" disabled={selectedIds.length === 0} onClick={() => onSendToPraxis?.(selectedIds, 'separate')}>Separate tasks</button>
+            <button type="button" className="action-items-praxis-btn" disabled={selectedIds.length === 0} onClick={() => onSendToPraxis?.(selectedIds, 'common')}>One task</button>
+          </div>
+        )}
       </div>
       {!compact && (onParticipantsChange ? (
         <div className="action-items-participants">
@@ -183,7 +220,11 @@ const ActionItemsPanel: React.FC<ActionItemsPanelProps> = ({ items, participants
       <ul className="action-items-list">
         {/* Newest first: right under the Add form, so a just-added item is always in view. */}
         {[...items].reverse().map((item) => (
-          <li key={item.id} className={`action-item${item.locked ? ' action-item--edited' : ''}`} title={item.locked ? 'Edited by you — the model will not change it' : undefined}>
+          <li key={item.id} className={`action-item${item.locked ? ' action-item--edited' : ''}${exportEnabled ? ' action-item--selectable' : ''}`} title={item.locked ? 'Edited by you — the model will not change it' : undefined}>
+            {exportEnabled && (
+              <input type="checkbox" className="action-item-check" aria-label="Select action item" checked={selected.has(item.id)} onChange={() => toggleOne(item.id)} />
+            )}
+            <div className="action-item-body">
             <InlineField className="action-item-text" multiline value={item.text} ariaLabel="Action item" onCommit={(v) => onEdit(item.id, { text: v })} />
             <div className="action-item-meta">
               {item.manual ? (
@@ -193,7 +234,14 @@ const ActionItemsPanel: React.FC<ActionItemsPanelProps> = ({ items, participants
               )}
               <span className="action-item-arrow" aria-hidden="true">→</span>
               <InlineField className="action-item-owner" value={displayOwner(item.owner, participants)} placeholder="Owner" ariaLabel="Owner" allowEmpty onCommit={(v) => onEdit(item.id, { owner: v })} />
+              {item.praxis && (
+                <span className="action-item-praxis-badge" title={`Sent to Praxis: ${item.praxis.projectPath}`}>{shortTaskId(item.praxis.taskId)}</span>
+              )}
+              {exportEnabled && onSendToPraxis && (
+                <button type="button" className="action-item-praxis" onClick={() => onSendToPraxis([item.id], 'separate')} title="Create a Praxis task from this item">→ Praxis</button>
+              )}
               <button type="button" className="action-item-delete" onClick={() => onDelete(item.id)} aria-label="Delete action item" title="Delete">×</button>
+            </div>
             </div>
           </li>
         ))}

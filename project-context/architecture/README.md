@@ -7,11 +7,12 @@
 - Groq text client (AUG-164): server/src/services/groqText.ts calls Groq openai/gpt-oss-20b through llmClient, free tier only, with its own 30 RPM / 6,000 TPM limiter separate from whisper's 20 RPM; any limit, 429 or error is skipped with a log line, never shown to the user and never upgraded to a paid tier. It runs only after the user's consent (/api/groq-text).
 - Sessions are stored as folders on disk for the MVP — no PostgreSQL yet, no auth yet.
 - Session CRUD includes create, list, get, delete, and rename (PATCH title update) via the REST API; the Archive page (AUG-150) adds GET /api/sessions/storage (disk usage), DELETE /api/sessions/:id/audio (strip audio, keep transcript) and POST /api/sessions/:id/redownload.
-- Also known as: Archive page, storage usage, disk usage, delete audio, free space, session cleanup, re-download audio (AUG-150), auto-delete WAV, confidence score, automatic cleanup (AUG-152), local language model, local LLM, llama-server, llm client (AUG-162), Groq text client, groqText, online text correction, createGroqTextClient, Groq batch corrections, resolveCorrectionEngine, batchCorrectionEngine (AUG-164), transcript.corrected.json, corrected transcript, batch semantic pass (AUG-163), action items, action-items.json, participants, liveKey, live-action-items (AUG-165).
+- Also known as: Archive page, storage usage, disk usage, delete audio, free space, session cleanup, re-download audio (AUG-150), auto-delete WAV, confidence score, automatic cleanup (AUG-152), local language model, local LLM, llama-server, llm client (AUG-162), Groq text client, groqText, online text correction, createGroqTextClient, Groq batch corrections, resolveCorrectionEngine, batchCorrectionEngine (AUG-164), transcript.corrected.json, corrected transcript, batch semantic pass (AUG-163), action items, action-items.json, participants, liveKey, live-action-items (AUG-165), export action items, Separate tasks, One task, action items to Praxis, POST /api/praxis/action-items, Action items section, transcriptActionItems (AUG-166).
 - session.json carries confidenceScore (0–100), confidenceDetail and wavAutoDeletedAt; GET /api/sessions/storage entries gain wavAutoDeleted and files[] gain auto: true for WAVs removed by the confidence rule (AUG-152).
 - Session folder (AUG-163): transcript.corrected.json holds the local model's meaning-fix suggestions and the user's accept/reject decisions; transcript.corrected.md is transcript.md with only the accepted fixes applied, regenerated on every decision; transcript.md is never modified by corrections; both files count as kind 'transcript' in GET /api/sessions/storage and are removed when a retranscription writes a new transcript.
-- Session folder (AUG-165): action-items.json holds the live action items {version, participants {me, them}, items [{id, text, owner, source, createdAt, locked?}], updatedAt}; it is written during the live recording to <data>/live-action-items/<liveKey>.json and moved into the session folder by POST /api/sessions/upload (form field liveKey), which also stores participants {me, them} in session.json.
+- Session folder (AUG-165): action-items.json holds the live action items {version, participants {me, them}, items [{id, text, owner, source, createdAt, locked?, manual?, praxis?}], updatedAt}; it is written during the live recording to <data>/live-action-items/<liveKey>.json and moved into the session folder by POST /api/sessions/upload (form field liveKey), which also stores participants {me, them} in session.json.
 - action-items.json counts as kind 'other', not 'transcript', in GET /api/sessions/storage (AUG-165).
+- transcript.md ends with a "## Action items" section (one `- **Owner** — text` line per item) whenever the session has action items; it is rewritten on every action-item change and when transcription writes transcript.md (AUG-166).
 - Transcription runs as a background child process; the client polls session status every 5 seconds.
 - Dev mode: server on port 3001 redirects non-API requests to Vite dev server on port 5173; open 5173 for the latest UI.
 - Production mode: server serves the built client from client/dist via express.static; the Electron shell runs this mode on a free port.
@@ -19,6 +20,7 @@
 - The server loads the repo-root .env from config.ts before building config.
 - Praxis integration: POST /api/praxis/send creates a task directly in a target PraxisOS project's .praxis/tasks/new/ directory from a session transcript. POST /api/praxis/browse opens the OS native folder picker dialog so users can select the project path visually.
 - Multi-project Praxis (AUG-142): registered projects live in the praxisProjects preference and the export prompt resolves project, then default, then built-in.
+- Action items export (AUG-166): POST /api/praxis/action-items creates Praxis cards from selected action items — one card per item (mode separate) or one card with a `- [ ]` checklist (mode common) — and marks each sent item with praxis {taskId, projectPath, sentAt}.
 - User preferences persist in server/data/user-preferences.json via GET/PATCH/DELETE /api/preferences endpoints.
 - Settings modal is accessible from ControlsPanel (the sidebar menu was removed in AUG-160); preferences auto-save on control changes in FileUpload.
 - App.tsx uses a single unified render — no early returns that unmount the layout; FileUpload stays mounted (hidden) during active recording to preserve MediaRecorder state.
@@ -67,6 +69,8 @@ Give any agent working on the codebase a map of the client/server split, how a s
 - liveTextCorrection (component): part of the August server; depends on groqText; used by liveTranscription (AUG-164).
 - semanticCheck (component): part of the August server; depends on llmServer and whisper.withBatchSlot (AUG-163) and on groqText for Groq batch corrections (AUG-164).
 - liveActionItems (component): part of the August server; depends on groqText; depends on llmServer; used by liveTranscription and the sessions route (AUG-165).
+- transcriptActionItems (component): part of the August server; used by liveActionItems, the sessions route and the praxis route (AUG-166).
+- transcriptActionItems (component): depends on transcriptCorrections (AUG-166).
 
 ## Invariants
 
@@ -173,6 +177,16 @@ Give any agent working on the codebase a map of the client/server split, how a s
 - The send response includes promptSource with value 'project', 'default' or 'built-in'.
 - The built-in acceptance criteria template is BUILT_IN_PROMPT in server/src/services/praxisIntegration.ts.
 - GET /api/praxis/default-prompt returns BUILT_IN_PROMPT plus the supported template variable names.
+- POST /api/praxis/action-items body {projectPath, mode: 'separate'|'common', itemIds, sessionId | liveKey, force?}: exactly one of sessionId or liveKey; a liveKey reads the open live store or the pending file, so items can be exported during a recording (AUG-166).
+- Action-item cards reuse createPraxisTask (direct write to .praxis/tasks/new, same ID allocation); tasks are created sequentially so the task counter never races; labels ['meeting-action-item'] (AUG-166).
+- Separate card: title = item text; why_we_need_this lists owner, participants (Me = … · Them = …), said by, session reference (title + session id, or 'live recording in progress (key …)') and meeting date, then a "## Meeting transcript (context)" block with the whole conversation; acceptance_criteria is one `- [ ]` line; important_constraints is a one-line scope note (SEPARATE_TASK_SCOPE), not the prompt (AUG-166).
+- Common card: title '<session title> · <YYYY-MM-DD>'; acceptance_criteria has one `- [ ] **Owner** — text` line per selected item (AUG-166).
+- Only the common card puts the resolved prompt (project -> default -> built-in, variables applied) into important_constraints; a separate card is a task about one item, so the full meeting-processing prompt would be noise there; createPraxisTask takes optional {constraints, labels}, defaults '' and ['meeting-transcript'] (AUG-166).
+- Separate-card context source: a session uses transcript.md without its Action items section; a live recording has no saved transcript, so the client sends its in-memory live lines as `transcript` (capped at 1,000,000 chars; express.json limit raised to 5mb for this) (AUG-166).
+- Re-send guard: when a selected item already has praxis and force is not true, the route answers 409 {alreadySent: [{id, taskId}]}; the client sends force only after the user clicks 'Send again' (AUG-166).
+- Owner labels: 'Me'/'Them' are written as the participant names when set (ownerLabel), the same rule as the client displayOwner (AUG-166).
+- transcript.md section writes go through one per-session lock in transcriptActionItems.ts: the transcription path calls writeTranscriptWithActionItems (loads the items inside the lock), item changes call syncTranscriptActionItems; this stops an item edit from overwriting a freshly retranscribed transcript.md with the old text (AUG-166).
+- upsertActionItemsSection replaces only the text from the last "## Action items" heading line to the end; everything before it stays byte-identical, and an empty list removes the section. syncTranscriptActionItems is a no-op before transcript.md exists and regenerates transcript.corrected.md after a write (AUG-166).
 - Template variables {sessionName}, {date} (export date, YYYY-MM-DD) and {duration} (session length such as 1h 5m) are substituted server-side.
 - Unknown {tokens} in a prompt are left as-is, never stripped or rejected.
 - The built-in acceptance criteria template embedded in the export is a structured instruction set with 4 sections: pre-processing (participant identification, role prediction, reasoning, classification, dedup scan, context search), deliverables (summary, action items, commitments CMT-NNN, route updates), quality rules (self-containment, traceability, nothing-silently-skipped, halt on ambiguity), and output format (recap summary, extracted items, processing log).
@@ -270,7 +284,9 @@ Give any agent working on the codebase a map of the client/server split, how a s
 - server/src/config.ts — platform binary resolution, model constants, AUGUST_DATA_DIR data-root override, .env loading, resolveAudioteePath (AUG-118).
 - server/src/services/praxisIntegration.ts — Praxis task creation: counter management, ID allocation, atomic file write, BUILT_IN_PROMPT, prompt resolution and template variable substitution.
 - server/src/services/praxisIntegration.test.ts — tests for prompt resolution, template variables and duration formatting.
-- server/src/routes/praxis.ts — POST /api/praxis/validate, POST /api/praxis/send, POST /api/praxis/browse and GET /api/praxis/default-prompt endpoints.
+- server/src/routes/praxis.ts — POST /api/praxis/validate, POST /api/praxis/send, POST /api/praxis/action-items (AUG-166), POST /api/praxis/browse and GET /api/praxis/default-prompt endpoints.
+- server/src/services/transcriptActionItems.ts — AUG-166: Praxis card drafts from action items (buildSeparateTaskDraft, buildCommonTaskDraft) and the transcript.md Action items section (render, upsert, per-session lock).
+- server/src/services/transcriptActionItems.test.ts — tests for the section and card drafts, plus 3 separate + 1 common card written to a temp .praxis/tasks/new.
 - server/src/routes/preferences.ts — GET/PATCH/DELETE /api/preferences for user preferences persistence.
 - server/src/services/preferencesStore.ts — preferences file path from config.dataDir, readPreferences/writePreferences, the one-time legacy migration at server start, and the Praxis project migration and sanitizing.
 - server/src/services/systemCapture.ts — capability probe (avfoundation, audiotee, WASAPI helper, dshow), resolveWindowsMethod preference order, ffmpeg capture lifecycle, self-test, sidecar PID files, orphan cleanup.

@@ -16,6 +16,7 @@ import { consumeCapture, hasCapture, CaptureError } from '../services/systemCapt
 import { downloadFromUrl, UrlDownloadError } from '../services/urlDownloader.js';
 import { isPlatformUrl, probePlatformVideo, downloadPlatformAudio, YtDlpError, YTDLP_MISSING_MESSAGE, INFO_JSON_NAME } from '../services/ytDlp.js';
 import { attachLiveActionItemsToSession, readSessionActionItems, mutateSessionActionItems, applyUserEdit, createManualItem, isValidLiveKey } from '../services/liveActionItems.js';
+import { writeTranscriptWithActionItems } from '../services/transcriptActionItems.js';
 import type { CorrectionStatus, SessionMetadata, SessionStatus, TranscriptionLanguage } from '../types.js';
 
 const router = Router();
@@ -131,7 +132,7 @@ async function runTranscription(sessionId: string, audioPath: string, language: 
 
     const transcript = renderTranscript(utterances, startedAt, duration);
     await clearCorrections(sessionId);
-    await sessionManager.writeTranscript(sessionId, transcript);
+    await writeTranscriptWithActionItems(sessionId, transcript, () => readSessionActionItems(sessionId)); // AUG-166: keeps the Action items section
     if (corrections && corrections.length > 0) {
       await writeCorrections(sessionId, { version: 1, createdAt: new Date().toISOString(), model: semanticModel, items: corrections });
     }
@@ -206,7 +207,7 @@ async function runDualTranscription(
 
     const transcript = renderTranscript(utterances, startedAt, duration);
     await clearCorrections(sessionId);
-    await sessionManager.writeTranscript(sessionId, transcript);
+    await writeTranscriptWithActionItems(sessionId, transcript, () => readSessionActionItems(sessionId)); // AUG-166: keeps the Action items section
     if (corrections && corrections.length > 0) {
       await writeCorrections(sessionId, { version: 1, createdAt: new Date().toISOString(), model: semanticModel, items: corrections });
     }

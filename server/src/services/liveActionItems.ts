@@ -11,6 +11,7 @@ import type { ChatCompletionRequest, ChatCompletionResult, LlmClient } from './l
 import { llmInstallState, readLlmSettings } from './llmInstaller.js';
 import { LlmUnavailableError, withLocalLlm } from './llmServer.js';
 import * as sessionManager from './sessionManager.js';
+import { syncTranscriptActionItems } from './transcriptActionItems.js';
 
 export const ACTION_ITEMS_FILE = 'action-items.json';
 export const ACTION_PENDING_DIR = path.resolve(config.sessionsDir, '..', 'live-action-items');
@@ -218,6 +219,10 @@ function sanitizeFile(raw: unknown): ActionItemsFile {
         item.locked = { ...(lk.text === true ? { text: true as const } : {}), ...(lk.owner === true ? { owner: true as const } : {}) };
       }
       if (i.manual === true) item.manual = true;
+      const px = i.praxis && typeof i.praxis === 'object' ? (i.praxis as Record<string, unknown>) : null;
+      if (px && typeof px.taskId === 'string' && typeof px.projectPath === 'string' && typeof px.sentAt === 'string') {
+        item.praxis = { taskId: px.taskId, projectPath: px.projectPath, sentAt: px.sentAt };
+      }
       file.items.push(item);
     }
   }
@@ -351,8 +356,10 @@ export class LiveActionItemsStore {
     this.file.updatedAt = new Date().toISOString();
     const target = this.targetPath;
     const snapshot = JSON.parse(JSON.stringify(this.file)) as ActionItemsFile;
+    const sessionId = this.sessionId;
     this.writes = this.writes
       .then(() => writeJsonAtomic(target, snapshot))
+      .then(() => { if (sessionId) return syncTranscriptActionItems(sessionId, snapshot); })
       .catch((err) => console.warn(`[actionItems] save failed: ${(err as Error).message}`));
     for (const l of this.listeners) l(this.file);
   }
@@ -477,6 +484,7 @@ export async function mutateSessionActionItems(
     if (mutate(file.items)) {
       file.updatedAt = new Date().toISOString();
       await writeJsonAtomic(p, file);
+      await syncTranscriptActionItems(sessionId, file).catch((err) => console.warn(`[actionItems] transcript section not updated: ${(err as Error).message}`));
     }
     return file;
   });
@@ -486,6 +494,29 @@ export async function mutateSessionActionItems(
   } finally {
     if (sessionLocks.get(sessionId) === run) sessionLocks.delete(sessionId);
   }
+}
+
+/// AUG-166: items of a live recording by liveKey: the open store, else the pending file.
+export async function readLiveActionItems(liveKey: string): Promise<ActionItemsFile | null> {
+  const entry = registry.get(liveKey);
+  if (entry) return entry.store.file;
+  return readFileIfExists(pendingPath(liveKey));
+}
+
+export async function mutateLiveActionItems(liveKey: string, mutate: (items: ActionItem[]) => boolean): Promise<ActionItemsFile | null> {
+  const entry = registry.get(liveKey);
+  if (entry) {
+    entry.store.mutate(mutate);
+    return entry.store.file;
+  }
+  const p = pendingPath(liveKey);
+  const file = await readFileIfExists(p);
+  if (!file) return null;
+  if (mutate(file.items)) {
+    file.updatedAt = new Date().toISOString();
+    await writeJsonAtomic(p, file);
+  }
+  return file;
 }
 
 // ---------------------------------------------------------------------------
