@@ -1,0 +1,19 @@
+{
+  "id": "AUG-169-dqahxu",
+  "assignee": "jarvis.json",
+  "priority": "medium",
+  "status": "to_review",
+  "title": "[AUG-169] Dynamic height for action items block in Dock Strip compact mode",
+  "why_we_need_this": "The action items area in the Dock Strip currently has a fixed small height that shows only one item (and only if the text is short). During live sessions with multiple action items this makes the feature nearly invisible. The block should grow dynamically as items are added so users actually see their collected action items without leaving compact mode.",
+  "acceptance_criteria": "- [ ] Action items block in Dock Strip grows its height dynamically as new items are added\n- [ ] Maximum height of the action items block never exceeds 1/3 of the total Dock Strip area\n- [ ] When items exceed the max height, the block becomes scrollable internally\n- [ ] Live transcript text does not overflow into / get hidden behind the action items area\n- [ ] Teleprompter mode (auto-scroll following new transcript text) continues to work correctly with a taller action items block\n- [ ] With 0 action items the block collapses to its header-only size (no wasted space)\n- [ ] With 1–2 items, block height fits content without extra whitespace\n- [ ] With many items, block stops at 1/3 cap and scrolls internally\n- [ ] Dock Strip resize by user (280–520 px width) does not break the layout or the 1/3 constraint",
+  "important_constraints": "- The 1/3 limit is of the total Dock Strip **height**, not width\n- Transcript teleprompter auto-scroll must be verified — it's the primary compact-mode feature\n- Dock Strip min size is 280×240, max width 520 (see @electron/src/compact.ts)\n- Action items compact variant lives between transcript canvas and footer — see @src/components/ActionItemsPanel (compact mode branch)\n- 0 border-radius on all elements (project brandbook)\n- 11 px text size in compact action items (AUG-165 design spec)",
+  "labels": [
+    "ui",
+    "compact-mode",
+    "action-items"
+  ],
+  "on_hold_reason": "",
+  "contextRouterIncluded": true,
+  "created_at": 1793461377290,
+  "column_entered_at": 1793461734525
+}

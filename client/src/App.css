@@ -8427,13 +8427,31 @@ html.compact-dock body {
   cursor: pointer;
 }
 
+/* AUG-169: sized by its content (header only with 0 items), capped at 1/3 of the strip height; past the cap only the list scrolls. */
 .compact-strip-actions {
-  flex: none;
-  max-height: 40%;
+  flex: 0 1 auto;
+  max-height: calc(100% / 3);
   min-height: 0;
   display: flex;
+  flex-direction: column;
   border-top: 1px solid var(--border-color);
   overflow: hidden;
+}
+
+.compact-strip-actions .action-items-panel--compact {
+  flex: 0 1 auto;
+  min-height: 0;
+}
+
+.compact-strip-actions .action-items-panel--compact .action-items-list {
+  flex: 0 1 auto;
+  min-height: 0;
+  overflow-y: auto;
+}
+
+.compact-strip-actions .action-items-list:empty,
+.compact-strip-actions .action-items-empty {
+  display: none;
 }
 
 .compact-strip-foot {

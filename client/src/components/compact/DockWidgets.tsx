@@ -28,11 +28,24 @@ const EndConfirm: React.FC<EndConfirmProps> = ({ onYes, onNo }) => (
 export const DockStrip: React.FC<DockProps> = ({ snap, actions, onExpand }) => {
   const bodyRef = useRef<HTMLDivElement>(null);
   const [follow, setFollow] = useState(true);
+  const followRef = useRef(true);
   const [confirming, setConfirming] = useState(false);
 
   useEffect(() => {
+    followRef.current = follow;
     if (follow && bodyRef.current) bodyRef.current.scrollTop = bodyRef.current.scrollHeight;
   }, [snap.lines, follow]);
+
+  // AUG-169: the action-items block grows and shrinks the transcript area; keep the teleprompter pinned to the latest line.
+  useEffect(() => {
+    const el = bodyRef.current;
+    if (!el || typeof ResizeObserver === 'undefined') return;
+    const ro = new ResizeObserver(() => {
+      if (followRef.current) el.scrollTop = el.scrollHeight;
+    });
+    ro.observe(el);
+    return () => ro.disconnect();
+  }, []);
 
   const onScroll = useCallback(() => {
     const el = bodyRef.current;
