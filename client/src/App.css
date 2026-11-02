@@ -2488,6 +2488,8 @@ body {
   border-bottom: 1px solid var(--border-color);
   background: var(--card-bg);
   backdrop-filter: blur(8px);
+  position: relative;
+  z-index: 3; /* above .action-items-panel / .corrections-bar (z 2) so Export/Redo menus are not covered (AUG-180) */
   gap: 12px;
 }
 
