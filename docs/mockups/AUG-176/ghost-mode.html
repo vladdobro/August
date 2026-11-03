@@ -1,0 +1,628 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Ghost Mode Position Mockup</title>
+<style>
+:root {
+  --bg:#f2efe8; --surface:rgba(250,248,244,.92); --line:rgba(45,58,51,.25); --fg:#1e2b24; --muted:#566b5e;
+  --accent:#0d8c5c; --accent-light:rgba(13,140,92,.12); --pause:#d49a00; --danger:#d44040; --them:#9a7a1a;
+  --on-accent:#f2efe8; --body-bg:#e6e2d8; --glow:rgba(13,140,92,.18);
+  --mono:'Cascadia Code','Fira Code',Consolas,monospace;
+}
+@media (prefers-color-scheme: dark) { :root:not([data-theme="light"]) {
+  --bg:#0a110d; --surface:rgba(12,20,16,.92); --line:rgba(0,200,118,.18); --fg:#c0cec4; --muted:#5e7d6a;
+  --accent:#00c876; --accent-light:rgba(0,200,118,.10); --pause:#d4a020; --danger:#e05555; --them:#d4a843;
+  --on-accent:#0a110d; --body-bg:#0f1914; --glow:rgba(0,200,118,.3); color-scheme:dark; } }
+:root[data-theme="dark"] {
+  --bg:#0a110d; --surface:rgba(12,20,16,.92); --line:rgba(0,200,118,.18); --fg:#c0cec4; --muted:#5e7d6a;
+  --accent:#00c876; --accent-light:rgba(0,200,118,.10); --pause:#d4a020; --danger:#e05555; --them:#d4a843;
+  --on-accent:#0a110d; --body-bg:#0f1914; --glow:rgba(0,200,118,.3); color-scheme:dark; }
+
+* { box-sizing:border-box; border-radius:0; }
+body { margin:0; background:var(--bg); color:var(--fg); font-family:var(--mono); font-size:13px; line-height:1.5;
+  padding:0 max(16px,env(safe-area-inset-left,0px)) 48px; overflow-x:hidden; }
+.wrap { max-width:1000px; margin:0 auto; display:grid; grid-template-columns:minmax(0,1fr); gap:24px; }
+.wrap > * { min-width:0; }
+header { padding-top:24px; }
+h1 { margin:0; font-size:20px; text-wrap:balance; }
+h2 { margin:0 0 10px; font-size:13px; letter-spacing:.08em; text-transform:uppercase; color:var(--accent); border-bottom:1px solid var(--line); padding-bottom:6px; }
+.lead { margin:4px 0 0; color:var(--muted); max-width:75ch; }
+.note { margin:6px 0 0; font-size:11px; color:var(--muted); }
+button { font-family:var(--mono); cursor:pointer; }
+button:disabled { opacity:.4; cursor:not-allowed; }
+button:focus-visible { outline:2px solid var(--accent); outline-offset:2px; }
+code { font-size:11px; color:var(--accent); }
+
+.bar { position:sticky; top:0; z-index:20; background:var(--bg); border-bottom:1px solid var(--line); padding:10px 0; display:flex; flex-wrap:wrap; gap:10px 16px; align-items:center; }
+.grp { display:flex; align-items:center; gap:6px; flex-wrap:wrap; }
+.grp > span { font-size:10px; text-transform:uppercase; letter-spacing:.06em; color:var(--muted); }
+.seg { display:flex; border:1px solid var(--line); flex-wrap:wrap; }
+.seg button { border:0; background:transparent; color:var(--fg); font-size:11px; padding:6px 10px; }
+.seg button[aria-pressed="true"] { background:var(--accent); color:var(--on-accent); }
+.cb { font-size:10px; text-transform:uppercase; letter-spacing:.05em; padding:5px 8px; border:1px solid var(--line); background:transparent; color:var(--fg); white-space:nowrap; }
+
+.tw { overflow:auto; border:1px solid var(--line); }
+table { border-collapse:collapse; min-width:640px; width:100%; font-size:11px; }
+th, td { border:1px solid var(--line); padding:6px 8px; text-align:left; vertical-align:top; }
+th { background:var(--accent-light); }
+ul.res, ol.res { padding-left:20px; margin:6px 0; max-width:90ch; font-size:12px; } .res li { margin-bottom:6px; }
+
+/* readout */
+.readout { display:grid; grid-template-columns:minmax(0,1fr) minmax(0,1fr); gap:12px; margin-top:12px; }
+@media (max-width:700px) { .readout { grid-template-columns:minmax(0,1fr); } }
+.readout h3 { margin:0 0 4px; font-size:10px; letter-spacing:.08em; text-transform:uppercase; color:var(--muted); }
+#saved { margin:0; padding:8px; border:1px solid var(--line); background:var(--surface); font-size:11px; min-height:140px; overflow:auto; }
+#log { border:1px solid var(--line); background:var(--surface); padding:8px; font-size:11px; min-height:140px; }
+#log div { margin-bottom:3px; } #log div:first-child { color:var(--accent); } #log time { color:var(--muted); margin-right:6px; }
+
+/* fake desktop */
+#deskwrap { position:relative; overflow:hidden; border:1px solid var(--line); background:#05080a; }
+#desk { position:absolute; left:0; top:0; height:1080px; transform-origin:0 0; --s:.5;
+  --ghost-fg:#c0cec4; --ghost-bright:#e8f0ea; --ghost-muted:#5e7d6a; --ghost-accent:#00c876; --ghost-them:#d4a843;
+  --ghost-amber:#d4a020; --ghost-red:#e05555; --ghost-bg:rgba(6,11,8,.78); --ghost-border:rgba(0,200,118,.35); }
+.disp { position:absolute; border:2px solid #3a4a40; overflow:hidden;
+  background:linear-gradient(rgba(255,255,255,.035) 1px,transparent 1px),linear-gradient(90deg,rgba(255,255,255,.035) 1px,transparent 1px),linear-gradient(135deg,#17332b,#0e1b2b);
+  background-size:80px 80px,80px 80px,100% 100%; }
+.disp[hidden], .gx[hidden] { display:none; }
+.dlabel { position:absolute; left:14px; top:12px; font:700 24px var(--mono); color:#a9c2b3; background:rgba(0,0,0,.45); padding:2px 10px; z-index:1; }
+.dbadge { position:absolute; left:14px; top:56px; font:700 18px var(--mono); color:#05080a; background:#d4a843; padding:0 8px; }
+.taskbar { position:absolute; left:0; right:0; bottom:0; height:40px; background:#050a07; border-top:1px solid #2a3a30; display:flex; justify-content:flex-end; align-items:center; gap:12px; padding:0 14px; color:#7d9585; font:15px var(--mono); }
+.tray { display:inline-grid; place-items:center; width:26px; height:26px; border:1px solid #00c876; color:#00c876; font:700 15px var(--mono); }
+.call { position:absolute; left:380px; top:150px; width:1160px; height:640px; border:2px solid #4b5d52; background:#0c140f; }
+.call .t { height:46px; padding:8px 16px; font:700 20px var(--mono); color:#c0cec4; border-bottom:2px solid #4b5d52; background:#142019; }
+.tiles { display:grid; grid-template-columns:1fr 1fr; grid-template-rows:1fr 1fr; gap:12px; padding:12px; height:calc(100% - 46px); }
+.tile { background:#1b2b22; border:1px solid #2d4437; display:flex; align-items:flex-end; padding:8px 12px; font:18px var(--mono); color:#7d9585; }
+.tile:nth-child(2) { background:#22301f; } .tile:nth-child(3) { background:#1b2a30; } .tile:nth-child(4) { background:#2a2420; }
+#guides, #crosses { position:absolute; left:0; top:0; width:0; height:0; z-index:5; pointer-events:none; }
+.gl { position:absolute; background:var(--ghost-accent); }
+.cx { position:absolute; width:calc(16px / var(--s)); height:calc(16px / var(--s)); margin:calc(-8px / var(--s)) 0 0 calc(-8px / var(--s));
+  background:linear-gradient(var(--ghost-accent),var(--ghost-accent)) center/calc(1px / var(--s)) 100% no-repeat,linear-gradient(var(--ghost-accent),var(--ghost-accent)) center/100% calc(1px / var(--s)) no-repeat; }
+
+/* ghost widgets (real tokens, independent of page theme) */
+.gx { position:absolute; z-index:6; color:var(--ghost-fg); font-family:var(--mono); touch-action:none; }
+.gx:focus-visible { outline:calc(2px / var(--s)) solid var(--ghost-accent); outline-offset:calc(2px / var(--s)); }
+.rec { width:8px; height:8px; background:var(--ghost-red); border-radius:50% !important; flex:none; animation:pulse 1.4s ease-in-out infinite; }
+.rec.off { animation:none; opacity:.5; }
+@keyframes pulse { 50% { opacity:.35; } }
+.tm { font:700 13px var(--mono); color:var(--ghost-bright); font-variant-numeric:tabular-nums; }
+.ghost-btn { position:relative; padding:1px 5px; font:700 10px var(--mono); text-transform:uppercase; color:var(--ghost-fg); background:rgba(6,11,8,.6); border:1px solid rgba(0,200,118,.3); white-space:nowrap; cursor:pointer; }
+.ghost-btn:hover { color:var(--ghost-accent); border-color:var(--ghost-accent); }
+.ghost-btn--amber { color:var(--ghost-amber); }
+.ghost-btn--accent { color:var(--ghost-accent); border-color:var(--ghost-accent); }
+.ghost-btn--end, .ghost-btn--end:hover { color:var(--ghost-red); border-color:var(--ghost-red); }
+.ghost-btn.hold { background:linear-gradient(to right,var(--ghost-red) calc(var(--p,0)*100%),transparent 0),rgba(6,11,8,.6); user-select:none; touch-action:none; }
+.ghost-btn.hold.past { color:#fff; }
+.ghost-btn.hint::after { content:"HOLD"; position:absolute; left:50%; top:-11px; transform:translateX(-50%); font-size:8px; color:var(--ghost-amber); pointer-events:none; }
+
+.ghost-caption { display:flex; background:var(--ghost-bg); backdrop-filter:blur(6px); border:1px solid var(--ghost-border); overflow:hidden; }
+.ghost-caption-left { width:104px; flex:none; display:flex; flex-direction:column; gap:5px; padding:8px; border-right:1px solid rgba(0,200,118,.18); cursor:grab; user-select:none; }
+.ghost-caption-left.grabbing { cursor:grabbing; }
+.gc-r1 { display:flex; align-items:center; gap:6px; }
+.gc-tag { font:700 9px var(--mono); letter-spacing:.08em; text-transform:uppercase; color:var(--ghost-accent); white-space:nowrap; }
+.gc-tools { display:none; grid-template-columns:repeat(3,1fr); gap:4px; }
+.gc-tools .ghost-btn { padding:1px 3px; min-width:0; }
+.ghost-caption:hover .gc-tools, .ghost-caption:focus-within .gc-tools, .ghost-caption.ended .gc-tools { display:grid; }
+.gc-tools .span3 { grid-column:1 / -1; }
+/* Square tools: below 104 DIP the two-row grid no longer fits, so the five tools become one row of squares */
+.ghost-caption.measure .gc-tools { display:grid; }
+.tools-sq .gc-tools { grid-template-columns:repeat(5,16px); gap:2px; justify-content:space-between; }
+.tools-sq .gc-tools .ghost-btn { padding:0; width:16px; height:16px; line-height:14px; font-size:9px; letter-spacing:0; }
+.tools-sq .gc-tools .br { display:none; }
+.ghost-caption-lines { flex:1; min-width:0; display:flex; flex-direction:column; gap:4px; padding:8px 12px; overflow:hidden;
+  -webkit-mask-image:linear-gradient(to bottom,transparent 0,#000 16px); mask-image:linear-gradient(to bottom,transparent 0,#000 16px);
+  font-family:system-ui,-apple-system,"Segoe UI",sans-serif; }
+.ghost-line { padding-left:8px; border-left:3px solid var(--ghost-accent); font:14px/1.3 system-ui,-apple-system,"Segoe UI",sans-serif; color:var(--ghost-bright); }
+.ghost-line:first-child { margin-top:auto; }
+.ghost-line--them { border-left-color:var(--ghost-them); }
+.ghost-line--old { opacity:.7; } .ghost-line--older { opacity:.45; }
+.ghost-caption-resize { position:absolute; left:0; right:0; height:6px; cursor:ns-resize; z-index:3; }
+.edge-top .ghost-caption-resize { top:0; } .edge-bottom .ghost-caption-resize { bottom:0; }
+.ghost-caption-resize::after, .gw::after { content:""; position:absolute; background:var(--ghost-accent); opacity:0; transition:opacity .15s; }
+.ghost-caption-resize::after { left:50%; top:2px; width:48px; height:2px; margin-left:-24px; }
+.gw { position:absolute; top:6px; bottom:6px; width:6px; cursor:ew-resize; z-index:3; display:none; }
+.gw-l { left:0; } .gw-r { right:0; }
+.gw::after { top:50%; left:2px; width:2px; height:48px; margin-top:-24px; }
+.wr .gw { display:block; }
+.ghost-caption:hover .ghost-caption-resize::after, .ghost-caption:hover .gw::after { opacity:.5; }
+.ghost-caption-resize:hover::after, .ghost-caption-resize.active::after, .gw:hover::after, .gw.active::after { opacity:1; }
+
+.ghost-coin { display:flex; height:56px; background:rgba(6,11,8,.85); border:1px solid rgba(0,200,118,.5); overflow:hidden; }
+.ghost-coin.rev { flex-direction:row-reverse; }
+.ghost-coin-face { width:54px; flex:none; display:flex; flex-direction:column; align-items:center; justify-content:center; gap:3px; cursor:grab; user-select:none; }
+.ghost-coin-face.grabbing { cursor:grabbing; }
+.ghost-coin-face .tm { font-size:11px; }
+.ghost-coin-face .dn { font:700 8px var(--mono); color:var(--ghost-accent); letter-spacing:.06em; }
+.gcr { display:flex; align-items:center; gap:5px; }
+.ghost-coin-actions { display:none; flex:1; min-width:0; align-items:center; justify-content:center; gap:4px; padding:0 4px; }
+.ghost-coin.open .ghost-coin-actions { display:flex; }
+.ghost-coin-actions .ghost-btn { font-size:9px; padding:1px 3px; }
+
+@media (prefers-reduced-motion: reduce) { *, *::before, *::after { animation:none !important; transition:none !important; } }
+</style>
+</head>
+<body>
+<div class="wrap">
+<header>
+  <h1>AUG-176 · Ghost Mode: free X/Y drag with a saved position</h1>
+  <p class="lead">Rodion's request: move the ghost overlay anywhere on the screen, left or right, and have August remember where it was. Today the caption moves only up/down and snaps to Top or Bottom; the coin snaps to a corner. Stop Meeting protection is already done (AUG-182, hold 1.5 s) and is reproduced here unchanged. Pick an option in the bar and drag the widget on the fake desktop.</p>
+</header>
+
+<div class="bar" role="toolbar" aria-label="Mockup controls">
+  <div class="grp"><span>Option</span><div class="seg" data-g="opt">
+    <button type="button" data-v="A" aria-pressed="true">A Magnetic edges</button>
+    <button type="button" data-v="B" aria-pressed="false">B Free</button>
+    <button type="button" data-v="C" aria-pressed="false">C Anchor grid</button></div></div>
+  <div class="grp"><span>Widget</span><div class="seg" data-g="widget">
+    <button type="button" data-v="caption" aria-pressed="true">Caption</button>
+    <button type="button" data-v="coin" aria-pressed="false">Coin</button></div></div>
+  <div class="grp"><span>Displays</span><div class="seg" data-g="disp">
+    <button type="button" data-v="1" aria-pressed="true">1</button>
+    <button type="button" data-v="2" aria-pressed="false">2 (mixed DPI)</button></div></div>
+  <div class="grp"><span>Width resize</span><div class="seg" data-g="wr">
+    <button type="button" data-v="off" aria-pressed="true">Off</button>
+    <button type="button" data-v="on" aria-pressed="false">On</button></div></div>
+  <div class="grp"><span>Theme</span><div class="seg" data-g="theme">
+    <button type="button" data-v="auto" aria-pressed="true">Auto</button>
+    <button type="button" data-v="light" aria-pressed="false">Light</button>
+    <button type="button" data-v="dark" aria-pressed="false">Dark</button></div></div>
+  <div class="grp">
+    <button type="button" class="cb" id="relaunch">[ RELAUNCH ]</button>
+    <button type="button" class="cb" id="unplug" disabled>[ UNPLUG DISPLAY 2 ]</button>
+    <button type="button" class="cb" id="reset">[ RESET DEMO ]</button></div>
+</div>
+
+<section>
+  <h2>Fake desktop</h2>
+  <div id="deskwrap">
+    <div id="desk">
+      <div class="disp" id="d1" style="left:0;top:0;width:1920px;height:1080px">
+        <div class="dlabel">D1 1920×1080 · 100 %</div>
+        <div class="call"><div class="t">Call — 4 participants</div>
+          <div class="tiles"><div class="tile">Rodion</div><div class="tile">Anna</div><div class="tile">Marco</div><div class="tile">You</div></div></div>
+        <div class="taskbar"><span>12:41</span><span class="tray" title="August tray icon">A</span></div>
+      </div>
+      <div class="disp" id="d2" hidden style="left:1920px;top:0;width:1440px;height:900px">
+        <div class="dlabel">D2 1440×900 · 150 %</div><div class="dbadge">150 %</div>
+        <div class="taskbar"><span>12:41</span></div>
+      </div>
+      <div id="crosses"></div><div id="guides"></div>
+    </div>
+  </div>
+  <p class="note">Drag the caption by its left zone, the coin by its face. Arrow keys move a focused widget by 8 DIP (Shift 32); Esc logs expand. Hold [ TXT ], [ ■ ] or [ END MEETING ] for 1.5 s.</p>
+  <div class="readout">
+    <div><h3>&lt;userData&gt;/window-state.json (ghost key only)</h3><pre id="saved"></pre></div>
+    <div><h3>Last 6 events</h3><div id="log" aria-live="polite"></div></div>
+  </div>
+</section>
+
+<section>
+  <h2>Today (as built)</h2>
+  <div class="tw" tabindex="0" role="region" aria-label="Current behavior table"><table>
+    <thead><tr><th>Piece</th><th>Where</th><th>Behavior</th></tr></thead>
+    <tbody>
+    <tr><td>Caption drag</td><td><code>GhostApp.tsx:62-76</code> → <code>preload.cts:71-73</code> → <code>main.ts:544-547</code> → <code>compact.ts:217-251</code></td><td>Move: X pinned to the start x, Y clamped to the start display's work area (<code>compact.ts:229-232</code>). End: snaps to Top or Bottom by window center (<code>:241-243</code>) and recomputes full geometry via <code>ghostBounds</code> (<code>:328-335</code>): width min(760, 80 % of the work area), centered, 24 px margin.</td></tr>
+    <tr><td>Coin drag</td><td><code>GhostApp.tsx:255-283</code> (4 px threshold separates click from drag) → <code>compact.ts:234</code></td><td>Move: free X/Y, no clamp. End: nearest corner (<code>:245-248</code>), 16 px margin (<code>:336-340</code>). Hover expansion <code>ghostResize</code> (<code>:209-215</code>) regrows from the corner so the face stays put; <code>GhostApp.tsx:251-253</code> flips the row direction by screen half.</td></tr>
+    <tr><td>Caption height</td><td><code>GhostApp.tsx:78-92</code> handle, <code>compact.ts:253-275</code></td><td>Resizes from the inner edge, the docked edge fixed by <code>captionEdge</code> from the last snap; clamp 72–480 and work area − 48. End → <code>caption-height</code> event → <code>CompactLayer.tsx:225</code> → PATCH <code>compactCaptionHeight</code> (<code>client/src/services/preferences.ts:47,81</code>, <code>server/src/routes/preferences.ts:43</code>, <code>preferencesStore.ts:133-137</code>). <code>GhostApp.tsx:52-55</code> picks the handle side from <code>window.screenY</code> vs <code>availTop/availHeight</code>.</td></tr>
+    <tr><td>Position memory</td><td><code>compact.ts:106-108</code></td><td><code>captionEdge</code>, <code>captionHeight</code>, <code>coinCorner</code> are fields on CompactController: kept while the app runs, reset to bottom / bottom-right on every launch. Nothing on disk. Precedent for geometry: <code>&lt;userData&gt;/window-state.json</code> (<code>windowState.ts:27-43</code>) with <code>fitWindowState</code> (<code>:48-63</code>, ≥ 100 px visible rule).</td></tr>
+    <tr><td>Ghost window</td><td><code>compact.ts:349-400</code></td><td>frame false, transparent, resizable false, <code>movable: true</code> (no effect: no <code>-webkit-app-region</code>), skipTaskbar, always on top via <code>applyOnTop</code> (<code>:62-70</code>: macOS level 'floating' + all workspaces incl. full-screen; Windows flag only), <code>showInactive</code>, caption click-through via <code>setIgnoreMouseEvents(true,{forward:true})</code> (<code>:397</code>); ghost IPC accepted only from the ghost webContents (<code>main.ts:532-552</code>).</td></tr>
+    <tr><td>Stop protection</td><td><code>GhostApp.tsx:192</code>, <code>:342</code></td><td>Done in AUG-182: <code>HoldToStopButton</code> 1.5 s for caption [ ■ ] and coin [ END MEETING ]; no confirm, not skippable.</td></tr>
+    </tbody></table></div>
+</section>
+
+<section>
+  <h2>Free drag: design</h2>
+  <ol class="res">
+    <li><b>Move:</b> apply both dx and dy (drop the X pin at <code>compact.ts:231</code>). No clamp while moving, so the window can cross to another display; clamp on release against the display it overlaps most (<code>screen.getDisplayMatching</code>).</li>
+    <li><b>Release, per option:</b> A Magnetic edges — an edge within 32 DIP of a work-area edge snaps flush with today's margin (24 caption / 16 coin), two near edges give a corner, otherwise the position stays, clamped fully inside the work area. B Free — the clamp only. C Anchor grid — always the nearest of 9 slots (3×3); for the caption only meaningful with width resize.</li>
+    <li><b>Caption height resize</b> keeps its handle on the edge facing the display center (<code>GhostApp.tsx:55</code> already derives it); main derives the fixed edge at resize start from the window center vs the work-area center instead of the last snap; max height = distance from the fixed edge to the work-area edge − 24.</li>
+    <li><b>Width resize (optional scope):</b> 6 px handles on the left and right edges, 320–760 px, new pref <code>compactCaptionWidth</code> mirrored exactly like <code>compactCaptionHeight</code> (client default, server allow-list and clamp, caption-width event).</li>
+    <li><b>Coin hover expansion</b> grows toward the display center from the face; if 372 px does not fit on that side it flips. The face never moves.</li>
+    <li><b>Storage (recommended):</b> <code>&lt;userData&gt;/window-state.json</code> gets a <code>ghost</code> object, one record per widget: <code>{ displayId, hAnchor: 'left'|'right', hOffset, vAnchor: 'top'|'bottom', vOffset }</code> in DIP, offset = distance from the nearest work-area edge to the window's edge. Written by main on drag end and resize end, no renderer round-trip, no server schema change. Height stays in <code>compactCaptionHeight</code>. Alternative (not recommended): a <code>compactGhostPosition</code> pref over PATCH /api/preferences like the height, which needs an object sanitizer on the server and a new compact-event only to hand the value back to main; display ids and DIP coordinates are machine geometry, like the main window bounds already in window-state.json.</li>
+    <li><b>Restore on <code>ensureGhost</code>:</b> display by id, fallback the display of the main window's snapshot bounds; rect from anchors + offsets + current size; clamp into that work area; invalid or missing record → today's default (bottom center / bottom-right). While a ghost exists, <code>screen.on('display-removed' | 'display-metrics-changed')</code> re-clamps.</li>
+    <li><b>Off-screen recovery:</b> every placement ends with a full clamp, so the window is always entirely inside a work area; Settings → Compact mode gets a "Reset overlay position" row (bridge method clears <code>ghost</code> and re-applies the default); Expand (Esc, tray click) destroys the ghost, so the user is never stuck.</li>
+    <li><b>Multi-monitor and DPI:</b> Electron bounds and <code>screen.getCursorScreenPoint()</code> are DIP in one virtual screen on both platforms (left/top monitors have negative coordinates; anchors + offsets are unaffected). On Windows with mixed scale factors a transparent window can change physical size mid-drag at the DPI boundary (WM_DPICHANGED); on release re-apply the intended width/height with <code>setBounds</code>, not only the position. <code>displayId</code> keeps the record valid when the same monitor changes resolution.</li>
+    <li><b>Tools at small heights</b> (Rodion, 2026-11-03): today the five caption tools sit in a 3-column grid, so once the height drops below what two rows of rectangles need, the second row ([ TXT ] [ ■ ]) is clipped and unreachable. The rectangles stay as long as they fit; at the point where they stop fitting the tools become one row of small squares (brackets dropped, same glyphs, hold-to-stop kept), and the minimum height / width is whatever that row needs: the window never shrinks past the point where the squares stop fitting. Both thresholds are measured from the layout, not hard-coded. Shrink the caption here to see it.</li>
+  </ol>
+</section>
+
+<section>
+  <h2>Options</h2>
+  <div class="tw" tabindex="0" role="region" aria-label="Options table"><table>
+    <thead><tr><th>Option</th><th>How it works</th><th>Pros</th><th>Cons</th></tr></thead>
+    <tbody>
+    <tr><td>A Magnetic edges (recommended)</td><td>Free X/Y; within 32 px of an edge it snaps flush with the usual margin, else stays</td><td>Rodion gets any position; the common "bottom center / corner" placements stay pixel-perfect; teleprompter keeps a clean edge</td><td>One more rule to explain; a user who wants 10 px from the edge cannot (snap wins)</td></tr>
+    <tr><td>B Free</td><td>Free X/Y, only kept inside the work area</td><td>Simplest to implement and explain</td><td>Nothing aligns; coin expansion side and caption handle side still derive from the half of the screen, which can surprise near the middle</td></tr>
+    <tr><td>C Anchor grid</td><td>Always snaps to one of 9 slots</td><td>Predictable, trivial storage (a slot name)</td><td>Not what was asked ("any place"); caption slots left/right need width resize</td></tr>
+    </tbody></table></div>
+</section>
+
+<section>
+  <h2>Windows / macOS: transparent always-on-top window</h2>
+  <div class="tw" tabindex="0" role="region" aria-label="Platform table"><table>
+    <thead><tr><th>Aspect</th><th>Windows</th><th>macOS</th></tr></thead>
+    <tbody>
+    <tr><td>Always on top</td><td><code>setAlwaysOnTop(true)</code>: topmost; above borderless full-screen calls, never above exclusive full-screen apps</td><td>level 'floating' + <code>setVisibleOnAllWorkspaces(true,{visibleOnFullScreen:true})</code> (<code>compact.ts:62-70</code>): above full-screen Zoom / Meet</td></tr>
+    <tr><td>Moving</td><td><code>setPosition</code> anywhere in the virtual screen, Windows never constrains; over the taskbar two topmost windows compete → clamp to workArea</td><td>AppKit constrains frames against the visible frame (menu bar); clamping to workArea (excludes menu bar and Dock) avoids any adjustment — verify on macOS 15</td></tr>
+    <tr><td>Click-through</td><td><code>setIgnoreMouseEvents(true,{forward:true})</code> supported</td><td>supported</td></tr>
+    <tr><td>DPI change while dragging</td><td>per-monitor DPI: WM_DPICHANGED re-scales; transparent windows have shown size jumps → re-apply size on release</td><td>smooth: backing scale changes, DIP size constant</td></tr>
+    <tr><td>Several displays</td><td>DIP virtual screen with negative coordinates for left/top monitors</td><td>each display may have its own Spaces; all-workspaces keeps the ghost on every display</td></tr>
+    <tr><td>Drag mechanics</td><td>pointer capture keeps pointermove flowing while the window slides under the cursor</td><td>same; the ghost is focusable, so a drag activates August (existing behavior)</td></tr>
+    <tr><td>Status</td><td>desk check from source and Electron 44 docs; not run on hardware in this card</td><td>same; macOS verification pending in a release build (as for AUG-181/182)</td></tr>
+    </tbody></table></div>
+</section>
+
+<section>
+  <h2>Open decisions</h2>
+  <ul class="res">
+    <li>Snap behavior: A Magnetic edges / B Free / C Anchor grid.</li>
+    <li>Width resize: in scope now or later.</li>
+    <li>Storage: window-state.json (recommended) or a preference.</li>
+  </ul>
+</section>
+
+<section>
+  <h2>Out of scope</h2>
+  <p class="lead">Stop Meeting protection (done, AUG-182); Dock Strip / Dock Square placement (they are the August window itself); changing the default position.</p>
+</section>
+</div>
+
+<script>
+(() => {
+'use strict';
+const $ = s => document.querySelector(s);
+const DISP = {
+  1: { id:1, x:0, y:0, w:1920, h:1080, wa:{ x:0, y:0, w:1920, h:1040 } },
+  2: { id:2, x:1920, y:0, w:1440, h:900, wa:{ x:1920, y:0, w:1440, h:860 } }
+};
+const SNAP = 32, MARGIN = { caption:24, coin:16 }, COIN = 56, COINX = 372;
+const wrapEl = $('#deskwrap'), deskEl = $('#desk'), guidesEl = $('#guides'), crossEl = $('#crosses');
+const els = {};
+let st, scale = .5, drag = null, keying = false, logs = [], elapsed = 739;
+
+const act = () => st.n === 1 ? [DISP[1]] : [DISP[1], DISP[2]];
+const clampN = (v, a, b) => Math.max(a, Math.min(b, v));
+const ovl = (r, wa) => Math.max(0, Math.min(r.x + r.w, wa.x + wa.w) - Math.max(r.x, wa.x)) * Math.max(0, Math.min(r.y + r.h, wa.y + wa.h) - Math.max(r.y, wa.y));
+
+function defaultRect(w, sz) {
+  const wa = DISP[1].wa;
+  if (w === 'caption') {
+    const cw = sz ? sz.w : Math.min(760, Math.round(.8 * wa.w)), ch = sz ? sz.h : 112;
+    return { x: Math.round(wa.x + (wa.w - cw) / 2), y: wa.y + wa.h - MARGIN.caption - ch, w: cw, h: ch };
+  }
+  return { x: wa.x + wa.w - MARGIN.coin - COIN, y: wa.y + wa.h - MARGIN.coin - COIN, w: COIN, h: COIN };
+}
+function fresh() {
+  return { opt:'A', widget:'caption', n:1, wr:false, ended:false, txt:false, hover:false,
+    pos:{ caption: defaultRect('caption'), coin: defaultRect('coin') }, saved:{} };
+}
+function dispOf(r) {
+  let best = null, ba = -1;
+  for (const d of act()) { const a = ovl(r, d.wa); if (a > ba) { ba = a; best = d; } }
+  if (ba > 0) return best;
+  let bd = Infinity;
+  for (const d of act()) {
+    const dx = r.x + r.w / 2 - (d.x + d.w / 2), dy = r.y + r.h / 2 - (d.y + d.h / 2), q = dx * dx + dy * dy;
+    if (q < bd) { bd = q; best = d; }
+  }
+  return best;
+}
+function clampInto(r, d) {
+  const wa = d.wa;
+  r.x = Math.round(Math.max(wa.x, Math.min(r.x, wa.x + wa.w - r.w)));
+  r.y = Math.round(Math.max(wa.y, Math.min(r.y, wa.y + wa.h - r.h)));
+}
+function slots(r, d, m) {
+  const wa = d.wa, xs = [wa.x + m, Math.round(wa.x + (wa.w - r.w) / 2), wa.x + wa.w - m - r.w];
+  const ys = [wa.y + m, Math.round(wa.y + (wa.h - r.h) / 2), wa.y + wa.h - m - r.h];
+  const vn = ['top', 'middle', 'bottom'], hn = ['left', 'center', 'right'], out = [];
+  ys.forEach((y, i) => xs.forEach((x, j) => out.push({ x, y, name: vn[i] + '-' + hn[j] })));
+  return out;
+}
+function mkRec(w) {
+  const r = st.pos[w], d = dispOf(r), wa = d.wa;
+  const left = r.x + r.w / 2 < wa.x + wa.w / 2, top = r.y + r.h / 2 < wa.y + wa.h / 2;
+  return { displayId: d.id, hAnchor: left ? 'left' : 'right', hOffset: Math.round(left ? r.x - wa.x : wa.x + wa.w - r.x - r.w),
+    vAnchor: top ? 'top' : 'bottom', vOffset: Math.round(top ? r.y - wa.y : wa.y + wa.h - r.y - r.h) };
+}
+function validRec(c) {
+  return c && (c.displayId === 1 || c.displayId === 2) && (c.hAnchor === 'left' || c.hAnchor === 'right') &&
+    (c.vAnchor === 'top' || c.vAnchor === 'bottom') && Number.isFinite(c.hOffset) && Number.isFinite(c.vOffset);
+}
+
+function log(msg) {
+  logs.unshift({ t: new Date().toTimeString().slice(0, 8), m: msg });
+  logs.length = Math.min(logs.length, 6);
+  const box = $('#log'); box.textContent = '';
+  logs.forEach(l => { const d = document.createElement('div'), t = document.createElement('time'); t.textContent = l.t; d.append(t, l.m); box.append(d); });
+}
+function renderSaved() { $('#saved').textContent = JSON.stringify({ ghost: st.saved }, null, 2); }
+
+/* release rule */
+function release(w, why) {
+  const r = st.pos[w], d = dispOf(r), m = MARGIN[w], wa = d.wa, notes = [];
+  const bx = r.x, by = r.y;
+  if (st.opt === 'A') {
+    const dl = r.x - wa.x, dr = wa.x + wa.w - r.x - r.w, dt = r.y - wa.y, db = wa.y + wa.h - r.y - r.h;
+    let sx = null, sy = null;
+    const nl = Math.abs(dl) <= SNAP, nr = Math.abs(dr) <= SNAP, nt = Math.abs(dt) <= SNAP, nb = Math.abs(db) <= SNAP;
+    if (nl && (!nr || Math.abs(dl) <= Math.abs(dr))) { r.x = wa.x + m; sx = 'left'; } else if (nr) { r.x = wa.x + wa.w - m - r.w; sx = 'right'; }
+    if (nt && (!nb || Math.abs(dt) <= Math.abs(db))) { r.y = wa.y + m; sy = 'top'; } else if (nb) { r.y = wa.y + wa.h - m - r.h; sy = 'bottom'; }
+    notes.push(sx && sy ? `snap → ${sy}-${sx} corner` : sx || sy ? `snap → ${sx || sy} edge` : 'no snap (more than 32 DIP from every edge)');
+  } else if (st.opt === 'C') {
+    let best = null, bd = Infinity;
+    slots(r, d, m).forEach(s => { const q = (s.x - r.x) ** 2 + (s.y - r.y) ** 2; if (q < bd) { bd = q; best = s; } });
+    r.x = best.x; r.y = best.y; notes.push(`slot → ${best.name}`);
+  }
+  const ax = r.x, ay = r.y;
+  clampInto(r, d);
+  if (r.x !== ax || r.y !== ay || (st.opt === 'B' && (r.x !== bx || r.y !== by))) notes.push(`clamped into D${d.id} work area`);
+  if (st.opt === 'B' && !notes.length) notes.push(`free, stays in D${d.id}`);
+  st.saved[w] = mkRec(w);
+  log(`${w} ${why || 'release'} [${st.opt}]: ${notes.join(', ')}`);
+  layout(); renderSaved();
+}
+
+/* restore on ensureGhost */
+function restore(w) {
+  const cur = st.pos[w], rec = st.saved[w], sz = { w: cur.w, h: cur.h };
+  const toDefault = () => { st.pos[w] = defaultRect(w, w === 'caption' ? sz : null); };
+  if (!rec) { toDefault(); return 'no saved record → default position'; }
+  if (!validRec(rec)) { toDefault(); return 'invalid record → default position'; }
+  const d = DISP[rec.displayId];
+  if (!act().includes(d)) { toDefault(); return `restored from saved record (display ${rec.displayId} missing → default position on D1)`; }
+  const wa = d.wa, r = { w: sz.w, h: sz.h };
+  r.x = rec.hAnchor === 'left' ? wa.x + rec.hOffset : wa.x + wa.w - rec.hOffset - r.w;
+  r.y = rec.vAnchor === 'top' ? wa.y + rec.vOffset : wa.y + wa.h - rec.vOffset - r.h;
+  clampInto(r, d); st.pos[w] = r;
+  return `restored from saved record (D${d.id}, ${rec.vAnchor}-${rec.hAnchor}, offsets ${rec.hOffset}/${rec.vOffset})`;
+}
+
+/* hold-to-stop */
+function setLabel(b, text) {
+  const m = /^\[ (.*) \]$/.exec(text);
+  if (m) b.innerHTML = `<span class="br">[ </span>${m[1]}<span class="br"> ]</span>`; else b.textContent = text;
+}
+function holdBtn(text, cls, done) {
+  const b = document.createElement('button');
+  b.type = 'button'; b.className = 'ghost-btn hold ' + cls; setLabel(b, text); b.title = 'Hold 1.5 s';
+  let t0 = 0, raf = 0, on = false, ht = 0;
+  const paint = p => { b.style.setProperty('--p', p); b.classList.toggle('past', p > .5); };
+  const stop = () => { on = false; cancelAnimationFrame(raf); paint(0); };
+  const tick = () => { const p = Math.min(1, (performance.now() - t0) / 1500); paint(p); if (p >= 1) { stop(); done(); } else raf = requestAnimationFrame(tick); };
+  const begin = () => { if (on) return; on = true; t0 = performance.now(); b.classList.remove('hint'); clearTimeout(ht); raf = requestAnimationFrame(tick); };
+  const cancel = () => { if (!on) return; stop(); b.classList.add('hint'); ht = setTimeout(() => b.classList.remove('hint'), 1000); };
+  b.addEventListener('pointerdown', e => { if (e.button !== 0) return; e.stopPropagation(); begin(); });
+  ['pointerup', 'pointerleave', 'pointercancel'].forEach(t => b.addEventListener(t, cancel));
+  b.addEventListener('keydown', e => { if (e.key === ' ' || e.key === 'Enter') { e.preventDefault(); e.stopPropagation(); if (!e.repeat) begin(); } });
+  b.addEventListener('keyup', e => { if (e.key === ' ' || e.key === 'Enter') { e.preventDefault(); cancel(); } });
+  b.addEventListener('blur', cancel);
+  b.addEventListener('click', e => e.preventDefault());
+  return b;
+}
+function plainBtn(text, cls, msg) {
+  const b = document.createElement('button');
+  b.type = 'button'; b.className = 'ghost-btn ' + cls; setLabel(b, text);
+  b.addEventListener('pointerdown', e => e.stopPropagation());
+  b.addEventListener('click', () => log(msg));
+  return b;
+}
+const endMeeting = () => { st.ended = true; log('MEETING ENDED → widget shows DONE · 12:41'); buildAll(); layout(); };
+const stopTxt = () => { st.txt = true; log('[ TXT ] held → tag STOPPED'); buildAll(); layout(); };
+const fmt = s => String(Math.floor(s / 60)).padStart(2, '0') + ':' + String(s % 60).padStart(2, '0');
+
+/* widgets */
+function startDrag(e, kind, w, extra) {
+  if (e.button !== 0) return;
+  drag = Object.assign({ kind, w, id: e.pointerId, sx: e.clientX, sy: e.clientY, o: Object.assign({}, st.pos[w]), moved: false, el: e.currentTarget }, extra || {});
+  e.currentTarget.setPointerCapture(e.pointerId);
+}
+function keyHandlers(el, w) {
+  el.addEventListener('keydown', e => {
+    if (e.target !== el) return;
+    if (e.key === 'Escape') { log('expand (Esc)'); return; }
+    const step = e.shiftKey ? 32 : 8, v = { ArrowLeft:[-1,0], ArrowRight:[1,0], ArrowUp:[0,-1], ArrowDown:[0,1] }[e.key];
+    if (!v) return;
+    e.preventDefault(); keying = true; st.pos[w].x += v[0] * step; st.pos[w].y += v[1] * step; layout();
+  });
+  el.addEventListener('keyup', e => { if (e.target === el && keying && e.key.startsWith('Arrow')) { keying = false; release(w, 'keyboard move'); } });
+}
+function buildCaption() {
+  const el = document.createElement('div');
+  el.className = 'gx ghost-caption' + (st.ended ? ' ended' : '');
+  el.tabIndex = 0; el.setAttribute('role', 'group');
+  el.setAttribute('aria-label', 'Ghost caption overlay. Drag the left zone to move. Arrow keys move, Escape expands.');
+  const tag = st.ended ? 'DONE · 12:41' : st.txt ? 'STOPPED' : 'LISTENING';
+  el.innerHTML = `<div class="ghost-caption-left"><div class="gc-r1"><span class="rec${st.ended ? ' off' : ''}"></span><span class="tm">${st.ended ? '12:41' : fmt(elapsed)}</span></div>
+    <div class="gc-tag">${tag}</div><div class="gc-tools"></div></div>
+    <div class="ghost-caption-lines">
+      <div class="ghost-line ghost-line--older">Let's walk through the rollout plan first.</div>
+      <div class="ghost-line ghost-line--them ghost-line--old">Can we ship it on Thursday?</div>
+      <div class="ghost-line">Yes, QA signs off on Wednesday afternoon.</div></div>
+    <div class="ghost-caption-resize"></div><div class="gw gw-l"></div><div class="gw gw-r"></div>`;
+  const tools = el.querySelector('.gc-tools');
+  if (st.ended) tools.append(plainBtn('[ OPEN ]', 'ghost-btn--accent span3', 'OPEN → show August'));
+  else {
+    tools.append(plainBtn('[ ⤢ ]', '', 'action: expand'), plainBtn('[ ⏸ ]', 'ghost-btn--amber', 'action: pause'), plainBtn('[ MIC ]', '', 'action: mute mic'));
+    if (!st.txt) tools.append(holdBtn('[ TXT ]', 'ghost-btn--end', stopTxt));
+    tools.append(holdBtn('[ ■ ]', 'ghost-btn--end', endMeeting));
+  }
+  const left = el.querySelector('.ghost-caption-left');
+  left.addEventListener('pointerdown', e => { if (e.target.closest('button')) return; left.classList.add('grabbing'); startDrag(e, 'move', 'caption'); });
+  const rz = el.querySelector('.ghost-caption-resize');
+  rz.addEventListener('pointerdown', e => { rz.classList.add('active'); startDrag(e, 'rh', 'caption', { top: el.classList.contains('edge-top'), d: dispOf(st.pos.caption) }); });
+  el.querySelectorAll('.gw').forEach(g => g.addEventListener('pointerdown', e => { g.classList.add('active'); startDrag(e, g.classList.contains('gw-l') ? 'rl' : 'rr', 'caption'); }));
+  keyHandlers(el, 'caption');
+  return el;
+}
+function buildCoin() {
+  const el = document.createElement('div');
+  el.className = 'gx ghost-coin'; el.tabIndex = 0; el.setAttribute('role', 'group');
+  el.setAttribute('aria-label', 'Ghost coin overlay. Drag the face to move. Arrow keys move, Escape expands.');
+  el.innerHTML = `<div class="ghost-coin-face"><div class="gcr"><span class="rec${st.ended ? ' off' : ''}"></span><span class="tm">${st.ended ? '12:41' : fmt(elapsed)}</span></div>${st.ended ? '<span class="dn">DONE</span>' : ''}</div><div class="ghost-coin-actions"></div>`;
+  const acts = el.querySelector('.ghost-coin-actions');
+  if (st.ended) acts.append(plainBtn('[ OPEN ]', 'ghost-btn--accent', 'OPEN → show August'));
+  else acts.append(plainBtn('[ PAUSE ]', 'ghost-btn--amber', 'action: pause'), plainBtn('[ MUTE ]', '', 'action: mute mic'),
+    holdBtn('[ END MEETING ]', 'ghost-btn--end', endMeeting), plainBtn('[ OPEN ]', '', 'OPEN → show August'));
+  const face = el.querySelector('.ghost-coin-face');
+  face.addEventListener('pointerdown', e => { face.classList.add('grabbing'); startDrag(e, 'move', 'coin', { thresh: 4 }); });
+  el.addEventListener('pointerenter', () => { if (!drag) { st.hover = true; layout(); } });
+  el.addEventListener('pointerleave', () => { if (!drag) { st.hover = false; layout(); } });
+  keyHandlers(el, 'coin');
+  return el;
+}
+function buildAll() {
+  ['caption', 'coin'].forEach(w => {
+    const n = w === 'caption' ? buildCaption() : buildCoin();
+    if (els[w]) els[w].replaceWith(n); else deskEl.append(n);
+    els[w] = n;
+  });
+}
+
+/* layout */
+function sizeDesk() {
+  const total = st.n === 1 ? 1920 : 3360;
+  scale = Math.min(.5, wrapEl.clientWidth / total) || .5;
+  deskEl.style.width = total + 'px';
+  deskEl.style.transform = `scale(${scale})`; deskEl.style.setProperty('--s', scale);
+  wrapEl.style.height = Math.round(1080 * scale) + 'px';
+}
+function drawGuides() {
+  guidesEl.textContent = ''; crossEl.textContent = '';
+  const w = st.widget, r = st.pos[w], t = 1 / scale;
+  const line = (x, y, wd, h) => { const g = document.createElement('div'); g.className = 'gl'; g.style.cssText = `left:${x}px;top:${y}px;width:${wd}px;height:${h}px`; guidesEl.append(g); };
+  if (st.opt === 'A' && ((drag && drag.moved && drag.kind === 'move') || keying)) {
+    const wa = dispOf(r).wa;
+    if (Math.abs(r.x - wa.x) <= SNAP) line(wa.x, wa.y, t, wa.h);
+    if (Math.abs(wa.x + wa.w - r.x - r.w) <= SNAP) line(wa.x + wa.w - t, wa.y, t, wa.h);
+    if (Math.abs(r.y - wa.y) <= SNAP) line(wa.x, wa.y, wa.w, t);
+    if (Math.abs(wa.y + wa.h - r.y - r.h) <= SNAP) line(wa.x, wa.y + wa.h - t, wa.w, t);
+  }
+  if (st.opt === 'C') act().forEach(d => slots(r, d, MARGIN[w]).forEach(s => {
+    const c = document.createElement('div'); c.className = 'cx'; c.style.left = (s.x + r.w / 2) + 'px'; c.style.top = (s.y + r.h / 2) + 'px'; crossEl.append(c);
+  }));
+}
+/* Measure what the left zone needs: rectangles in two rows (switch point) and one row of squares (hard minimum). */
+const fitCache = new WeakMap();
+function toolsFit(el) {
+  let f = fitCache.get(el); if (f) return f;
+  const tools = el.querySelector('.gc-tools'), had = el.classList.contains('tools-sq');
+  // scrollHeight is stretched to the flex height, so measure the bottom of the tools block instead (+8 padding, +2 border)
+  const need = () => tools.offsetTop + tools.offsetHeight + 10;
+  el.classList.add('measure'); el.classList.remove('tools-sq');
+  const rect = need();
+  el.classList.add('tools-sq');
+  const sq = need();
+  el.classList.toggle('tools-sq', had); el.classList.remove('measure');
+  f = { rect, sq }; fitCache.set(el, f); return f;
+}
+function layout() {
+  $('#d2').hidden = st.n === 1;
+  sizeDesk();
+  ['caption', 'coin'].forEach(w => {
+    const el = els[w]; if (!el) return;
+    el.hidden = st.widget !== w;
+    if (el.hidden) return;
+    const r = st.pos[w], d = dispOf(r), wa = d.wa;
+    if (w === 'caption') {
+      el.style.cssText = `left:${r.x}px;top:${r.y}px;width:${r.w}px;height:${r.h}px`;
+      const below = r.y + r.h / 2 > wa.y + wa.h / 2;
+      el.classList.toggle('edge-top', below); el.classList.toggle('edge-bottom', !below);
+      el.classList.toggle('tools-sq', r.h < toolsFit(el).rect);
+    } else {
+      let x = r.x, wd = COIN, open = false, rev = false;
+      if (st.hover && !(drag && drag.moved)) {
+        let left = r.x + COIN / 2 > d.x + d.w / 2;
+        const fitsL = r.x + COIN - COINX >= wa.x, fitsR = r.x + COINX <= wa.x + wa.w;
+        if (left && !fitsL && fitsR) left = false; else if (!left && !fitsR && fitsL) left = true;
+        wd = COINX; open = true; rev = left; x = left ? r.x + COIN - COINX : r.x;
+      }
+      el.style.cssText = `left:${x}px;top:${r.y}px;width:${wd}px;height:${COIN}px`;
+      el.classList.toggle('open', open); el.classList.toggle('rev', rev);
+    }
+  });
+  deskEl.classList.toggle('wr', st.wr);
+  drawGuides();
+}
+
+/* pointer */
+window.addEventListener('pointermove', e => {
+  if (!drag || e.pointerId !== drag.id) return;
+  const dx = (e.clientX - drag.sx) / scale, dy = (e.clientY - drag.sy) / scale, o = drag.o, r = st.pos[drag.w];
+  if (drag.kind === 'move') {
+    if (!drag.moved) { if (Math.hypot(dx, dy) < (drag.thresh || 0)) return; drag.moved = true; if (drag.w === 'coin') st.hover = false; }
+    r.x = o.x + dx; r.y = o.y + dy;
+  } else if (drag.kind === 'rh') {
+    const wa = drag.d.wa;
+    const minH = Math.max(72, toolsFit(els.caption).sq);
+    if (drag.top) { const mx = Math.max(minH, Math.min(480, o.y + o.h - wa.y - 24)); r.h = Math.round(clampN(o.h - dy, minH, mx)); r.y = o.y + o.h - r.h; }
+    else { const mx = Math.max(minH, Math.min(480, wa.y + wa.h - o.y - 24)); r.h = Math.round(clampN(o.h + dy, minH, mx)); }
+  } else if (drag.kind === 'rl') { r.w = Math.round(clampN(o.w - dx, 320, 760)); r.x = o.x + o.w - r.w; }
+  else if (drag.kind === 'rr') { r.w = Math.round(clampN(o.w + dx, 320, 760)); }
+  layout();
+});
+function endDrag(e, cancelled) {
+  if (!drag || e.pointerId !== drag.id) return;
+  const d = drag; drag = null;
+  d.el.classList.remove('grabbing', 'active');
+  const r = st.pos[d.w];
+  if (d.kind === 'move') {
+    if (cancelled) { st.pos[d.w] = d.o; layout(); return; }
+    if (d.moved) release(d.w, 'drag end'); else if (d.w === 'coin') log('click → show transcript');
+    if (d.w === 'coin') { st.hover = els.coin.matches(':hover'); layout(); }
+  } else {
+    if (d.kind === 'rh') log(`caption height ${r.h} → compactCaptionHeight`); else log(`caption width ${r.w} → compactCaptionWidth`);
+    st.saved.caption = mkRec('caption'); renderSaved(); layout();
+  }
+}
+window.addEventListener('pointerup', e => endDrag(e, false));
+window.addEventListener('pointercancel', e => endDrag(e, true));
+
+/* toolbar */
+function setSeg(g, v) { document.querySelectorAll(`.seg[data-g="${g}"] button`).forEach(b => b.setAttribute('aria-pressed', String(b.dataset.v === v))); }
+function setDisplays(n) {
+  st.n = n; setSeg('disp', String(n)); $('#unplug').disabled = n === 1;
+  if (n === 1) {
+    ['caption', 'coin'].forEach(w => {
+      if (st.pos[w].x + st.pos[w].w / 2 >= DISP[2].x) log(`${w}: ${restore(w)}`);
+    });
+  } else log('display 2 connected (1440×900, 150 %)');
+  layout();
+}
+const handlers = {
+  opt: v => { st.opt = v; log(`option ${v} selected`); release(st.widget, 're-release'); },
+  widget: v => { st.widget = v; log(`widget → ${v} (one ghost at a time)`); layout(); },
+  disp: v => setDisplays(+v),
+  wr: v => { st.wr = v === 'on'; log(`width resize ${v}`); layout(); },
+  theme: v => { if (v === 'auto') document.documentElement.removeAttribute('data-theme'); else document.documentElement.setAttribute('data-theme', v); }
+};
+document.querySelectorAll('.seg').forEach(seg => seg.addEventListener('click', e => {
+  const b = e.target.closest('button'); if (!b || b.disabled) return;
+  setSeg(seg.dataset.g, b.dataset.v); handlers[seg.dataset.g](b.dataset.v);
+}));
+$('#unplug').addEventListener('click', () => { if (st.n === 2) setDisplays(1); });
+$('#relaunch').addEventListener('click', () => {
+  const w = st.widget;
+  els[w].hidden = true; log(`${w}: ghost destroyed (app relaunch)`);
+  const m = restore(w); buildAll(); st.hover = false; log(`${w}: ${m}`); layout();
+});
+function reset() {
+  st = fresh(); logs = [];
+  setSeg('opt', 'A'); setSeg('widget', 'caption'); setSeg('disp', '1'); setSeg('wr', 'off');
+  $('#unplug').disabled = true; $('#log').textContent = '';
+  buildAll(); layout(); renderSaved(); log('demo reset: defaults, live state, option A');
+}
+$('#reset').addEventListener('click', reset);
+
+setInterval(() => {
+  if (st.ended) return;
+  elapsed++;
+  document.querySelectorAll('.gx .tm').forEach(t => { t.textContent = fmt(elapsed); });
+}, 1000);
+if ('ResizeObserver' in window) new ResizeObserver(() => layout()).observe(wrapEl); else window.addEventListener('resize', layout);
+reset();
+})();
+</script>
+</body>
+</html>
