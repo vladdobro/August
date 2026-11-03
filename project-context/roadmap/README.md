@@ -73,7 +73,7 @@ Turn the 1–2 Nov 2026 user feedback (@docs/feedback/2026-11-rodion-feedback.md
 
 ### M3 Compact Mode
 
-- [ ] Compact Mode daily-use controls — add the buttons that make Compact Mode usable every day (after M2 research is agreed); research AUG-178.
+- [ ] Compact Mode daily-use controls — add the buttons that make Compact Mode usable every day; research AUG-178 → impl AUG-188 (in-place widget switch, Start Live Text again, Ghost Caption copy + text size/opacity, Dock Square pause, action items → Praxis via the modal; mockup docs/mockups/AUG-178/compact-controls.html).
 
 ## Backlog
 

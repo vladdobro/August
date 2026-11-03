@@ -1,0 +1,19 @@
+{
+  "id": "AUG-178-904wfy",
+  "assignee": "jarvis.json",
+  "priority": "medium",
+  "status": "to_review",
+  "title": "[AUG-178] Research: missing controls that keep Compact Mode from daily use",
+  "why_we_need_this": "Rodion's feedback: Compact Mode is not convenient for everyday use — required buttons are missing, so he went back to the standard mode. Compact Mode (AUG-156) only pays off if it covers the daily meeting flow. Source: @docs/feedback/2026-11-rodion-feedback.md",
+  "acceptance_criteria": "- [ ] Inventory: actions available in standard mode vs each compact widget (Dock Strip, Dock Square, Ghost Caption, Ghost Coin) as a table.\n- [ ] Missing controls confirmed with the user/Rodion (AskUserQuestion) — not guessed; overlap with mic mute (AUG-174), Copy & Clear (AUG-175) and Ghost Stop (AUG-176) research noted.\n- [ ] Proposal per widget: which controls to add, placement, priority.\n- [ ] HTML mockup: a self-contained file @docs/mockups/AUG-178/compact-controls.html (opens in a browser, no build) showing all four widgets with the proposed controls, reusing the agreed mockups of AUG-174/175/176; built on August's real design tokens (frontend-design route, 0 border-radius).\n- [ ] The proposal is agreed with the user on the mockup; the decision is recorded in this card.\n- [ ] CLOSURE CONDITION: an implementation task with the agreed scope, SMART acceptance criteria and a link to the chosen mockup is created on the board; its ID is written into this card and into the roadmap line in @project-context/roadmap/README.md.",
+  "important_constraints": "Research only — no code changes. Closed only by creating the agreed implementation task. Start after the mic mute, live buttons and Ghost Mode research cards are agreed (their controls feed this one). Roadmap: M3 Compact Mode. Order: 9/9 (last).\n\nUpdate 2026-11-03 (AUG-182 revision 2): already done in AUG-182 — Ghost Caption has Stop Live Text (hold) and its tools are a 3-column equal-width grid ([ ⤢ ], Pause, Mute, Stop Live Text, End Meeting); every stop control in all compact widgets is a 1.5 s hold named STOP LIVE TEXT / END MEETING; Dock Strip has COPY ALL / COPY & CLEAR / CLEAR / STOP LIVE TEXT and footer PAUSE / MUTE / END MEETING; Mute exists in every widget (AUG-181). Take this as the baseline for the inventory.\n\n## Decision (2026-11-04, agreed with the user on the mockup)\nInventory (as built): End Meeting and Mute are in every widget. Pause is missing in Dock Square. Copy / Copy & Clear / Clear exist only in Dock Strip. Action items → Praxis and participants exist only in the standard view. No mode can switch widgets in place or start Live Text again after Stop. Overlap: Mute = AUG-174/181, Copy & Clear and hold-stop = AUG-175/182, Ghost drag and stop protection = AUG-176/187 (all used as the baseline, not repeated).\nChosen by the user: Ghost Caption copy, Dock Square pause, action items → Praxis, switch widget in place, Start Live Text again, Ghost text size and opacity. Not chosen: Copy in Dock Square / Ghost Coin.\nMockup: @docs/mockups/AUG-178/compact-controls.html — agreed as is (one task, priorities P1/P2/P3).\nD1: → Praxis = expand August and open the existing modal with the item preselected. D2: the switch stays within its variant, for this recording only. D3: Start Live Text works after a stop and in a Default recording, and the window starts empty. D4: opacity applies to the background only, and size and opacity are saved. D5: Dock Square pause shows only while Live is on. D6: Copy in the indicator widgets and participants fields in compact are out of scope.\nImplementation task: AUG-188-j3gc5n.",
+  "labels": [
+    "research",
+    "feedback-rodion",
+    "feature"
+  ],
+  "on_hold_reason": "",
+  "contextRouterIncluded": true,
+  "created_at": 1793655518387,
+  "column_entered_at": 1793741632075
+}
