@@ -430,9 +430,13 @@ const whisperBinPath = process.env.WHISPER_BIN_PATH?.trim()
   ? path.resolve(process.env.WHISPER_BIN_PATH.trim())
   : defaultWhisperBinPath();
 
+// With the CUDA engine both whisper dirs are win-x64-cuda, but setup puts ffmpeg and yt-dlp only in the CPU platform
+// dir — search it too, or a dev server started on CUDA loses ffmpeg (packaged builds pass FFMPEG_PATH explicitly).
+const cpuPlatformBinDir = path.join(WHISPER_BIN_ROOT, whisperPlatformDir() ?? `${process.platform}-${process.arch}`);
+
 const ffmpegPaths = resolveFfmpegPaths({
   envPath: process.env.FFMPEG_PATH,
-  bundledDirs: [...new Set([path.dirname(whisperBinPath), path.dirname(defaultWhisperBinPath())])],
+  bundledDirs: [...new Set([path.dirname(whisperBinPath), path.dirname(defaultWhisperBinPath()), cpuPlatformBinDir])],
   exists: (filePath) => fs.existsSync(filePath),
 });
 
@@ -442,8 +446,6 @@ const audioteePaths = resolveAudioteePath({
   exists: (filePath) => fs.existsSync(filePath),
 });
 
-// With the CUDA engine both whisper dirs are win-x64-cuda, but setup puts yt-dlp only in the CPU platform dir — search it too.
-const cpuPlatformBinDir = path.join(WHISPER_BIN_ROOT, whisperPlatformDir() ?? `${process.platform}-${process.arch}`);
 const ytDlpPaths = resolveYtDlpPath({
   envPath: process.env.YTDLP_PATH,
   bundledDirs: [...new Set([path.dirname(whisperBinPath), path.dirname(defaultWhisperBinPath()), cpuPlatformBinDir])],
