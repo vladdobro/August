@@ -27,7 +27,6 @@ export interface UserPreferences {
   praxisDefaultPrompt?: string | null;
   sidebarCollapsed?: boolean;
   sessionSortOrder?: 'newest' | 'oldest' | 'alphabetical';
-  skipStopConfirmation?: boolean;
   skipClearConfirmation?: boolean;
   gpuEngine?: 'cpu' | 'cuda';
   autoDeleteWav?: boolean;
@@ -66,7 +65,6 @@ export const DEFAULT_PREFERENCES: Required<UserPreferences> = {
   praxisDefaultPrompt: null,
   sidebarCollapsed: false,
   sessionSortOrder: 'newest',
-  skipStopConfirmation: false,
   skipClearConfirmation: false,
   gpuEngine: 'cpu',
   autoDeleteWav: false,

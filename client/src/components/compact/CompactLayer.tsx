@@ -243,7 +243,6 @@ const CompactLayer: React.FC<CompactLayerProps> = (props) => {
       liveStatus: s.liveStatus,
       captureLost: s.captureLost,
       elapsedSeconds: phaseRef.current === 'done' ? lastElapsedRef.current : s.elapsedSeconds,
-      skipStopConfirmation: s.skipStopConfirmation,
       actionItems: s.actionItems,
       participants: s.participants,
       actionEnabled: s.actionEnabled,
@@ -287,6 +286,7 @@ const CompactLayer: React.FC<CompactLayerProps> = (props) => {
       case 'pause': actions?.pauseLive(); break;
       case 'resume': actions?.resumeLive(); break;
       case 'end': actions?.end(); break;
+      case 'stop-live': actions?.stopLive(); break;
       case 'retry': actions?.retryLive(); break;
       case 'mute': actions?.setMicMuted(true); break;
       case 'unmute': actions?.setMicMuted(false); break;

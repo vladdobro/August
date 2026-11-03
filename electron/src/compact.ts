@@ -208,7 +208,7 @@ export class CompactController {
 
   ghostResize(size: { width: number; height: number }): void {
     if (this.ghostShape !== 'coin' || !this.ghost || this.ghost.isDestroyed()) return;
-    const width = clamp(Math.round(size.width), COIN, 320);
+    const width = clamp(Math.round(size.width), COIN, 380);
     const height = clamp(Math.round(size.height), COIN, 120);
     const wa = screen.getDisplayMatching(this.ghost.getBounds()).workArea;
     this.ghost.setBounds(this.ghostBounds('coin', wa, { width, height }));

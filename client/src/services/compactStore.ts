@@ -11,7 +11,7 @@ export interface CompactSnapshot {
   elapsedSeconds: number;
   levels: number[];
   dualTrack: boolean;
-  skipStopConfirmation: boolean;
+  skipClearConfirmation: boolean; // AUG-182
   actionItems: ActionItem[]; // AUG-165
   participants: Participants;
   actionEnabled: boolean | null;
@@ -26,6 +26,8 @@ export interface CompactActions {
   stopLive(): void;
   retryLive(): void;
   copyAll(): void;
+  copyAndClear(): void; // AUG-182
+  clearLive(): void; // AUG-182
   showLivePanel(): void;
   addActionItem(text: string, owner: string): void;
   editActionItem(id: string, patch: { text?: string; owner?: string }): void;
@@ -49,7 +51,7 @@ let snapshot: CompactSnapshot = {
   elapsedSeconds: 0,
   levels: new Array(12).fill(0),
   dualTrack: false,
-  skipStopConfirmation: false,
+  skipClearConfirmation: false,
   actionItems: [],
   participants: { me: '', them: '' },
   actionEnabled: null,

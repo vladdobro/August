@@ -3,6 +3,7 @@ import type { CompactActions, CompactSnapshot } from '../../services/compactStor
 import { formatClock } from '../../services/compact';
 import { statusTag } from './ghostProtocol';
 import ActionItemsPanel from '../ActionItemsPanel';
+import HoldToStopButton from '../HoldToStopButton';
 
 /// AUG-181: small mic glyph, slashed when muted.
 export const MicGlyph: React.FC<{ muted: boolean }> = ({ muted }) => (
@@ -18,26 +19,13 @@ interface DockProps {
   onExpand: () => void;
 }
 
-interface EndConfirmProps {
-  onYes: () => void;
-  onNo: () => void;
-}
-
-const EndConfirm: React.FC<EndConfirmProps> = ({ onYes, onNo }) => (
-  <div className="compact-confirm" role="alertdialog" aria-label="End recording?">
-    <span className="compact-confirm-text">END RECORDING?</span>
-    <div className="compact-confirm-actions">
-      <button type="button" className="compact-btn compact-btn--end-fill" onClick={onYes} autoFocus>[ YES ]</button>
-      <button type="button" className="compact-btn" onClick={onNo}>[ NO ]</button>
-    </div>
-  </div>
-);
-
 export const DockStrip: React.FC<DockProps> = ({ snap, actions, onExpand }) => {
   const bodyRef = useRef<HTMLDivElement>(null);
   const [follow, setFollow] = useState(true);
   const followRef = useRef(true);
-  const [confirming, setConfirming] = useState(false);
+  const [clearConfirm, setClearConfirm] = useState(false);
+  useEffect(() => { if (!snap.live) setClearConfirm(false); }, [snap.live]);
+  const handleClear = () => { if (snap.skipClearConfirmation) actions?.clearLive(); else setClearConfirm(true); };
 
   useEffect(() => {
     followRef.current = follow;
@@ -71,11 +59,6 @@ export const DockStrip: React.FC<DockProps> = ({ snap, actions, onExpand }) => {
   const interrupted = snap.liveStatus === 'interrupted';
   const inactive = !snap.live || interrupted || snap.liveStatus === 'stopped';
 
-  const handleEnd = () => {
-    if (snap.skipStopConfirmation) actions?.end();
-    else setConfirming(true);
-  };
-
   return (
     <div className={`compact-strip${interrupted ? ' compact-strip--interrupted' : ''}`}>
       <div className="compact-strip-top">
@@ -91,9 +74,19 @@ export const DockStrip: React.FC<DockProps> = ({ snap, actions, onExpand }) => {
           <button type="button" className="compact-btn compact-btn--icon" onClick={onExpand} title="Expand August (Esc)" aria-label="Expand August">[ ⤢ ]</button>
         </div>
         <div className="compact-strip-tools">
-          <button type="button" className="compact-btn" onClick={() => actions?.copyAll()} disabled={snap.lines.length === 0}>[ COPY ALL ]</button>
-          <button type="button" className="compact-btn compact-btn--danger-outline" onClick={() => actions?.stopLive()} disabled={!snap.live}>[ STOP LIVE ]</button>
+          <button type="button" className="compact-btn compact-btn--accent" onClick={() => actions?.copyAll()} disabled={snap.lines.length === 0}>[ COPY ALL ]</button>
+          <button type="button" className="compact-btn compact-btn--accent" onClick={() => actions?.copyAndClear()} disabled={snap.lines.length === 0}>[ COPY &amp; CLEAR ]</button>
+          <button type="button" className="compact-btn compact-btn--danger-outline" onClick={handleClear} disabled={snap.lines.length === 0}>[ CLEAR ]</button>
+          <HoldToStopButton className="compact-btn compact-btn--danger-outline" onComplete={() => actions?.stopLive()} disabled={!snap.live} title="Hold 1.5 s to stop live text. Recording continues." ariaLabel="Stop Live Text (hold 1.5 seconds)" hint="[ HOLD ]">[ STOP LIVE TEXT ]</HoldToStopButton>
         </div>
+        {clearConfirm && (
+          <div className="compact-strip-confirm" role="alertdialog" aria-label="Clear transcript?">
+            <span>CLEAR TRANSCRIPT?</span>
+            <span className="compact-spacer" />
+            <button type="button" className="compact-btn compact-btn--end-fill" onClick={() => { setClearConfirm(false); actions?.clearLive(); }} autoFocus>[ YES ]</button>
+            <button type="button" className="compact-btn" onClick={() => setClearConfirm(false)}>[ NO ]</button>
+          </div>
+        )}
       </div>
 
       {interrupted && (
@@ -158,12 +151,8 @@ export const DockStrip: React.FC<DockProps> = ({ snap, actions, onExpand }) => {
         >
           {snap.micMuted ? '[ UNMUTE ]' : '[ MUTE ]'}
         </button>
-        <button type="button" className="compact-btn compact-btn--end-fill" onClick={handleEnd}>[ END ]</button>
+        <HoldToStopButton className="compact-btn compact-btn--end-fill" onComplete={() => actions?.end()} title="Hold 1.5 s to end the meeting" ariaLabel="End Meeting (hold 1.5 seconds)" hint="[ HOLD ]">[ END MEETING ]</HoldToStopButton>
       </div>
-
-      {confirming && (
-        <EndConfirm onYes={() => { setConfirming(false); actions?.end(); }} onNo={() => setConfirming(false)} />
-      )}
     </div>
   );
 };
@@ -174,18 +163,12 @@ interface SquareProps extends DockProps {
 }
 
 export const DockSquare: React.FC<SquareProps> = ({ snap, actions, onExpand, showCount, onShowTranscript }) => {
-  const [confirming, setConfirming] = useState(false);
   const paused = snap.liveStatus === 'paused';
   const interrupted = snap.liveStatus === 'interrupted';
   const lost = snap.captureLost;
 
   const tagLabel = lost ? 'LOST' : paused ? 'PAUSED' : snap.micMuted ? (snap.dualTrack ? 'SYS · MIC OFF' : 'MIC OFF') : (snap.dualTrack ? 'MIC + SYS' : 'MIC');
   const tagTone = lost ? 'error' : paused ? 'pause' : snap.micMuted ? 'muted' : 'idle';
-
-  const handleStop = () => {
-    if (snap.skipStopConfirmation) actions?.end();
-    else setConfirming(true);
-  };
 
   return (
     <div className="compact-square">
@@ -230,11 +213,7 @@ export const DockSquare: React.FC<SquareProps> = ({ snap, actions, onExpand, sho
       {lost ? (
         <button type="button" className="compact-square-bottom compact-square-bottom--open" onClick={onExpand}>[ OPEN AUGUST ]</button>
       ) : (
-        <button type="button" className="compact-square-bottom compact-square-bottom--stop" onClick={handleStop}>[ STOP ]</button>
-      )}
-
-      {confirming && (
-        <EndConfirm onYes={() => { setConfirming(false); actions?.end(); }} onNo={() => setConfirming(false)} />
+        <HoldToStopButton className="compact-square-bottom compact-square-bottom--stop" onComplete={() => actions?.end()} title="Hold 1.5 s to end the meeting" ariaLabel="End Meeting (hold 1.5 seconds)" hint="[ HOLD ]">[ END MEETING ]</HoldToStopButton>
       )}
     </div>
   );

@@ -13,6 +13,7 @@ import { saveRecordingProgress, getRecoveredRecording, clearRecoveredRecording, 
 import { DEFAULT_PREFERENCES, resolveSystemAudioSource, type UserPreferences } from '../services/preferences';
 import { shouldAutoEnableLive } from '../services/compact';
 import { compactStore } from '../services/compactStore';
+import { useHoldToStop } from './HoldToStopButton';
 import { isVideoFile, probeVideoHasAudio, NO_AUDIO_MESSAGE } from '../services/videoAudioProbe';
 
 // Mirrors UPLOAD_EXTENSIONS in server/src/services/mediaFormats.ts (video: audio track extracted server-side, AUG-144).
@@ -43,6 +44,8 @@ function isAcceptedFile(file: File): boolean {
   const name = file.name.toLowerCase();
   return ACCEPTED_EXTENSIONS.some((ext) => name.endsWith(ext));
 }
+
+const liveLinesToText = (lines: LiveLine[]) => lines.map((l) => l.kind === 'gap' ? l.text : `${l.speaker}: ${l.text}`).join('\n');
 
 function formatTime(totalSeconds: number): string {
   const m = Math.floor(totalSeconds / 60);
@@ -795,10 +798,12 @@ const FileUpload: React.FC<FileUploadProps> = ({ onUploaded, onRecordingChange, 
     setShowDefaultsInfo(true);
   }, [preferences?.recordingMode, preferences?.liveEngine, startRecording]);
 
+  // AUG-182: End Meeting on the circuit center node is hold-to-stop (1.5 s), never a click.
+  const endHold = useHoldToStop<HTMLButtonElement>({ onComplete: stopRecording, disabled: !isRecording || isUploading });
+
   const handleRecordButtonClick = useCallback(() => {
     if (isRecording) {
       longPressFiredRef.current = false;
-      stopRecording();
       return;
     }
     if (longPressFiredRef.current) {
@@ -853,8 +858,17 @@ const FileUpload: React.FC<FileUploadProps> = ({ onUploaded, onRecordingChange, 
   const handleLivePause = useCallback(() => liveClientRef.current?.pause(), []);
   const handleLiveResume = useCallback(() => liveClientRef.current?.resume(), []);
   const handleLiveCopyAll = useCallback(() => {
-    const text = liveLines.map((l) => l.kind === 'gap' ? l.text : `${l.speaker}: ${l.text}`).join('\n');
-    navigator.clipboard.writeText(text).catch(() => {});
+    navigator.clipboard.writeText(liveLinesToText(liveLines)).catch(() => {});
+  }, [liveLines]);
+  // AUG-182: clear only after the clipboard write resolves; remove the copied line objects by identity so a chunk
+  // that arrives (or merges into the last line) during the write is kept, never lost. Rejection -> nothing removed.
+  const handleLiveCopyAndClear = useCallback(() => {
+    if (liveLines.length === 0) return;
+    const copied = new Set(liveLines);
+    navigator.clipboard.writeText(liveLinesToText(liveLines)).then(
+      () => setLiveLines((prev) => prev.filter((l) => !copied.has(l))),
+      () => {},
+    );
   }, [liveLines]);
   const handleLiveHide = useCallback(() => {
     setLiveHidden(true);
@@ -905,17 +919,17 @@ const FileUpload: React.FC<FileUploadProps> = ({ onUploaded, onRecordingChange, 
       elapsedSeconds,
       levels: audioLevels,
       dualTrack: captureSystemAudio,
-      skipStopConfirmation: preferences?.skipStopConfirmation ?? false,
+      skipClearConfirmation: preferences?.skipClearConfirmation ?? false,
       actionItems: liveActionItems,
       participants: liveParticipants,
       actionEnabled: liveActionEnabled,
       micMuted,
       mutedHint: mutedSpeechHint,
     });
-  }, [isRecording, liveActive, liveLines, liveStatus, liveError, captureLost, elapsedSeconds, audioLevels, captureSystemAudio, preferences?.skipStopConfirmation, liveActionItems, liveParticipants, liveActionEnabled, micMuted, mutedSpeechHint]);
+  }, [isRecording, liveActive, liveLines, liveStatus, liveError, captureLost, elapsedSeconds, audioLevels, captureSystemAudio, preferences?.skipClearConfirmation, liveActionItems, liveParticipants, liveActionEnabled, micMuted, mutedSpeechHint]);
 
-  const compactActionsRef = useRef({ stopRecording, handleLivePause, handleLiveResume, handleLiveStop, handleLiveRetry, handleLiveCopyAll, handleActionAdd, handleActionEdit, handleActionDelete, setMicMute });
-  compactActionsRef.current = { stopRecording, handleLivePause, handleLiveResume, handleLiveStop, handleLiveRetry, handleLiveCopyAll, handleActionAdd, handleActionEdit, handleActionDelete, setMicMute };
+  const compactActionsRef = useRef({ stopRecording, handleLivePause, handleLiveResume, handleLiveStop, handleLiveRetry, handleLiveCopyAll, handleLiveCopyAndClear, handleLiveClearAll, handleActionAdd, handleActionEdit, handleActionDelete, setMicMute });
+  compactActionsRef.current = { stopRecording, handleLivePause, handleLiveResume, handleLiveStop, handleLiveRetry, handleLiveCopyAll, handleLiveCopyAndClear, handleLiveClearAll, handleActionAdd, handleActionEdit, handleActionDelete, setMicMute };
   useEffect(() => {
     compactStore.setActions({
       end: () => compactActionsRef.current.stopRecording(),
@@ -924,6 +938,8 @@ const FileUpload: React.FC<FileUploadProps> = ({ onUploaded, onRecordingChange, 
       stopLive: () => compactActionsRef.current.handleLiveStop(),
       retryLive: () => compactActionsRef.current.handleLiveRetry(),
       copyAll: () => compactActionsRef.current.handleLiveCopyAll(),
+      copyAndClear: () => compactActionsRef.current.handleLiveCopyAndClear(),
+      clearLive: () => compactActionsRef.current.handleLiveClearAll(),
       showLivePanel: () => setLiveHidden(false),
       addActionItem: (text, owner) => compactActionsRef.current.handleActionAdd(text, owner),
       editActionItem: (id, patch) => compactActionsRef.current.handleActionEdit(id, patch),
@@ -1076,7 +1092,10 @@ const FileUpload: React.FC<FileUploadProps> = ({ onUploaded, onRecordingChange, 
           />
         )}
 
-        <button type="button" className={`circuit-node circuit-node--center${longPressing ? ' circuit-node--long-pressing' : ''}`} onClick={handleRecordButtonClick} onPointerDown={handlePointerDown} onPointerUp={handlePointerUp} onPointerLeave={handlePointerUp} onPointerCancel={handlePointerUp} disabled={isUploading} aria-label={isRecording ? 'Stop recording' : 'Start recording'}>
+        <button type="button" ref={endHold.ref} className={`circuit-node circuit-node--center${longPressing ? ' circuit-node--long-pressing' : ''}`} {...(isRecording ? endHold.handlers : { onClick: handleRecordButtonClick, onPointerDown: handlePointerDown, onPointerUp: handlePointerUp, onPointerLeave: handlePointerUp, onPointerCancel: handlePointerUp })} disabled={isUploading} aria-label={isRecording ? 'End Meeting (hold 1.5 seconds)' : 'Start recording'} title={isRecording ? 'Hold 1.5 s to end the meeting' : undefined}>
+          {isRecording && (
+            <svg className="hold-stop-ring" viewBox="0 0 100 100" aria-hidden="true"><circle cx="50" cy="50" r="46" /></svg>
+          )}
           {longPressing && (
             <svg className="long-press-ring" viewBox="0 0 100 100" aria-hidden="true">
               <defs>
@@ -1091,7 +1110,7 @@ const FileUpload: React.FC<FileUploadProps> = ({ onUploaded, onRecordingChange, 
           )}
           <span className="circuit-node-ring" aria-hidden="true" />
           <span className="circuit-node-glyph" aria-hidden="true">{isRecording ? <span className="circuit-stop-icon" /> : '●'}</span>
-          <span className="circuit-node-text">{isRecording ? 'STOP' : 'REC'}</span>
+          <span className="circuit-node-text">{isRecording ? (endHold.hintVisible ? 'HOLD' : 'END') : 'REC'}</span>
         </button>
 
         {isRecording && (
@@ -1264,6 +1283,8 @@ const FileUpload: React.FC<FileUploadProps> = ({ onUploaded, onRecordingChange, 
           onPause={handleLivePause}
           onResume={handleLiveResume}
           onCopyAll={handleLiveCopyAll}
+          onCopyAndClear={handleLiveCopyAndClear}
+          skipClearConfirmation={preferences?.skipClearConfirmation ?? false}
           onClose={handleLiveHide}
           onStop={handleLiveStop}
           onClearAll={handleLiveClearAll}

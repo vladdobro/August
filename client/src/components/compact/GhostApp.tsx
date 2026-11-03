@@ -2,6 +2,7 @@ import React, { useCallback, useEffect, useLayoutEffect, useRef, useState } from
 import { formatClock } from '../../services/compact';
 import ActionItemsPanel from '../ActionItemsPanel';
 import { MicGlyph } from './DockWidgets';
+import HoldToStopButton from '../HoldToStopButton';
 import { GHOST_CHANNEL, statusTag, type GhostAction, type GhostCommand, type GhostMessage, type GhostState, type GhostWidget } from './ghostProtocol';
 
 type Send = (command: GhostCommand) => void;
@@ -17,17 +18,23 @@ interface GhostCaptionProps extends GhostViewProps {
 }
 
 const COIN_SIZE = 56;
-const COIN_EXPANDED_WIDTH = 296; // AUG-181: room for the fourth (MUTE) button
+const COIN_EXPANDED_WIDTH = 372; // AUG-182: room for END MEETING
 
 /// Window-level pointer helpers: ignore-mouse toggling and cursor-driven dragging are driven from the main process.
 function setIgnoreMouse(ignore: boolean): void {
   window.august?.ghostSetIgnoreMouse?.(ignore);
 }
 
+/// AUG-182: "live text off" glyph — three text lines with a slash.
+const LiveTextOffGlyph: React.FC = () => (
+  <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" aria-hidden="true">
+    <path d="M4 6h16M4 12h16M4 18h10M3 3l18 18" />
+  </svg>
+);
+
 const GhostCaption: React.FC<GhostCaptionProps> = ({ state, send, sendAction }) => {
   const [hovered, setHovered] = useState(false);
   const [leftHover, setLeftHover] = useState(false);
-  const [confirming, setConfirming] = useState(false);
   const [dragging, setDragging] = useState(false);
   const [edgeHover, setEdgeHover] = useState(false);
   const [resizing, setResizing] = useState(false);
@@ -41,7 +48,7 @@ const GhostCaption: React.FC<GhostCaptionProps> = ({ state, send, sendAction }) 
   const lost = state.captureLost;
   const alert = interrupted || lost || done;
   const tag = statusTag(state.liveStatus, state.live);
-  const interactive = alert || confirming || leftHover || dragging || edgeHover || resizing || actionsHover || actionsFocus;
+  const interactive = alert || leftHover || dragging || edgeHover || resizing || actionsHover || actionsFocus;
   // The resize handle sits on the inner edge: top when the caption is docked at the bottom of the screen, and vice versa.
   // availTop (Chromium) is the display's top in virtual-screen coordinates, so a secondary monitor resolves correctly.
   const scr = window.screen as Screen & { availTop?: number };
@@ -99,11 +106,6 @@ const GhostCaption: React.FC<GhostCaptionProps> = ({ state, send, sendAction }) 
     return () => observer.disconnect();
   }, []);
 
-  const handleEnd = () => {
-    if (state.skipStopConfirmation) send('end');
-    else setConfirming(true);
-  };
-
   const showTools = (hovered || leftHover) && !alert;
   const lines = state.lines;
 
@@ -160,15 +162,8 @@ const GhostCaption: React.FC<GhostCaptionProps> = ({ state, send, sendAction }) 
                 <button type="button" className="ghost-btn ghost-btn--accent" onClick={() => send('expand')}>[ OPEN AUGUST ]</button>
               </div>
             )}
-            {!alert && confirming && (
-              <div className="ghost-caption-tools ghost-caption-tools--always">
-                <span className="ghost-confirm-text">END?</span>
-                <button type="button" className="ghost-btn ghost-btn--end" onClick={() => { setConfirming(false); send('end'); }}>[ YES ]</button>
-                <button type="button" className="ghost-btn" onClick={() => setConfirming(false)}>[ NO ]</button>
-              </div>
-            )}
-            {!alert && !confirming && (
-              <div className={`ghost-caption-tools${showTools ? ' ghost-caption-tools--shown' : ''}`}>
+            {!alert && (
+              <div className={`ghost-caption-tools ghost-caption-tools--grid${showTools ? ' ghost-caption-tools--shown' : ''}`}>
                 <button type="button" className="ghost-btn" onClick={() => send('expand')} title="Expand August" aria-label="Expand August">[ ⤢ ]</button>
                 {state.live && !interrupted && (
                   <button
@@ -191,7 +186,10 @@ const GhostCaption: React.FC<GhostCaptionProps> = ({ state, send, sendAction }) 
                 >
                   [ <MicGlyph muted={state.micMuted} /> ]
                 </button>
-                <button type="button" className="ghost-btn ghost-btn--end" onClick={handleEnd} title="End recording" aria-label="End recording">[ ■ ]</button>
+                {state.live && (
+                  <HoldToStopButton className="ghost-btn ghost-btn--end" onComplete={() => send('stop-live')} title="Hold 1.5 s to stop live text. Recording continues." ariaLabel="Stop Live Text (hold 1.5 seconds)" hint="HOLD">[ <LiveTextOffGlyph /> ]</HoldToStopButton>
+                )}
+                <HoldToStopButton className="ghost-btn ghost-btn--end" onComplete={() => send('end')} title="Hold 1.5 s to end the meeting" ariaLabel="End Meeting (hold 1.5 seconds)" hint="HOLD">[ ■ ]</HoldToStopButton>
               </div>
             )}
           </>
@@ -235,7 +233,6 @@ const GhostCaption: React.FC<GhostCaptionProps> = ({ state, send, sendAction }) 
 
 const GhostCoin: React.FC<GhostViewProps> = ({ state, send }) => {
   const [hovered, setHovered] = useState(false);
-  const [confirming, setConfirming] = useState(false);
   const [menu, setMenu] = useState(false);
   const dragRef = useRef<{ x: number; y: number; active: boolean } | null>(null);
   const movedRef = useRef(false);
@@ -243,7 +240,7 @@ const GhostCoin: React.FC<GhostViewProps> = ({ state, send }) => {
   const paused = state.liveStatus === 'paused';
   const done = state.phase === 'done';
   const lost = state.captureLost;
-  const expanded = hovered || confirming || menu;
+  const expanded = hovered || menu;
 
   useEffect(() => {
     window.august?.ghostResize?.(expanded
@@ -285,11 +282,6 @@ const GhostCoin: React.FC<GhostViewProps> = ({ state, send }) => {
     else if (state.showCount) send('show-transcript');
   };
 
-  const handleEnd = () => {
-    if (state.skipStopConfirmation) send('end');
-    else setConfirming(true);
-  };
-
   const face = done ? 'DONE' : lost ? 'LOST' : null;
 
   return (
@@ -297,12 +289,11 @@ const GhostCoin: React.FC<GhostViewProps> = ({ state, send }) => {
       className={`ghost-coin${lost ? ' ghost-coin--error' : ''}${state.micMuted ? ' ghost-coin--muted' : ''}${expanded ? ' ghost-coin--expanded' : ''}`}
       style={{ flexDirection: anchoredRight ? 'row-reverse' : 'row' }}
       onMouseEnter={() => setHovered(true)}
-      onMouseLeave={() => { setHovered(false); if (!confirming) setMenu(false); }}
+      onMouseLeave={() => { setHovered(false); setMenu(false); }}
       onContextMenu={(e) => {
         e.preventDefault();
         if (!done) {
           setMenu(true);
-          setConfirming(true);
         }
       }}
     >
@@ -328,37 +319,29 @@ const GhostCoin: React.FC<GhostViewProps> = ({ state, send }) => {
       </div>
 
       {expanded && (
-        <div className="ghost-coin-actions">
-          {confirming ? (
-            <>
-              <span className="ghost-confirm-text">END?</span>
-              <button type="button" className="ghost-btn ghost-btn--end" onClick={() => { setConfirming(false); setMenu(false); send('end'); }}>[ YES ]</button>
-              <button type="button" className="ghost-btn" onClick={() => { setConfirming(false); setMenu(false); }}>[ NO ]</button>
+      <div className="ghost-coin-actions">
+          <>
+            {state.live && !done && !lost && (
+              <button
+                type="button"
+                className="ghost-btn ghost-btn--pause"
+                onClick={() => send(paused ? 'resume' : 'pause')}
+              >
+                {paused ? '[ RESUME ]' : '[ PAUSE ]'}
+              </button>
+            )}
+            {!done && !lost && (
+              <button
+                type="button"
+                className={`ghost-btn ghost-btn--mute${state.micMuted ? ' ghost-btn--mute-on' : ''}`}
+                onClick={() => send(state.micMuted ? 'unmute' : 'mute')}
+              >
+                {state.micMuted ? '[ UNMUTE ]' : '[ MUTE ]'}
+              </button>
+            )}
+            {!done && !lost && <HoldToStopButton className="ghost-btn ghost-btn--end" onComplete={() => send('end')} title="Hold 1.5 s to end the meeting" ariaLabel="End Meeting (hold 1.5 seconds)" hint="[ HOLD ]">[ END MEETING ]</HoldToStopButton>}
+            <button type="button" className={`ghost-btn${lost || done ? ' ghost-btn--accent' : ''}`} onClick={() => send('expand')}>[ OPEN ]</button>
             </>
-          ) : (
-            <>
-              {state.live && !done && !lost && (
-                <button
-                  type="button"
-                  className="ghost-btn ghost-btn--pause"
-                  onClick={() => send(paused ? 'resume' : 'pause')}
-                >
-                  {paused ? '[ RESUME ]' : '[ PAUSE ]'}
-                </button>
-              )}
-              {!done && !lost && (
-                <button
-                  type="button"
-                  className={`ghost-btn ghost-btn--mute${state.micMuted ? ' ghost-btn--mute-on' : ''}`}
-                  onClick={() => send(state.micMuted ? 'unmute' : 'mute')}
-                >
-                  {state.micMuted ? '[ UNMUTE ]' : '[ MUTE ]'}
-                </button>
-              )}
-              {!done && !lost && <button type="button" className="ghost-btn ghost-btn--end" onClick={handleEnd}>[ END ]</button>}
-              <button type="button" className={`ghost-btn${lost || done ? ' ghost-btn--accent' : ''}`} onClick={() => send('expand')}>[ OPEN ]</button>
-            </>
-          )}
         </div>
       )}
     </div>
@@ -376,7 +359,6 @@ const PLACEHOLDER = (widget: GhostWidget): GhostState => ({
   liveStatus: 'connecting',
   captureLost: false,
   elapsedSeconds: 0,
-  skipStopConfirmation: false,
   actionItems: [],
   participants: { me: '', them: '' },
   actionEnabled: null,

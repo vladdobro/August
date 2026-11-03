@@ -238,7 +238,6 @@ const SettingsModal: React.FC<SettingsModalProps> = ({
   const retranscriptionLanguage = preferences.retranscriptionLanguage ?? DEFAULT_PREFERENCES.retranscriptionLanguage;
   const sidebarCollapsed = preferences.sidebarCollapsed ?? DEFAULT_PREFERENCES.sidebarCollapsed;
   const sessionSortOrder = preferences.sessionSortOrder ?? DEFAULT_PREFERENCES.sessionSortOrder;
-  const skipStopConfirmation = preferences.skipStopConfirmation ?? DEFAULT_PREFERENCES.skipStopConfirmation;
   const skipClearConfirmation = preferences.skipClearConfirmation ?? DEFAULT_PREFERENCES.skipClearConfirmation;
   const autoDeleteWav = preferences.autoDeleteWav ?? DEFAULT_PREFERENCES.autoDeleteWav;
   const autoDeleteWavThreshold = preferences.autoDeleteWavThreshold ?? DEFAULT_PREFERENCES.autoDeleteWavThreshold;
@@ -783,17 +782,6 @@ const SettingsModal: React.FC<SettingsModalProps> = ({
           <div className="settings-section">
             <div className="settings-section-title">Confirmations</div>
             <div className="settings-row">
-              <span className="settings-label">Skip Stop Confirmation</span>
-              <label className="settings-toggle">
-                <input
-                  type="checkbox"
-                  checked={skipStopConfirmation}
-                  onChange={(e) => onPreferenceChange({ skipStopConfirmation: e.target.checked })}
-                />
-                <span className="settings-toggle-label">{skipStopConfirmation ? 'On' : 'Off'}</span>
-              </label>
-            </div>
-            <div className="settings-row">
               <span className="settings-label">Skip Clear Confirmation</span>
               <label className="settings-toggle">
                 <input
@@ -804,6 +792,7 @@ const SettingsModal: React.FC<SettingsModalProps> = ({
                 <span className="settings-toggle-label">{skipClearConfirmation ? 'On' : 'Off'}</span>
               </label>
             </div>
+            <div className="settings-hint">Applies to Clear in the live panel and the Dock Strip. Copy &amp; Clear never asks.</div>
           </div>
 
           {desktop && (
@@ -945,7 +934,7 @@ const SettingsModal: React.FC<SettingsModalProps> = ({
                       <input type="radio" name="compact-ind" value="dock-square" checked={cp.indicatorWidget === 'dock-square'} disabled={compactLocked} onChange={() => onPreferenceChange({ compactIndicatorWidget: 'dock-square' })} />
                       <span className="compact-card-title">Dock Square <span className="compact-card-variant">VARIANT A</span></span>
                       <span className="compact-sch" aria-hidden="true"><span className="compact-sch-call" style={{ right: '22%' }} /><span className="compact-sch-aug" style={{ right: '4%', bottom: '8%', width: '16%', aspectRatio: '1' }} /><span className="compact-sch-dot" style={{ right: '16%', bottom: '20%' }} /></span>
-                      <span className="compact-card-desc">The August window itself shrinks to a 180×180 square: timer, level bars, [ STOP ] on the bottom edge. During Live it also shows the line counter.</span>
+                      <span className="compact-card-desc">The August window itself shrinks to a 180×180 square: timer, level bars, [ END MEETING ] (hold) on the bottom edge. During Live it also shows the line counter.</span>
                     </label>
                     <label className={`compact-card${cp.indicatorWidget === 'ghost-coin' ? ' compact-card--on' : ''}`}>
                       <input type="radio" name="compact-ind" value="ghost-coin" checked={cp.indicatorWidget === 'ghost-coin'} disabled={compactLocked} onChange={() => onPreferenceChange({ compactIndicatorWidget: 'ghost-coin' })} />
@@ -963,7 +952,7 @@ const SettingsModal: React.FC<SettingsModalProps> = ({
                       <input type="radio" name="compact-tx" value="dock-strip" checked={cp.transcriptWidget === 'dock-strip'} disabled={compactLocked} onChange={() => onPreferenceChange({ compactTranscriptWidget: 'dock-strip' })} />
                       <span className="compact-card-title">Dock Strip <span className="compact-card-variant">VARIANT A</span></span>
                       <span className="compact-sch" aria-hidden="true"><span className="compact-sch-call" style={{ right: '30%' }} /><span className="compact-sch-aug" style={{ right: '4%', top: '6%', bottom: '6%', width: '22%' }} /><span className="compact-sch-line" style={{ right: '7%', top: '30%', width: '16%' }} /><span className="compact-sch-line" style={{ right: '7%', top: '42%', width: '12%', background: '#8a6a2a' }} /><span className="compact-sch-line" style={{ right: '7%', top: '54%', width: '14%' }} /></span>
-                      <span className="compact-card-desc">The August window shrinks to a 360px strip on the right edge: last lines, [ PAUSE ] [ END ].</span>
+                      <span className="compact-card-desc">The August window shrinks to a 360px strip on the right edge: last lines, [ PAUSE ] [ MUTE ] [ END MEETING ] (hold).</span>
                     </label>
                     <label className={`compact-card${cp.transcriptWidget === 'ghost-caption' ? ' compact-card--on' : ''}`}>
                       <input type="radio" name="compact-tx" value="ghost-caption" checked={cp.transcriptWidget === 'ghost-caption'} disabled={compactLocked} onChange={() => onPreferenceChange({ compactTranscriptWidget: 'ghost-caption' })} />

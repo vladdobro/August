@@ -1,4 +1,5 @@
 import React, { useCallback, useEffect, useRef, useState } from 'react';
+import HoldToStopButton from './HoldToStopButton';
 import type { LiveStatus, Speaker } from '../services/liveTranscriptionClient';
 
 export interface LiveLinePart {
@@ -28,6 +29,8 @@ interface LiveTranscriptPanelProps {
   onPause: () => void;
   onResume: () => void;
   onCopyAll: () => void;
+  onCopyAndClear: () => void;
+  skipClearConfirmation: boolean; // AUG-182
   onClose: () => void;
   onStop: () => void;
   onClearAll: () => void;
@@ -51,11 +54,11 @@ const STATUS_LABEL: Record<LiveStatus, string> = {
 };
 
 const LiveTranscriptPanel: React.FC<LiveTranscriptPanelProps> = ({
-  lines, status, error, warning, micUnavailable, onPause, onResume, onCopyAll, onClose, onStop, onClearAll, elapsed, onEndRecording, onCompact, aside, micMuted, onToggleMute, mutedHint,
+  lines, status, error, warning, micUnavailable, onPause, onResume, onCopyAll, onCopyAndClear, skipClearConfirmation, onClose, onStop, onClearAll, elapsed, onEndRecording, onCompact, aside, micMuted, onToggleMute, mutedHint,
 }) => {
   const bodyRef = useRef<HTMLDivElement>(null);
   const [autoScroll, setAutoScroll] = useState(true);
-  const [confirmAction, setConfirmAction] = useState<'stop' | 'clearAll' | null>(null);
+  const [confirmAction, setConfirmAction] = useState<'clearAll' | null>(null);
 
   useEffect(() => {
     if (autoScroll && bodyRef.current) {
@@ -78,9 +81,13 @@ const LiveTranscriptPanel: React.FC<LiveTranscriptPanelProps> = ({
   };
 
   const handleConfirm = () => {
-    if (confirmAction === 'stop') onStop();
-    else if (confirmAction === 'clearAll') onClearAll();
+    if (confirmAction === 'clearAll') onClearAll();
     setConfirmAction(null);
+  };
+
+  const handleClear = () => {
+    if (skipClearConfirmation) onClearAll();
+    else setConfirmAction('clearAll');
   };
 
   const isPaused = status === 'paused';
@@ -106,9 +113,10 @@ const LiveTranscriptPanel: React.FC<LiveTranscriptPanelProps> = ({
             </button>
           )}
           <button type="button" className="live-panel-btn live-panel-btn--copy" onClick={onCopyAll} disabled={lines.length === 0}>Copy All</button>
-          <button type="button" className="live-panel-btn live-panel-btn--clear" onClick={() => setConfirmAction('clearAll')} disabled={lines.length === 0}>Clear All</button>
-          <button type="button" className="live-panel-btn live-panel-btn--stop" onClick={() => setConfirmAction('stop')} disabled={isDone} title="Stop live transcription, keep recording">Stop Live</button>
-          <button type="button" className="live-panel-btn live-panel-btn--end" onClick={onEndRecording} title="Stop recording and transcribe">End Recording</button>
+          <button type="button" className="live-panel-btn live-panel-btn--copy" onClick={onCopyAndClear} disabled={lines.length === 0} title="Copy the live transcript and clear the window">Copy &amp; Clear</button>
+          <button type="button" className="live-panel-btn live-panel-btn--clear" onClick={handleClear} disabled={lines.length === 0} title="Clear the live window; recording continues">Clear</button>
+          <HoldToStopButton className="live-panel-btn live-panel-btn--stop" onComplete={onStop} disabled={isDone} title="Hold 1.5 s to stop live text. Recording continues." ariaLabel="Stop Live Text (hold 1.5 seconds)">Stop Live Text</HoldToStopButton>
+          <HoldToStopButton className="live-panel-btn live-panel-btn--end" onComplete={onEndRecording} title="Hold 1.5 s to end the meeting: recording stops and the final transcript is made." ariaLabel="End Meeting (hold 1.5 seconds)">End Meeting</HoldToStopButton>
         </div>
         <span className="live-topbar-spacer" />
         {onCompact && (
@@ -118,10 +126,10 @@ const LiveTranscriptPanel: React.FC<LiveTranscriptPanelProps> = ({
       </div>
       {confirmAction && (
         <div className="live-panel-confirm">
-          <span className="live-panel-confirm-text">Are you sure?</span>
+          <span className="live-panel-confirm-text">Clear live transcript?</span>
           <div className="live-panel-confirm-actions">
             <button type="button" className="live-panel-btn live-panel-btn--confirm-yes" onClick={handleConfirm}>
-              Yes, proceed
+              Yes, clear
             </button>
             <button type="button" className="live-panel-btn live-panel-btn--confirm-no" onClick={() => setConfirmAction(null)}>
               No, return
