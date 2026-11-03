@@ -45,6 +45,8 @@ export interface UserPreferences {
   compactStripWidth?: number;
   // Ghost Caption height in px (72–480), set by dragging the caption's inner edge.
   compactCaptionHeight?: number;
+  // Ghost Caption width in px (320–760), set by dragging the caption's left/right edge (AUG-187).
+  compactCaptionWidth?: number;
   // One-time "snap your call" hint. Stored here, not localStorage: the packaged app's origin port changes every launch.
   compactHintSeen?: boolean;
 }
@@ -79,6 +81,7 @@ export const DEFAULT_PREFERENCES: Required<UserPreferences> = {
   compactExpandOn: 'stop',
   compactStripWidth: 360,
   compactCaptionHeight: 112,
+  compactCaptionWidth: 760,
   compactHintSeen: false,
 };
 

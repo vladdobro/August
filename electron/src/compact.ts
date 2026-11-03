@@ -3,21 +3,36 @@
 /// this controller only moves windows, remembers the full-size bounds and tells the renderer about user resizes.
 import { BrowserWindow, screen, type Point, type Rectangle, type WebContents } from 'electron';
 
+import {
+  GHOST_MARGIN,
+  clampRectInto,
+  coinExpandedRect,
+  defaultGhostRect,
+  placementFromRect,
+  rectFromPlacement,
+  resolveGhostDisplay,
+  snapRelease,
+  type GhostDisplay,
+  type GhostWindowState,
+} from './ghostGeometry.js';
+import { readGhostState, writeGhostState } from './windowState.js';
+
 export type CompactShape = 'none' | 'strip' | 'square' | 'caption' | 'coin';
 export interface CompactRequest {
   shape: CompactShape;
   stripWidth?: number;
   captionHeight?: number;
+  captionWidth?: number;
   alwaysOnTop?: boolean;
 }
 export type CompactEvent =
   | { type: 'expand' }
   | { type: 'toggle' }
   | { type: 'strip-width'; width: number }
-  | { type: 'caption-height'; height: number };
+  | { type: 'caption-height'; height: number }
+  | { type: 'caption-width'; width: number };
 
 type GhostShape = 'caption' | 'coin';
-type CoinCorner = 'top-left' | 'top-right' | 'bottom-left' | 'bottom-right';
 
 const STRIP_MIN = 280;
 const STRIP_MAX = 520;
@@ -25,9 +40,10 @@ const STRIP_EXIT = 600;
 const SQUARE = 180;
 const SQUARE_MARGIN = 12;
 const COIN = 56;
-const COIN_MARGIN = 16;
+// Ghost Caption is user-resizable: height 72-480 from its inner edge (prefs compactCaptionHeight) and width 320-760
+// from its left/right edges (prefs compactCaptionWidth); same ranges on the server.
+const CAPTION_MIN_W = 320;
 const CAPTION_MAX_W = 760;
-// Ghost Caption height is user-resizable from its inner edge (prefs compactCaptionHeight, same range on the server).
 const CAPTION_H = 112;
 const CAPTION_MIN_H = 72;
 const CAPTION_MAX_H = 480;
@@ -51,6 +67,10 @@ export function parseCompactRequest(value: unknown): CompactRequest | null {
   if (rec.captionHeight !== undefined) {
     if (typeof rec.captionHeight !== 'number' || !Number.isFinite(rec.captionHeight)) return null;
     req.captionHeight = rec.captionHeight;
+  }
+  if (rec.captionWidth !== undefined) {
+    if (typeof rec.captionWidth !== 'number' || !Number.isFinite(rec.captionWidth)) return null;
+    req.captionWidth = rec.captionWidth;
   }
   if (rec.alwaysOnTop !== undefined) {
     if (typeof rec.alwaysOnTop !== 'boolean') return null;
@@ -88,6 +108,7 @@ export interface CompactControllerOptions {
   appUrl: string;
   preloadPath: string;
   devTools: boolean;
+  userDataDir: string;
   onShapeChange(shape: CompactShape): void;
   sendEvent(event: CompactEvent): void;
 }
@@ -103,17 +124,28 @@ export class CompactController {
   private snapshot: { bounds: Rectangle; maximized: boolean } | null = null;
   private ghost: BrowserWindow | null = null;
   private ghostShape: GhostShape | null = null;
-  private captionEdge: 'top' | 'bottom' = 'bottom';
   private captionHeight = CAPTION_H;
-  private coinCorner: CoinCorner = 'bottom-right';
+  private captionWidth: number = CAPTION_MAX_W;
+  private coinFace: Rectangle | null = null; // collapsed 56x56 face; the hover expansion grows from it
+  private saved: GhostWindowState; // saved placement per widget (AUG-187), loaded from window-state.json
   private applying = false;
   private drag: { cursor: Point; bounds: Rectangle } | null = null;
-  private resize: { cursor: Point; bounds: Rectangle } | null = null;
+  private resize: {
+    cursor: Point;
+    bounds: Rectangle;
+    edge: 'height' | 'left' | 'right';
+    fixed: 'top' | 'bottom';
+    minHeight: number;
+  } | null = null;
+  private readonly onDisplaysChanged = (): void => this.reclampGhost();
 
   constructor(private readonly opts: CompactControllerOptions) {
     const win = opts.window;
+    this.saved = readGhostState(opts.userDataDir);
     win.on('resized', () => this.onUserResize());
     win.on('maximize', () => this.onUserResize());
+    screen.on('display-removed', this.onDisplaysChanged);
+    screen.on('display-metrics-changed', this.onDisplaysChanged);
   }
 
   get shape(): CompactShape {
@@ -180,9 +212,12 @@ export class CompactController {
           if (req.shape === 'caption' && req.captionHeight !== undefined) {
             this.captionHeight = clamp(Math.round(req.captionHeight), CAPTION_MIN_H, CAPTION_MAX_H);
           }
+          if (req.shape === 'caption' && req.captionWidth !== undefined) {
+            this.captionWidth = clamp(Math.round(req.captionWidth), CAPTION_MIN_W, CAPTION_MAX_W);
+          }
           applyOnTop(win, false);
           win.hide();
-          this.ensureGhost(req.shape, wa);
+          this.ensureGhost(req.shape);
           break;
         }
         case 'none': {
@@ -206,19 +241,39 @@ export class CompactController {
     this.ghost.setIgnoreMouseEvents(ignore, { forward: true });
   }
 
-  ghostResize(size: { width: number; height: number }): void {
-    if (this.ghostShape !== 'coin' || !this.ghost || this.ghost.isDestroyed()) return;
+  /// Coin hover expansion: the window grows from the collapsed face toward the screen middle (or `faceSide`'s
+  /// opposite when the renderer passes it), so the face never moves.
+  ghostResize(size: { width: number; height: number }, faceSide?: 'left' | 'right'): void {
+    const ghost = this.ghost;
+    if (this.ghostShape !== 'coin' || !ghost || ghost.isDestroyed()) return;
     const width = clamp(Math.round(size.width), COIN, 380);
     const height = clamp(Math.round(size.height), COIN, 120);
-    const wa = screen.getDisplayMatching(this.ghost.getBounds()).workArea;
-    this.ghost.setBounds(this.ghostBounds('coin', wa, { width, height }));
+    if (!this.coinFace) {
+      const b = ghost.getBounds();
+      this.coinFace = { x: b.x, y: b.y, width: COIN, height: COIN };
+    }
+    const face = this.coinFace;
+    const wa = screen.getDisplayMatching(face).workArea;
+    if (width <= COIN) {
+      ghost.setBounds({ ...face, width: COIN, height: COIN });
+      return;
+    }
+    const { rect } = coinExpandedRect({ ...face, width: COIN, height: COIN }, width, wa, faceSide);
+    ghost.setBounds({ ...rect, y: Math.min(rect.y, wa.y + wa.height - height), height });
   }
 
+  /// Free X/Y drag for both widgets. The coin collapses to its face first so the cursor stays on it. On release the
+  /// rect snaps to near edges (rule A) and the placement is saved.
   ghostDrag(phase: 'start' | 'move' | 'end'): void {
     const ghost = this.ghost;
     if (!ghost || ghost.isDestroyed() || !this.ghostShape) return;
     if (phase === 'start') {
-      this.drag = { cursor: screen.getCursorScreenPoint(), bounds: ghost.getBounds() };
+      let bounds = ghost.getBounds();
+      if (this.ghostShape === 'coin' && this.coinFace) {
+        bounds = { ...this.coinFace };
+        ghost.setBounds(bounds);
+      }
+      this.drag = { cursor: screen.getCursorScreenPoint(), bounds };
       return;
     }
     if (phase === 'move') {
@@ -226,55 +281,100 @@ export class CompactController {
       const p = screen.getCursorScreenPoint();
       const dx = p.x - this.drag.cursor.x;
       const dy = p.y - this.drag.cursor.y;
-      const wa = screen.getDisplayMatching(this.drag.bounds).workArea;
-      if (this.ghostShape === 'caption') {
-        const y = clamp(this.drag.bounds.y + dy, wa.y, wa.y + wa.height - this.drag.bounds.height);
-        ghost.setPosition(Math.round(this.drag.bounds.x), Math.round(y));
-      } else {
-        ghost.setPosition(Math.round(this.drag.bounds.x + dx), Math.round(this.drag.bounds.y + dy));
-      }
+      ghost.setPosition(Math.round(this.drag.bounds.x + dx), Math.round(this.drag.bounds.y + dy));
       return;
     }
-    // end: snap to the nearest edge / corner of the display the ghost ended up on.
-    const b = ghost.getBounds();
-    const wa = screen.getDisplayMatching(b).workArea;
-    if (this.ghostShape === 'caption') {
-      this.captionEdge = b.y + b.height / 2 < wa.y + wa.height / 2 ? 'top' : 'bottom';
-      ghost.setBounds(this.ghostBounds('caption', wa));
-    } else {
-      const vertical = b.y + b.height / 2 < wa.y + wa.height / 2 ? 'top' : 'bottom';
-      const horizontal = b.x + b.width / 2 < wa.x + wa.width / 2 ? 'left' : 'right';
-      this.coinCorner = `${vertical}-${horizontal}` as CoinCorner;
-      ghost.setBounds(this.ghostBounds('coin', wa, { width: b.width, height: b.height }));
-    }
+    if (!this.drag) return;
+    const p = ghost.getBounds();
+    const wa = screen.getDisplayMatching(p).workArea;
+    // Recompute the size: repairs DPI drift and caps the caption width to the display it landed on.
+    const size = this.ghostShape === 'caption' ? this.captionSize(wa) : { width: COIN, height: COIN };
+    const rect = snapRelease({ x: p.x, y: p.y, ...size }, wa, GHOST_MARGIN[this.ghostShape]);
+    ghost.setBounds(rect);
+    if (this.ghostShape === 'coin') this.coinFace = rect;
+    this.persist(this.ghostShape, rect);
     this.drag = null;
   }
 
-  /// Caption height drag from the inner edge (the one facing the middle of the screen): the outer edge stays put.
-  /// The final height goes to the renderer as a caption-height event so it is saved to preferences.
-  ghostCaptionResize(phase: 'start' | 'move' | 'end'): void {
+  /// Caption resize from its edges: height from the inner edge (the one facing the middle of the screen, outer edge
+  /// stays put), width from the left / right edge. The final size goes to the renderer as a caption-height /
+  /// caption-width event so it is saved to preferences; the position is saved here.
+  ghostCaptionResize(
+    phase: 'start' | 'move' | 'end',
+    opts?: { edge?: 'height' | 'left' | 'right'; minHeight?: number },
+  ): void {
     const ghost = this.ghost;
     if (!ghost || ghost.isDestroyed() || this.ghostShape !== 'caption') return;
     if (phase === 'start') {
-      this.resize = { cursor: screen.getCursorScreenPoint(), bounds: ghost.getBounds() };
+      const b = ghost.getBounds();
+      const wa = screen.getDisplayMatching(b).workArea;
+      const fixed = b.y + b.height / 2 >= wa.y + wa.height / 2 ? 'bottom' : 'top';
+      // The renderer may only raise the height floor (its measured one-row layout), never lower it.
+      const minHeight = clamp(Math.round(opts?.minHeight ?? CAPTION_MIN_H), CAPTION_MIN_H, CAPTION_MAX_H);
+      this.resize = { cursor: screen.getCursorScreenPoint(), bounds: b, edge: opts?.edge ?? 'height', fixed, minHeight };
       return;
     }
     if (!this.resize) return;
-    const start = this.resize.bounds;
+    const { bounds: start, edge, fixed, minHeight } = this.resize;
     const wa = screen.getDisplayMatching(start).workArea;
-    const dy = screen.getCursorScreenPoint().y - this.resize.cursor.y;
-    const max = Math.min(CAPTION_MAX_H, wa.height - 2 * CAPTION_MARGIN);
-    const height = clamp(Math.round(this.captionEdge === 'bottom' ? start.height - dy : start.height + dy), CAPTION_MIN_H, max);
-    const y = this.captionEdge === 'bottom' ? start.y + start.height - height : start.y;
-    ghost.setBounds({ x: start.x, y, width: start.width, height });
+    const cursor = screen.getCursorScreenPoint();
+    let rect: Rectangle;
+    if (edge === 'height') {
+      const dy = cursor.y - this.resize.cursor.y;
+      const max = Math.max(
+        minHeight,
+        Math.min(
+          CAPTION_MAX_H,
+          fixed === 'bottom' ? start.y + start.height - wa.y - CAPTION_MARGIN : wa.y + wa.height - start.y - CAPTION_MARGIN,
+        ),
+      );
+      const height = clamp(Math.round(fixed === 'bottom' ? start.height - dy : start.height + dy), minHeight, max);
+      const y = fixed === 'bottom' ? start.y + start.height - height : start.y;
+      rect = { x: start.x, y, width: start.width, height };
+    } else {
+      const dx = cursor.x - this.resize.cursor.x;
+      let width: number;
+      let x: number;
+      if (edge === 'left') {
+        const right = start.x + start.width;
+        const max = Math.min(CAPTION_MAX_W, right - wa.x);
+        width = clamp(Math.round(start.width - dx), Math.min(CAPTION_MIN_W, max), max);
+        x = right - width;
+      } else {
+        const max = Math.min(CAPTION_MAX_W, wa.x + wa.width - start.x);
+        width = clamp(Math.round(start.width + dx), Math.min(CAPTION_MIN_W, max), max);
+        x = start.x;
+      }
+      rect = { x, y: start.y, width, height: start.height };
+    }
+    ghost.setBounds(rect);
     if (phase === 'end') {
       this.resize = null;
-      this.captionHeight = height;
-      this.opts.sendEvent({ type: 'caption-height', height });
+      if (edge === 'height') {
+        this.captionHeight = rect.height;
+        this.opts.sendEvent({ type: 'caption-height', height: rect.height });
+      } else {
+        this.captionWidth = rect.width;
+        this.opts.sendEvent({ type: 'caption-width', width: rect.width });
+      }
+      this.persist('caption', rect);
     }
   }
 
+  /// Forgets the saved position (Settings > Reset overlay position); a live ghost jumps back to its default spot.
+  resetGhostPosition(): void {
+    this.saved = {};
+    writeGhostState(this.opts.userDataDir, null);
+    const ghost = this.ghost;
+    if (!ghost || ghost.isDestroyed() || !this.ghostShape) return;
+    const rect = this.placeFromSaved(this.ghostShape);
+    ghost.setBounds(rect);
+    this.coinFace = this.ghostShape === 'coin' ? rect : null;
+  }
+
   dispose(): void {
+    screen.removeListener('display-removed', this.onDisplaysChanged);
+    screen.removeListener('display-metrics-changed', this.onDisplaysChanged);
     this.destroyGhost();
   }
 
@@ -325,19 +425,56 @@ export class CompactController {
     }
   }
 
-  private ghostBounds(shape: GhostShape, wa: Rectangle, size?: { width: number; height: number }): Rectangle {
-    if (shape === 'caption') {
-      const width = Math.min(CAPTION_MAX_W, Math.round(wa.width * 0.8));
-      const height = Math.min(this.captionHeight, wa.height - 2 * CAPTION_MARGIN);
-      const x = wa.x + Math.round((wa.width - width) / 2);
-      const y = this.captionEdge === 'top' ? wa.y + CAPTION_MARGIN : wa.y + wa.height - height - CAPTION_MARGIN;
-      return { x, y, width, height };
+  /// Primary display first, then the rest, deduped by id.
+  private displays(): GhostDisplay[] {
+    const out: GhostDisplay[] = [];
+    for (const d of [screen.getPrimaryDisplay(), ...screen.getAllDisplays()]) {
+      if (!out.some((o) => o.id === d.id)) out.push({ id: d.id, workArea: d.workArea });
     }
-    const width = size?.width ?? COIN;
-    const height = size?.height ?? COIN;
-    const x = this.coinCorner.endsWith('right') ? wa.x + wa.width - width - COIN_MARGIN : wa.x + COIN_MARGIN;
-    const y = this.coinCorner.startsWith('bottom') ? wa.y + wa.height - height - COIN_MARGIN : wa.y + COIN_MARGIN;
-    return { x, y, width, height };
+    return out;
+  }
+
+  private captionSize(wa: Rectangle): { width: number; height: number } {
+    return {
+      width: Math.round(Math.min(this.captionWidth, wa.width - 2 * CAPTION_MARGIN)),
+      height: Math.round(Math.min(this.captionHeight, wa.height - 2 * CAPTION_MARGIN)),
+    };
+  }
+
+  private sizeFor(shape: GhostShape, wa: Rectangle): { width: number; height: number } {
+    return shape === 'caption' ? this.captionSize(wa) : { width: COIN, height: COIN };
+  }
+
+  /// Saved placement on its display (an unplugged display falls back to the one under the main window), else the default spot.
+  private placeFromSaved(shape: GhostShape): Rectangle {
+    const p = this.saved[shape];
+    const fallback = this.snapshot?.bounds ?? (this.opts.window.isDestroyed() ? null : this.opts.window.getBounds());
+    const d = resolveGhostDisplay(p, this.displays(), fallback);
+    const size = this.sizeFor(shape, d.workArea);
+    return p ? rectFromPlacement(p, size, d.workArea) : defaultGhostRect(shape, size, d.workArea);
+  }
+
+  private persist(shape: GhostShape, rect: Rectangle): void {
+    const display = screen.getDisplayMatching(rect);
+    this.saved = { ...this.saved, [shape]: placementFromRect(rect, { id: display.id, workArea: display.workArea }) };
+    writeGhostState(this.opts.userDataDir, this.saved);
+  }
+
+  /// A display was removed or changed resolution: pull the ghost back inside its work area. Not persisted, so the
+  /// saved placement still applies once the display returns. A hovered coin collapses; the renderer re-expands it.
+  private reclampGhost(): void {
+    const ghost = this.ghost;
+    if (!ghost || ghost.isDestroyed() || !this.ghostShape) return;
+    const b = ghost.getBounds();
+    if (this.ghostShape === 'caption') {
+      const wa = screen.getDisplayMatching(b).workArea;
+      ghost.setBounds(clampRectInto({ ...b, ...this.captionSize(wa) }, wa));
+      return;
+    }
+    const face = this.coinFace ?? b;
+    const wa = screen.getDisplayMatching(face).workArea;
+    this.coinFace = clampRectInto({ ...face, width: COIN, height: COIN }, wa);
+    ghost.setBounds(this.coinFace);
   }
 
   private ghostUrl(shape: GhostShape): string {
@@ -346,8 +483,9 @@ export class CompactController {
     return u.toString();
   }
 
-  private ensureGhost(shape: GhostShape, wa: Rectangle): void {
-    const bounds = this.ghostBounds(shape, wa);
+  private ensureGhost(shape: GhostShape): void {
+    const bounds = this.placeFromSaved(shape);
+    this.coinFace = shape === 'coin' ? bounds : null;
     if (!this.ghost || this.ghost.isDestroyed()) {
       const ghost = new BrowserWindow({
         ...bounds,
@@ -403,6 +541,7 @@ export class CompactController {
     if (this.ghost && !this.ghost.isDestroyed()) this.ghost.destroy();
     this.ghost = null;
     this.ghostShape = null;
+    this.coinFace = null;
     this.drag = null;
     this.resize = null;
   }

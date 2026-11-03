@@ -20,6 +20,7 @@ files:
   - package.json
   - electron/package.json
   - electron/dist/**/*
+  - "!electron/dist/**/*.test.js"
   - electron/build/tray/**/*
   - electron/build/icon.png
   - server/package.json

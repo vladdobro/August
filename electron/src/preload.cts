@@ -65,15 +65,16 @@ const api = {
   ghostSetIgnoreMouse: (ignore: boolean) => {
     ipcRenderer.send('august:ghost-ignore-mouse', ignore);
   },
-  ghostResize: (size: { width: number; height: number }) => {
+  ghostResize: (size: { width: number; height: number; faceSide?: string }) => {
     ipcRenderer.send('august:ghost-resize', size);
   },
   ghostDrag: (phase: string) => {
     ipcRenderer.send('august:ghost-drag', phase);
   },
-  ghostCaptionResize: (phase: string) => {
-    ipcRenderer.send('august:ghost-caption-resize', phase);
+  ghostCaptionResize: (phase: string, opts?: { edge?: string; minHeight?: number }) => {
+    ipcRenderer.send('august:ghost-caption-resize', opts ? { phase, ...opts } : phase);
   },
+  resetGhostPosition: () => ipcRenderer.invoke('august:reset-ghost-position'),
 };
 
 contextBridge.exposeInMainWorld('august', api);

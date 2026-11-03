@@ -19,6 +19,7 @@
     "build:client": "cd client && npm run build",
     "build:server": "cd server && npm run build",
     "electron:compile": "tsc -p electron/tsconfig.json",
+    "electron:test": "npm run electron:compile && node --test electron/dist/ghostGeometry.test.js",
     "electron:dev": "npm run electron:compile && electron . --dev",
     "electron:start": "npm run build && electron .",
     "electron:icons": "node electron/scripts/make-icons.mjs",

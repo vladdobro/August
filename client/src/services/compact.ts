@@ -14,6 +14,7 @@ export function compactPrefs(p: UserPreferences) {
     expandOn: p.compactExpandOn ?? DEFAULT_PREFERENCES.compactExpandOn,
     stripWidth: p.compactStripWidth ?? DEFAULT_PREFERENCES.compactStripWidth,
     captionHeight: p.compactCaptionHeight ?? DEFAULT_PREFERENCES.compactCaptionHeight,
+    captionWidth: p.compactCaptionWidth ?? DEFAULT_PREFERENCES.compactCaptionWidth,
     hintSeen: p.compactHintSeen ?? DEFAULT_PREFERENCES.compactHintSeen,
   };
 }

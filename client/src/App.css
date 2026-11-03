@@ -9214,7 +9214,8 @@ html.ghost-root #root > * {
 }
 
 .ghost-caption-actions {
-  flex: none;
+  flex: 0 1 240px;
+  min-width: 0;
   width: 240px;
   min-height: 0;
   display: flex;
@@ -9284,7 +9285,7 @@ html.ghost-root #root > * {
    (justify-content: flex-end would push the overflow above scrollTop 0, out of reach). */
 .ghost-caption-lines {
   flex: 1;
-  min-width: 0;
+  min-width: 140px;
   display: flex;
   flex-direction: column;
   gap: 4px;
@@ -9341,6 +9342,22 @@ html.ghost-root #root > * {
 .ghost-caption:hover .ghost-caption-resize::after { opacity: 0.5; }
 .ghost-caption-resize:hover::after,
 .ghost-caption-resize--active::after { opacity: 1; }
+
+/* AUG-187: width handles on the caption's left / right edges (mirror the 6 px height handle). */
+.ghost-caption-wresize { position: absolute; top: 6px; bottom: 6px; z-index: 2; width: 6px; cursor: ew-resize; }
+.ghost-caption-wresize--left { left: 0; }
+.ghost-caption-wresize--right { right: 0; }
+.ghost-caption-wresize::after { content: ''; position: absolute; top: 50%; left: 2px; width: 2px; height: 48px; margin-top: -24px; background: var(--ghost-accent); border-radius: 0; opacity: 0; transition: opacity 0.15s ease; }
+.ghost-caption:hover .ghost-caption-wresize::after { opacity: 0.5; }
+.ghost-caption-wresize:hover::after, .ghost-caption-wresize--active::after { opacity: 1; }
+
+/* AUG-187: measuring pass — the left zone takes its content height so the two tool layouts can be compared. */
+.ghost-caption-left--measure { align-self: flex-start; }
+/* AUG-187: below the height two rows of rectangles need, the five tools become one row of 16 px squares. */
+.ghost-caption--sq .ghost-caption-tools--grid { display: flex; flex-wrap: nowrap; justify-content: space-between; gap: 2px; }
+.ghost-caption--sq .ghost-caption-tools--grid .ghost-btn { flex: none; width: 16px; height: 16px; padding: 0; line-height: 14px; font-size: 9px; letter-spacing: 0; text-align: center; }
+.ghost-caption--sq .ghost-br { display: none; }
+.ghost-caption--sq .ghost-caption-tools--grid .hold-btn-hint { font-size: 6px; }
 
 .ghost-line--them { border-left-color: var(--ghost-them); }
 .ghost-line--old { color: var(--ghost-fg); opacity: 0.7; }
@@ -9493,7 +9510,8 @@ html.ghost-root #root > * {
   .ghost-btn,
   .ghost-coin-muted--hint,
   .ghost-caption-tools,
-  .ghost-caption-resize::after {
+  .ghost-caption-resize::after,
+  .ghost-caption-wresize::after {
     animation: none !important;
     transition: none !important;
   }

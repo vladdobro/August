@@ -110,7 +110,7 @@ export function sanitizePraxisProjects(input: unknown): PraxisProject[] {
 }
 
 /// Compact Mode prefs (AUG-156): booleans are strict, enums drop unknown values, the strip width clamps to 280–520
-/// and the Ghost Caption height to 72–480.
+/// and the Ghost Caption height to 72–480 and width to 320–760.
 export function sanitizeCompactPreferences(patch: PreferencesRecord): PreferencesRecord {
   const out: PreferencesRecord = { ...patch };
   for (const key of ['compactEnabled', 'compactAlwaysOnTop', 'compactHintSeen']) {
@@ -134,6 +134,11 @@ export function sanitizeCompactPreferences(patch: PreferencesRecord): Preference
     const n = Number(out.compactCaptionHeight);
     if (Number.isFinite(n)) out.compactCaptionHeight = Math.min(480, Math.max(72, Math.round(n)));
     else delete out.compactCaptionHeight;
+  }
+  if ('compactCaptionWidth' in out) {
+    const n = Number(out.compactCaptionWidth);
+    if (Number.isFinite(n)) out.compactCaptionWidth = Math.min(760, Math.max(320, Math.round(n)));
+    else delete out.compactCaptionWidth;
   }
   return out;
 }

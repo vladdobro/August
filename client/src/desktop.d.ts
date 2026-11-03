@@ -34,13 +34,14 @@ export interface DesktopRevealResult {
 }
 
 export type DesktopCompactShape = 'none' | 'strip' | 'square' | 'caption' | 'coin';
-export interface DesktopCompactRequest { shape: DesktopCompactShape; stripWidth?: number; captionHeight?: number; alwaysOnTop?: boolean; }
+export interface DesktopCompactRequest { shape: DesktopCompactShape; stripWidth?: number; captionHeight?: number; captionWidth?: number; alwaysOnTop?: boolean; }
 export interface DesktopCompactResult { ok: boolean; shape: DesktopCompactShape; error?: string; }
 export type DesktopCompactEvent =
   | { type: 'expand' }
   | { type: 'toggle' }
   | { type: 'strip-width'; width: number }
-  | { type: 'caption-height'; height: number };
+  | { type: 'caption-height'; height: number }
+  | { type: 'caption-width'; width: number };
 export type DesktopCompactIssue = 'interrupted' | 'capture-lost';
 
 // Mirror of UpdateState in electron/src/updater.ts (the state machine lives only in main). 'error' renders like 'idle'.
@@ -51,6 +52,7 @@ export type DesktopUpdateState =
   | { phase: 'ready'; version: string }
   | { phase: 'error'; message: string };
 export type DesktopGhostDragPhase = 'start' | 'move' | 'end';
+export type DesktopGhostResizeEdge = 'height' | 'left' | 'right';
 
 export interface AugustDesktopApi {
   isDesktop: true;
@@ -81,10 +83,13 @@ export interface AugustDesktopApi {
   reportCompactIssue?(issue: DesktopCompactIssue): void;
   // Ghost window only: click-through toggle (caption), size (coin hover), drag driven by the cursor position in main.
   ghostSetIgnoreMouse?(ignore: boolean): void;
-  ghostResize?(size: { width: number; height: number }): void;
+  ghostResize?(size: { width: number; height: number; faceSide?: 'left' | 'right' }): void;
   ghostDrag?(phase: DesktopGhostDragPhase): void;
-  // Ghost Caption only: height drag from the inner edge; main sends the final height back as a caption-height event.
-  ghostCaptionResize?(phase: DesktopGhostDragPhase): void;
+  // Ghost Caption only: height drag from the inner edge or width drag from the left / right edge (edge, default 'height');
+  // main sends the final size back as a caption-height / caption-width event. minHeight raises the height floor (AUG-187).
+  ghostCaptionResize?(phase: DesktopGhostDragPhase, opts?: { edge?: DesktopGhostResizeEdge; minHeight?: number }): void;
+  // Main window only: clears the saved Ghost Mode position so the caption and coin return to their default spots (AUG-187).
+  resetGhostPosition?(): Promise<{ ok: boolean }>;
 }
 
 declare global {

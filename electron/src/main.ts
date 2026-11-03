@@ -535,10 +535,11 @@ function registerIpc(): void {
 
   ipcMain.on('august:ghost-resize', (e, size: unknown) => {
     if (!compact?.isGhostSender(e.sender)) return;
-    const rec = size as { width?: unknown; height?: unknown } | null;
+    const rec = size as { width?: unknown; height?: unknown; faceSide?: unknown } | null;
     if (!rec || typeof rec.width !== 'number' || typeof rec.height !== 'number') return;
     if (!Number.isFinite(rec.width) || !Number.isFinite(rec.height)) return;
-    compact.ghostResize({ width: rec.width, height: rec.height });
+    const faceSide = rec.faceSide === 'left' || rec.faceSide === 'right' ? rec.faceSide : undefined;
+    compact.ghostResize({ width: rec.width, height: rec.height }, faceSide);
   });
 
   ipcMain.on('august:ghost-drag', (e, phase: unknown) => {
@@ -546,9 +547,32 @@ function registerIpc(): void {
     if (phase === 'start' || phase === 'move' || phase === 'end') compact.ghostDrag(phase);
   });
 
-  ipcMain.on('august:ghost-caption-resize', (e, phase: unknown) => {
+  // Payload: a phase string (legacy = height resize) or { phase, edge?, minHeight? }.
+  ipcMain.on('august:ghost-caption-resize', (e, payload: unknown) => {
     if (!compact?.isGhostSender(e.sender)) return;
-    if (phase === 'start' || phase === 'move' || phase === 'end') compact.ghostCaptionResize(phase);
+    const rec = typeof payload === 'object' && payload !== null ? (payload as Record<string, unknown>) : null;
+    const phase = rec ? rec.phase : payload;
+    if (phase !== 'start' && phase !== 'move' && phase !== 'end') return;
+    let edge: 'height' | 'left' | 'right' | undefined;
+    let minHeight: number | undefined;
+    if (rec) {
+      if (rec.edge !== undefined) {
+        if (rec.edge !== 'height' && rec.edge !== 'left' && rec.edge !== 'right') return;
+        edge = rec.edge;
+      }
+      if (rec.minHeight !== undefined) {
+        if (typeof rec.minHeight !== 'number' || !Number.isFinite(rec.minHeight)) return;
+        minHeight = rec.minHeight;
+      }
+    }
+    compact.ghostCaptionResize(phase, { edge, minHeight });
+  });
+
+  // Main window only (Settings lives there); the ghost channels above stay ghost-only.
+  ipcMain.handle('august:reset-ghost-position', (e) => {
+    if (!mainWindow || e.sender !== mainWindow.webContents) return { ok: false };
+    compact?.resetGhostPosition();
+    return { ok: true };
   });
 
   // Sidebar ≡ menu update item (AUG-157). null = no updater (unpackaged build), the renderer hides the item.
@@ -584,6 +608,7 @@ async function main(): Promise<void> {
     appUrl,
     preloadPath: path.join(__dirname, 'preload.cjs'),
     devTools: isDevRenderer || !app.isPackaged,
+    userDataDir: app.getPath('userData'),
     onShapeChange: (shape) => {
       tray?.update({ compact: shape !== 'none' });
       updateTrayTicker();

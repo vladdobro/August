@@ -3,8 +3,12 @@ import path from 'node:path';
 
 import type { Rectangle } from 'electron';
 
+import { parseGhostWindowState, type GhostWindowState } from './ghostGeometry.js';
+
 /// Main window size/position remembered between launches as <userData>/window-state.json. Kept out of
 /// desktop-settings.json because the renderer reads that file through the settings bridge.
+/// The file also holds an optional `ghost` record (AUG-187: saved Ghost Mode caption / coin placement),
+/// written by the main process; writeWindowState preserves it.
 export interface WindowState {
   x: number;
   y: number;
@@ -33,12 +37,43 @@ export function readWindowState(userDataDir: string): WindowState | null {
   }
 }
 
+function readRaw(userDataDir: string): Record<string, unknown> | null {
+  try {
+    const parsed: unknown = JSON.parse(fs.readFileSync(path.join(userDataDir, 'window-state.json'), 'utf-8'));
+    return parsed && typeof parsed === 'object' && !Array.isArray(parsed) ? (parsed as Record<string, unknown>) : null;
+  } catch {
+    return null;
+  }
+}
+
 export function writeWindowState(userDataDir: string, state: WindowState): void {
   try {
+    const prev = readRaw(userDataDir);
+    const ghost = prev ? parseGhostWindowState(prev.ghost) : {};
     fs.mkdirSync(userDataDir, { recursive: true });
-    fs.writeFileSync(path.join(userDataDir, 'window-state.json'), JSON.stringify(state, null, 2));
+    fs.writeFileSync(
+      path.join(userDataDir, 'window-state.json'),
+      JSON.stringify({ ...state, ...(Object.keys(ghost).length ? { ghost } : {}) }, null, 2),
+    );
   } catch {
     // best effort — a failed write only means the next launch uses the default size
+  }
+}
+
+export function readGhostState(userDataDir: string): GhostWindowState {
+  return parseGhostWindowState(readRaw(userDataDir)?.ghost);
+}
+
+/// Saves (or, with null / an empty record, clears) the Ghost Mode placement without touching the window bounds.
+export function writeGhostState(userDataDir: string, ghost: GhostWindowState | null): void {
+  try {
+    const raw = readRaw(userDataDir) ?? {};
+    if (!ghost || Object.keys(ghost).length === 0) delete raw.ghost;
+    else raw.ghost = ghost;
+    fs.mkdirSync(userDataDir, { recursive: true });
+    fs.writeFileSync(path.join(userDataDir, 'window-state.json'), JSON.stringify(raw, null, 2));
+  } catch {
+    // best effort — a failed write only means the ghost returns to its default spot
   }
 }
 

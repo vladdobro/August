@@ -254,6 +254,13 @@ const SettingsModal: React.FC<SettingsModalProps> = ({
   const [stripDraft, setStripDraft] = useState<number>(cp.stripWidth);
   useEffect(() => { setStripDraft(cp.stripWidth); }, [cp.stripWidth]);
   const commitStrip = () => { if (stripDraft !== cp.stripWidth) onPreferenceChange({ compactStripWidth: stripDraft }); };
+  const [overlayReset, setOverlayReset] = useState(false);
+  const resetOverlay = () => {
+    void window.august?.resetGhostPosition?.().then(() => {
+      setOverlayReset(true);
+      setTimeout(() => setOverlayReset(false), 2000);
+    }).catch(() => {});
+  };
 
   const handleReset = () => {
     if (!confirmingReset) {
@@ -1017,6 +1024,17 @@ const SettingsModal: React.FC<SettingsModalProps> = ({
                       <span className="settings-slider-value">{stripDraft} px</span>
                     </div>
                   </div>
+                  {window.august?.resetGhostPosition && (
+                    <div className="settings-row">
+                      <span className="settings-label">
+                        Overlay position
+                        <small className="compact-small">Variant B remembers where you leave the caption and the coin.</small>
+                      </span>
+                      <button type="button" className="settings-btn-inline" onClick={resetOverlay} disabled={overlayReset}>
+                        {overlayReset ? 'Reset ✓' : 'Reset overlay position'}
+                      </button>
+                    </div>
+                  )}
                 </div>
               </div>
             </div>

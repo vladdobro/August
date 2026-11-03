@@ -64,6 +64,7 @@ const CompactLayer: React.FC<CompactLayerProps> = (props) => {
         shape: shapeForWidget(w),
         stripWidth: c.stripWidth,
         captionHeight: c.captionHeight,
+        captionWidth: c.captionWidth,
         alwaysOnTop: c.alwaysOnTop,
       });
       if (!result.ok) {
@@ -223,6 +224,7 @@ const CompactLayer: React.FC<CompactLayerProps> = (props) => {
       else if (ev.type === 'toggle') toggle();
       else if (ev.type === 'strip-width') propsRef.current.onPreferenceChange({ compactStripWidth: ev.width });
       else if (ev.type === 'caption-height') propsRef.current.onPreferenceChange({ compactCaptionHeight: ev.height });
+      else if (ev.type === 'caption-width') propsRef.current.onPreferenceChange({ compactCaptionWidth: ev.width });
     });
     return () => { off?.(); };
   }, [supported, expand, toggle]);

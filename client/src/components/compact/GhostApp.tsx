@@ -40,7 +40,13 @@ const GhostCaption: React.FC<GhostCaptionProps> = ({ state, send, sendAction }) 
   const [resizing, setResizing] = useState(false);
   const [actionsHover, setActionsHover] = useState(false);
   const [actionsFocus, setActionsFocus] = useState(false);
+  const [widthResizing, setWidthResizing] = useState<'left' | 'right' | null>(null);
+  const [widthHover, setWidthHover] = useState(false);
+  const [square, setSquare] = useState(false);
   const linesRef = useRef<HTMLDivElement>(null);
+  const rootRef = useRef<HTMLDivElement>(null);
+  const leftRef = useRef<HTMLDivElement>(null);
+  const fitRef = useRef({ rect: 0, sq: 0 });
 
   const paused = state.liveStatus === 'paused';
   const interrupted = state.liveStatus === 'interrupted';
@@ -48,7 +54,7 @@ const GhostCaption: React.FC<GhostCaptionProps> = ({ state, send, sendAction }) 
   const lost = state.captureLost;
   const alert = interrupted || lost || done;
   const tag = statusTag(state.liveStatus, state.live);
-  const interactive = alert || leftHover || dragging || edgeHover || resizing || actionsHover || actionsFocus;
+  const interactive = alert || leftHover || dragging || edgeHover || resizing || widthHover || widthResizing !== null || actionsHover || actionsFocus;
   // The resize handle sits on the inner edge: top when the caption is docked at the bottom of the screen, and vice versa.
   // availTop (Chromium) is the display's top in virtual-screen coordinates, so a secondary monitor resolves correctly.
   const scr = window.screen as Screen & { availTop?: number };
@@ -79,17 +85,60 @@ const GhostCaption: React.FC<GhostCaptionProps> = ({ state, send, sendAction }) 
     e.stopPropagation();
     e.currentTarget.setPointerCapture(e.pointerId);
     setResizing(true);
-    window.august?.ghostCaptionResize?.('start');
+    window.august?.ghostCaptionResize?.('start', { edge: 'height', minHeight: fitRef.current.sq });
   };
   const onResizeMove = () => {
-    if (resizing) window.august?.ghostCaptionResize?.('move');
+    if (resizing) window.august?.ghostCaptionResize?.('move', { edge: 'height' });
   };
   const endResize = (e: React.PointerEvent<HTMLDivElement>) => {
     if (!resizing) return;
     if (e.currentTarget.hasPointerCapture(e.pointerId)) e.currentTarget.releasePointerCapture(e.pointerId);
     setResizing(false);
-    window.august?.ghostCaptionResize?.('end');
+    window.august?.ghostCaptionResize?.('end', { edge: 'height' });
   };
+
+  // Width drag from the left / right edge (AUG-187); main keeps the opposite edge fixed.
+  const onWidthDown = (side: 'left' | 'right') => (e: React.PointerEvent<HTMLDivElement>) => {
+    e.stopPropagation();
+    e.currentTarget.setPointerCapture(e.pointerId);
+    setWidthResizing(side);
+    window.august?.ghostCaptionResize?.('start', { edge: side });
+  };
+  const onWidthMove = (side: 'left' | 'right') => () => {
+    if (widthResizing === side) window.august?.ghostCaptionResize?.('move', { edge: side });
+  };
+  const endWidth = (side: 'left' | 'right') => (e: React.PointerEvent<HTMLDivElement>) => {
+    if (widthResizing !== side) return;
+    if (e.currentTarget.hasPointerCapture(e.pointerId)) e.currentTarget.releasePointerCapture(e.pointerId);
+    setWidthResizing(null);
+    window.august?.ghostCaptionResize?.('end', { edge: side });
+  };
+
+  // Tool layout thresholds are measured from the rendered layout (two rows of rectangles vs one row of squares),
+  // never hard-coded. React rewrites className on render; the classes are restored synchronously here, so this is safe.
+  useLayoutEffect(() => {
+    const root = rootRef.current;
+    const left = leftRef.current;
+    if (!root || !left) return;
+    const had = root.classList.contains('ghost-caption--sq');
+    const border = root.offsetHeight - root.clientHeight;
+    left.classList.add('ghost-caption-left--measure');
+    root.classList.remove('ghost-caption--sq');
+    const rect = left.offsetHeight + border;
+    root.classList.add('ghost-caption--sq');
+    const sq = left.offsetHeight + border;
+    root.classList.toggle('ghost-caption--sq', had);
+    left.classList.remove('ghost-caption-left--measure');
+    fitRef.current = { rect, sq };
+    setSquare(root.offsetHeight < rect);
+  }, [state.live, state.micMuted, state.mutedHint, interrupted, lost, done, paused]);
+  useEffect(() => {
+    const root = rootRef.current;
+    if (!root) return;
+    const observer = new ResizeObserver(() => setSquare(root.offsetHeight < fitRef.current.rect));
+    observer.observe(root);
+    return () => observer.disconnect();
+  }, []);
 
   // Teleprompter: the newest text is always in view. New or growing lines scroll smoothly; a height change snaps.
   useLayoutEffect(() => {
@@ -111,7 +160,8 @@ const GhostCaption: React.FC<GhostCaptionProps> = ({ state, send, sendAction }) 
 
   return (
     <div
-      className={`ghost-caption${interrupted || lost ? ' ghost-caption--error' : ''}${done ? ' ghost-caption--done' : ''}`}
+      ref={rootRef}
+      className={`ghost-caption${interrupted || lost ? ' ghost-caption--error' : ''}${done ? ' ghost-caption--done' : ''}${square ? ' ghost-caption--sq' : ''}`}
       onMouseEnter={() => setHovered(true)}
       onMouseLeave={() => setHovered(false)}
       onClick={done ? () => send('expand') : undefined}
@@ -129,7 +179,22 @@ const GhostCaption: React.FC<GhostCaptionProps> = ({ state, send, sendAction }) 
           aria-hidden="true"
         />
       )}
+      {!done && (['left', 'right'] as const).map((side) => (
+        <div
+          key={side}
+          className={`ghost-caption-wresize ghost-caption-wresize--${side}${widthResizing === side ? ' ghost-caption-wresize--active' : ''}`}
+          onMouseEnter={() => setWidthHover(true)}
+          onMouseLeave={() => setWidthHover(false)}
+          onPointerDown={onWidthDown(side)}
+          onPointerMove={onWidthMove(side)}
+          onPointerUp={endWidth(side)}
+          onPointerCancel={endWidth(side)}
+          title="Drag to resize"
+          aria-hidden="true"
+        />
+      ))}
       <div
+        ref={leftRef}
         className="ghost-caption-left"
         onMouseEnter={() => setLeftHover(true)}
         onMouseLeave={() => setLeftHover(false)}
@@ -164,7 +229,7 @@ const GhostCaption: React.FC<GhostCaptionProps> = ({ state, send, sendAction }) 
             )}
             {!alert && (
               <div className={`ghost-caption-tools ghost-caption-tools--grid${showTools ? ' ghost-caption-tools--shown' : ''}`}>
-                <button type="button" className="ghost-btn" onClick={() => send('expand')} title="Expand August" aria-label="Expand August">[ ⤢ ]</button>
+                <button type="button" className="ghost-btn" onClick={() => send('expand')} title="Expand August" aria-label="Expand August"><span className="ghost-br">[ </span>⤢<span className="ghost-br"> ]</span></button>
                 {state.live && !interrupted && (
                   <button
                     type="button"
@@ -173,7 +238,7 @@ const GhostCaption: React.FC<GhostCaptionProps> = ({ state, send, sendAction }) 
                     title={paused ? 'Resume' : 'Pause'}
                     aria-label={paused ? 'Resume' : 'Pause'}
                   >
-                    [ {paused ? '▶' : '⏸'} ]
+                    <span className="ghost-br">[ </span>{paused ? '▶' : '⏸'}<span className="ghost-br"> ]</span>
                   </button>
                 )}
                 <button
@@ -184,12 +249,12 @@ const GhostCaption: React.FC<GhostCaptionProps> = ({ state, send, sendAction }) 
                   aria-label={state.micMuted ? 'Unmute microphone' : 'Mute microphone'}
                   title="Mute in August's recording"
                 >
-                  [ <MicGlyph muted={state.micMuted} /> ]
+                  <span className="ghost-br">[ </span><MicGlyph muted={state.micMuted} /><span className="ghost-br"> ]</span>
                 </button>
                 {state.live && (
-                  <HoldToStopButton className="ghost-btn ghost-btn--end" onComplete={() => send('stop-live')} title="Hold 1.5 s to stop live text. Recording continues." ariaLabel="Stop Live Text (hold 1.5 seconds)" hint="HOLD">[ <LiveTextOffGlyph /> ]</HoldToStopButton>
+                  <HoldToStopButton className="ghost-btn ghost-btn--end" onComplete={() => send('stop-live')} title="Hold 1.5 s to stop live text. Recording continues." ariaLabel="Stop Live Text (hold 1.5 seconds)" hint="HOLD"><span className="ghost-br">[ </span><LiveTextOffGlyph /><span className="ghost-br"> ]</span></HoldToStopButton>
                 )}
-                <HoldToStopButton className="ghost-btn ghost-btn--end" onComplete={() => send('end')} title="Hold 1.5 s to end the meeting" ariaLabel="End Meeting (hold 1.5 seconds)" hint="HOLD">[ ■ ]</HoldToStopButton>
+                <HoldToStopButton className="ghost-btn ghost-btn--end" onComplete={() => send('end')} title="Hold 1.5 s to end the meeting" ariaLabel="End Meeting (hold 1.5 seconds)" hint="HOLD"><span className="ghost-br">[ </span>■<span className="ghost-br"> ]</span></HoldToStopButton>
               </div>
             )}
           </>
@@ -234,23 +299,38 @@ const GhostCaption: React.FC<GhostCaptionProps> = ({ state, send, sendAction }) 
 const GhostCoin: React.FC<GhostViewProps> = ({ state, send }) => {
   const [hovered, setHovered] = useState(false);
   const [menu, setMenu] = useState(false);
+  const [dragActive, setDragActive] = useState(false);
+  const [faceSide, setFaceSide] = useState<'left' | 'right'>('right');
   const dragRef = useRef<{ x: number; y: number; active: boolean } | null>(null);
   const movedRef = useRef(false);
 
   const paused = state.liveStatus === 'paused';
   const done = state.phase === 'done';
   const lost = state.captureLost;
-  const expanded = hovered || menu;
+  const expanded = (hovered || menu) && !dragActive;
 
   useEffect(() => {
-    window.august?.ghostResize?.(expanded
-      ? { width: COIN_EXPANDED_WIDTH, height: COIN_SIZE }
-      : { width: COIN_SIZE, height: COIN_SIZE });
+    if (!expanded) {
+      window.august?.ghostResize?.({ width: COIN_SIZE, height: COIN_SIZE });
+      return;
+    }
+    // The window equals the face while collapsed. Same rule as coinExpandedRect in electron/src/ghostGeometry.ts:
+    // grow toward the screen middle, flip when that side has no room. Main honors faceSide, so the face never moves
+    // and the row direction always matches.
+    const scr = window.screen as Screen & { availLeft?: number };
+    const waX = scr.availLeft ?? 0;
+    const waW = scr.availWidth;
+    let right = window.screenX + COIN_SIZE / 2 > waX + waW / 2; // face on the right -> grow left
+    const fitsLeftGrowth = window.screenX + COIN_SIZE - COIN_EXPANDED_WIDTH >= waX;
+    const fitsRightGrowth = window.screenX + COIN_EXPANDED_WIDTH <= waX + waW;
+    if (right && !fitsLeftGrowth && fitsRightGrowth) right = false;
+    else if (!right && !fitsRightGrowth && fitsLeftGrowth) right = true;
+    const side = right ? 'right' : 'left';
+    setFaceSide(side);
+    window.august?.ghostResize?.({ width: COIN_EXPANDED_WIDTH, height: COIN_SIZE, faceSide: side });
   }, [expanded]);
 
-  // The coin sits in one of the corners; keep its face on the screen-edge side while the window grows inward.
-  const availLeft = (window.screen as Screen & { availLeft?: number }).availLeft ?? 0;
-  const anchoredRight = window.screenX + window.outerWidth / 2 > availLeft + window.screen.availWidth / 2;
+  const anchoredRight = faceSide === 'right';
 
   const onPointerDown = (e: React.PointerEvent<HTMLDivElement>) => {
     e.currentTarget.setPointerCapture(e.pointerId);
@@ -263,6 +343,7 @@ const GhostCoin: React.FC<GhostViewProps> = ({ state, send }) => {
     if (!d.active) {
       if (Math.hypot(e.clientX - d.x, e.clientY - d.y) < 4) return;
       d.active = true;
+      setDragActive(true);
       movedRef.current = true;
       window.august?.ghostDrag?.('start');
       return;
@@ -272,6 +353,7 @@ const GhostCoin: React.FC<GhostViewProps> = ({ state, send }) => {
   const onPointerUp = (e: React.PointerEvent<HTMLDivElement>) => {
     const d = dragRef.current;
     dragRef.current = null;
+    setDragActive(false);
     if (e.currentTarget.hasPointerCapture(e.pointerId)) e.currentTarget.releasePointerCapture(e.pointerId);
     if (!d) return;
     if (d.active) {
