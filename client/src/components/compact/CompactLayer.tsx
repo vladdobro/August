@@ -5,10 +5,13 @@ import {
   compactPrefs,
   formatClock,
   isDockWidget,
-  resolveCompactKind,
-  resolveCompactWidget,
+  isTranscriptWidget,
+  pairWidget,
+  pickCompactWidget,
   shapeForWidget,
-  type CompactKind,
+  stepIndex,
+  CAPTION_FONT_SIZES,
+  CAPTION_OPACITIES,
   type CompactWidget,
 } from '../../services/compact';
 import { compactStore } from '../../services/compactStore';
@@ -31,7 +34,6 @@ const CompactLayer: React.FC<CompactLayerProps> = (props) => {
 
   const [phase, setPhase] = useState<Phase>('full');
   const [widget, setWidget] = useState<CompactWidget | null>(null);
-  const [kind, setKind] = useState<CompactKind>('indicator');
   const [hint, setHint] = useState(false);
 
   // Latest values for callbacks that outlive a render (keyboard, IPC, channel, timers).
@@ -42,6 +44,7 @@ const CompactLayer: React.FC<CompactLayerProps> = (props) => {
   const phaseRef = useRef<Phase>('full');
   const widgetRef = useRef<CompactWidget | null>(null);
   const busyRef = useRef(false);
+  const overrideRef = useRef<CompactWidget | null>(null); // AUG-188: in-place switch, lasts for this recording only
   const manualFullRef = useRef(false);
   const prevRecordingRef = useRef(false);
   const lastElapsedRef = useRef(0);
@@ -84,9 +87,8 @@ const CompactLayer: React.FC<CompactLayerProps> = (props) => {
     const s = snapRef.current;
     if (!s.recording) return;
     const p = propsRef.current.preferences;
-    const nextKind = resolveCompactKind(p, s.live);
-    if (!nextKind) return;
-    const w = resolveCompactWidget(p, nextKind);
+    const w = pickCompactWidget(p, s.live, overrideRef.current);
+    if (!w) return;
     busyRef.current = true;
     try {
       propsRef.current.onBeforeCollapse();
@@ -95,7 +97,6 @@ const CompactLayer: React.FC<CompactLayerProps> = (props) => {
       const ok = await requestShape(w);
       if (!ok) return;
       manualFullRef.current = false;
-      setKind(nextKind);
       setWidgetBoth(w);
       setPhaseBoth('compact');
       applyDockClass(w);
@@ -141,6 +142,7 @@ const CompactLayer: React.FC<CompactLayerProps> = (props) => {
     prevRecordingRef.current = snap.recording;
     if (!was && snap.recording) {
       manualFullRef.current = false;
+      overrideRef.current = null; // the switch lasts for this recording only
       if (compactPrefs(propsRef.current.preferences).enabled) {
         // A DONE widget from the previous recording is replaced by enter().
         if (enterTimerRef.current) clearTimeout(enterTimerRef.current);
@@ -173,10 +175,8 @@ const CompactLayer: React.FC<CompactLayerProps> = (props) => {
   // While compact and recording: Stop Live (or Live starting) can change which widget applies.
   useEffect(() => {
     if (!supported || phase !== 'compact' || !snap.recording) return;
-    const nextKind = resolveCompactKind(propsRef.current.preferences, snap.live);
-    if (!nextKind) return;
-    const w = resolveCompactWidget(propsRef.current.preferences, nextKind);
-    setKind(nextKind);
+    const w = pickCompactWidget(propsRef.current.preferences, snap.live, overrideRef.current);
+    if (!w) return;
     if (w === widgetRef.current) return;
     void (async () => {
       if (!(await requestShape(w))) return;
@@ -229,11 +229,30 @@ const CompactLayer: React.FC<CompactLayerProps> = (props) => {
     return () => { off?.(); };
   }, [supported, expand, toggle]);
 
+  // AUG-188: swap the widget for its pair (Strip <-> Square, Caption <-> Coin) without leaving compact mode.
+  const switchWidget = useCallback(async () => {
+    if (phaseRef.current !== 'compact' || busyRef.current) return;
+    const cur = widgetRef.current;
+    if (!cur) return;
+    const next = pairWidget(cur);
+    if (isTranscriptWidget(next) && !snapRef.current.live) return;
+    busyRef.current = true;
+    try {
+      if (!(await requestShape(next))) return;
+      overrideRef.current = next;
+      setWidgetBoth(next);
+      applyDockClass(next);
+    } finally {
+      busyRef.current = false;
+    }
+  }, [requestShape]);
+
   // Ghost bridge: the ghost window renders from this state and sends commands back.
   const buildGhostState = useCallback((): GhostState | null => {
     const w = widgetRef.current;
     if ((w !== 'ghost-caption' && w !== 'ghost-coin') || phaseRef.current === 'full') return null;
     const s = snapRef.current;
+    const cp = compactPrefs(propsRef.current.preferences);
     return {
       widget: w,
       phase: phaseRef.current === 'done' ? 'done' : 'compact',
@@ -241,7 +260,7 @@ const CompactLayer: React.FC<CompactLayerProps> = (props) => {
       live: s.live,
       lines: s.lines.slice(-GHOST_LINES),
       lineCount: s.lines.length,
-      showCount: kind === 'indicator' && s.live,
+      showCount: !isTranscriptWidget(w) && s.live,
       liveStatus: s.liveStatus,
       captureLost: s.captureLost,
       elapsedSeconds: phaseRef.current === 'done' ? lastElapsedRef.current : s.elapsedSeconds,
@@ -250,8 +269,11 @@ const CompactLayer: React.FC<CompactLayerProps> = (props) => {
       actionEnabled: s.actionEnabled,
       micMuted: s.micMuted,
       mutedHint: s.mutedHint,
+      skipClearConfirmation: s.skipClearConfirmation,
+      captionFontSize: cp.captionFontSize,
+      captionOpacity: cp.captionOpacity,
     };
-  }, [kind]);
+  }, []);
 
   useEffect(() => {
     if (!supported || typeof BroadcastChannel === 'undefined') return;
@@ -271,6 +293,7 @@ const CompactLayer: React.FC<CompactLayerProps> = (props) => {
           case 'add': a?.addActionItem(msg.action.text, msg.action.owner); break;
           case 'edit': a?.editActionItem(msg.action.id, msg.action.patch); break;
           case 'delete': a?.deleteActionItem(msg.action.id); break;
+          case 'praxis': a?.sendToPraxis(msg.action.ids); void expand(); break;
         }
       }
     };
@@ -293,6 +316,25 @@ const CompactLayer: React.FC<CompactLayerProps> = (props) => {
       case 'mute': actions?.setMicMuted(true); break;
       case 'unmute': actions?.setMicMuted(false); break;
       case 'show-transcript': actions?.showLivePanel(); void expand(); break;
+      case 'switch': void switchWidget(); break;
+      case 'start-live': actions?.startLive(); break;
+      case 'copy-all': actions?.copyAll(); break;
+      case 'copy-clear': actions?.copyAndClear(); break;
+      case 'clear': actions?.clearLive(); break;
+      case 'font-down':
+      case 'font-up': {
+        const list = CAPTION_FONT_SIZES;
+        const i = stepIndex(list, compactPrefs(propsRef.current.preferences).captionFontSize);
+        const j = Math.min(list.length - 1, Math.max(0, i + (command === 'font-up' ? 1 : -1)));
+        if (j !== i) propsRef.current.onPreferenceChange({ compactCaptionFontSize: list[j] });
+        break;
+      }
+      case 'opacity-next': {
+        const list = CAPTION_OPACITIES;
+        const i = stepIndex(list, compactPrefs(propsRef.current.preferences).captionOpacity);
+        propsRef.current.onPreferenceChange({ compactCaptionOpacity: list[(i + 1) % list.length] });
+        break;
+      }
     }
   };
 
@@ -313,7 +355,6 @@ const CompactLayer: React.FC<CompactLayerProps> = (props) => {
   if (!supported || phase === 'full' || !isDockWidget(widget)) return null;
 
   const dockClass = widget === 'dock-strip' ? 'strip' : 'square';
-  const showCount = kind === 'indicator' && snap.live;
   const actions = compactStore.actions();
   const onExpand = () => { void expand(); };
 
@@ -325,14 +366,19 @@ const CompactLayer: React.FC<CompactLayerProps> = (props) => {
           <span className="compact-done-sub">click to open</span>
         </button>
       ) : widget === 'dock-strip' ? (
-        <DockStrip snap={snap} actions={actions} onExpand={onExpand} />
+        <DockStrip
+          snap={snap}
+          actions={actions}
+          onExpand={onExpand}
+          onSwitch={() => { void switchWidget(); }}
+          onSendToPraxis={(ids) => { actions?.sendToPraxis(ids); onExpand(); }}
+        />
       ) : (
         <DockSquare
           snap={snap}
           actions={actions}
           onExpand={onExpand}
-          showCount={showCount}
-          onShowTranscript={() => { actions?.showLivePanel(); onExpand(); }}
+          onSwitch={() => { void switchWidget(); }}
         />
       )}
       {hint && phase === 'compact' && (

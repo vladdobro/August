@@ -43,6 +43,8 @@ const GhostCaption: React.FC<GhostCaptionProps> = ({ state, send, sendAction }) 
   const [widthResizing, setWidthResizing] = useState<'left' | 'right' | null>(null);
   const [widthHover, setWidthHover] = useState(false);
   const [square, setSquare] = useState(false);
+  const [clearConfirm, setClearConfirm] = useState(false); // AUG-188
+  const [tbarHover, setTbarHover] = useState(false); // AUG-188
   const linesRef = useRef<HTMLDivElement>(null);
   const rootRef = useRef<HTMLDivElement>(null);
   const leftRef = useRef<HTMLDivElement>(null);
@@ -54,11 +56,22 @@ const GhostCaption: React.FC<GhostCaptionProps> = ({ state, send, sendAction }) 
   const lost = state.captureLost;
   const alert = interrupted || lost || done;
   const tag = statusTag(state.liveStatus, state.live);
-  const interactive = alert || leftHover || dragging || edgeHover || resizing || widthHover || widthResizing !== null || actionsHover || actionsFocus;
+  const interactive = alert || leftHover || dragging || edgeHover || resizing || widthHover || widthResizing !== null || actionsHover || actionsFocus || tbarHover || clearConfirm;
   // The resize handle sits on the inner edge: top when the caption is docked at the bottom of the screen, and vice versa.
   // availTop (Chromium) is the display's top in virtual-screen coordinates, so a secondary monitor resolves correctly.
   const scr = window.screen as Screen & { availTop?: number };
   const dockedBottom = window.screenY + window.innerHeight / 2 >= (scr.availTop ?? 0) + scr.availHeight / 2;
+
+  // AUG-188: the text toolbar and its confirm row disappear with Live and in the 72 px layout.
+  useEffect(() => {
+    if (!state.live) {
+      setClearConfirm(false);
+      setTbarHover(false);
+    }
+  }, [state.live]);
+  useEffect(() => {
+    if (square) setTbarHover(false);
+  }, [square]);
 
   // Click-through unless something clickable is showing or hovered.
   useEffect(() => {
@@ -146,7 +159,7 @@ const GhostCaption: React.FC<GhostCaptionProps> = ({ state, send, sendAction }) 
     if (!el) return;
     const smooth = !window.matchMedia('(prefers-reduced-motion: reduce)').matches;
     el.scrollTo({ top: el.scrollHeight, behavior: smooth ? 'smooth' : 'auto' });
-  }, [state.lines, state.lineCount]);
+  }, [state.lines, state.lineCount, state.captionFontSize]);
   useEffect(() => {
     const el = linesRef.current;
     if (!el) return;
@@ -161,6 +174,7 @@ const GhostCaption: React.FC<GhostCaptionProps> = ({ state, send, sendAction }) 
   return (
     <div
       ref={rootRef}
+      style={{ '--ghost-bg': `rgba(6, 11, 8, ${state.captionOpacity / 100})`, '--ghost-line-size': `${state.captionFontSize}px` } as React.CSSProperties}
       className={`ghost-caption${interrupted || lost ? ' ghost-caption--error' : ''}${done ? ' ghost-caption--done' : ''}${square ? ' ghost-caption--sq' : ''}`}
       onMouseEnter={() => setHovered(true)}
       onMouseLeave={() => setHovered(false)}
@@ -230,6 +244,7 @@ const GhostCaption: React.FC<GhostCaptionProps> = ({ state, send, sendAction }) 
             {!alert && (
               <div className={`ghost-caption-tools ghost-caption-tools--grid${showTools ? ' ghost-caption-tools--shown' : ''}`}>
                 <button type="button" className="ghost-btn" onClick={() => send('expand')} title="Expand August" aria-label="Expand August"><span className="ghost-br">[ </span>⤢<span className="ghost-br"> ]</span></button>
+                <button type="button" className="ghost-btn" onClick={() => send('switch')} title="Switch to Ghost Coin" aria-label="Switch to Ghost Coin"><span className="ghost-br">[ </span>⇄<span className="ghost-br"> ]</span></button>
                 {state.live && !interrupted && (
                   <button
                     type="button"
@@ -251,8 +266,10 @@ const GhostCaption: React.FC<GhostCaptionProps> = ({ state, send, sendAction }) 
                 >
                   <span className="ghost-br">[ </span><MicGlyph muted={state.micMuted} /><span className="ghost-br"> ]</span>
                 </button>
-                {state.live && (
+                {state.live ? (
                   <HoldToStopButton className="ghost-btn ghost-btn--end" onComplete={() => send('stop-live')} title="Hold 1.5 s to stop live text. Recording continues." ariaLabel="Stop Live Text (hold 1.5 seconds)" hint="HOLD"><span className="ghost-br">[ </span><LiveTextOffGlyph /><span className="ghost-br"> ]</span></HoldToStopButton>
+                ) : (
+                  <button type="button" className="ghost-btn ghost-btn--solid" onClick={() => send('start-live')} title="Start live text again. Recording continues." aria-label="Start live text"><span className="ghost-br">[ </span>▶&#xFE0E;<span className="ghost-br"> ]</span></button>
                 )}
                 <HoldToStopButton className="ghost-btn ghost-btn--end" onComplete={() => send('end')} title="Hold 1.5 s to end the meeting" ariaLabel="End Meeting (hold 1.5 seconds)" hint="HOLD"><span className="ghost-br">[ </span>■<span className="ghost-br"> ]</span></HoldToStopButton>
               </div>
@@ -261,16 +278,41 @@ const GhostCaption: React.FC<GhostCaptionProps> = ({ state, send, sendAction }) 
         )}
       </div>
 
-      <div className="ghost-caption-lines" ref={linesRef}>
-        {lines.length === 0 && !done && <div className="ghost-line ghost-line--empty">Waiting for speech…</div>}
-        {lines.map((line, i) => (
-          <div
-            key={`${state.lineCount - lines.length + i}`}
-            className={`ghost-line ghost-line--${line.kind === 'gap' ? 'gap' : line.speaker.toLowerCase()}${i < lines.length - 1 ? ' ghost-line--old' : ''}${i < lines.length - 2 ? ' ghost-line--older' : ''}`}
-          >
-            {line.text}
+      <div className="ghost-caption-mid">
+        {!done && state.live && (clearConfirm ? (
+          <div className="ghost-caption-tbar ghost-caption-tbar--confirm" role="alertdialog" aria-label="Clear transcript?" onMouseEnter={() => setTbarHover(true)} onMouseLeave={() => setTbarHover(false)}>
+            <span>CLEAR TRANSCRIPT?</span>
+            <button type="button" className="ghost-btn ghost-btn--danger-fill" onClick={() => { setClearConfirm(false); send('clear'); }} autoFocus>[ YES ]</button>
+            <button type="button" className="ghost-btn" onClick={() => setClearConfirm(false)}>[ NO ]</button>
+          </div>
+        ) : (
+          <div className={`ghost-caption-tbar${hovered && !alert ? ' ghost-caption-tbar--shown' : ''}`} onMouseEnter={() => setTbarHover(true)} onMouseLeave={() => setTbarHover(false)}>
+            <span className="ghost-tbar-group">
+              <button type="button" className="ghost-btn" onClick={() => send('copy-all')} disabled={state.lineCount === 0}>[ COPY ALL ]</button>
+              <button type="button" className="ghost-btn ghost-btn--accent" onClick={() => send('copy-clear')} disabled={state.lineCount === 0}>[ COPY &amp; CLEAR ]</button>
+              <button type="button" className="ghost-btn ghost-btn--end" onClick={() => { if (state.skipClearConfirmation) send('clear'); else setClearConfirm(true); }} disabled={state.lineCount === 0}>[ CLEAR ]</button>
+            </span>
+            <span className="ghost-tbar-sep" aria-hidden="true" />
+            <span className="ghost-tbar-group">
+              <button type="button" className="ghost-btn" onClick={() => send('font-down')} disabled={state.captionFontSize <= 12} title="Smaller text">[ A− ]</button>
+              <span className="ghost-tbar-value">{state.captionFontSize}</span>
+              <button type="button" className="ghost-btn" onClick={() => send('font-up')} disabled={state.captionFontSize >= 22} title="Larger text">[ A+ ]</button>
+            </span>
+            <span className="ghost-tbar-sep" aria-hidden="true" />
+            <button type="button" className="ghost-btn" onClick={() => send('opacity-next')} title="Background opacity (text stays 100%)">[ ◐ {state.captionOpacity}% ]</button>
           </div>
         ))}
+        <div className="ghost-caption-lines" ref={linesRef}>
+          {lines.length === 0 && !done && <div className="ghost-line ghost-line--empty">Waiting for speech…</div>}
+          {lines.map((line, i) => (
+            <div
+              key={`${state.lineCount - lines.length + i}`}
+              className={`ghost-line ghost-line--${line.kind === 'gap' ? 'gap' : line.speaker.toLowerCase()}${i < lines.length - 1 ? ' ghost-line--old' : ''}${i < lines.length - 2 ? ' ghost-line--older' : ''}`}
+            >
+              {line.text}
+            </div>
+          ))}
+        </div>
       </div>
 
       {state.live && !done && (
@@ -289,6 +331,7 @@ const GhostCaption: React.FC<GhostCaptionProps> = ({ state, send, sendAction }) 
             onAdd={(text, owner) => sendAction({ kind: 'add', text, owner })}
             onEdit={(id, patch) => sendAction({ kind: 'edit', id, patch })}
             onDelete={(id) => sendAction({ kind: 'delete', id })}
+            onSendToPraxis={(ids) => sendAction({ kind: 'praxis', ids })}
           />
         </div>
       )}
@@ -361,7 +404,7 @@ const GhostCoin: React.FC<GhostViewProps> = ({ state, send }) => {
       return;
     }
     if (done) send('expand');
-    else if (state.showCount) send('show-transcript');
+    else if (state.showCount) send('switch');
   };
 
   const face = done ? 'DONE' : lost ? 'LOST' : null;
@@ -412,6 +455,9 @@ const GhostCoin: React.FC<GhostViewProps> = ({ state, send }) => {
                 {paused ? '[ RESUME ]' : '[ PAUSE ]'}
               </button>
             )}
+            {!state.live && !done && !lost && (
+              <button type="button" className="ghost-btn ghost-btn--solid" onClick={() => send('start-live')} title="Start live text again">[ ▶&#xFE0E; LIVE ]</button>
+            )}
             {!done && !lost && (
               <button
                 type="button"
@@ -422,6 +468,9 @@ const GhostCoin: React.FC<GhostViewProps> = ({ state, send }) => {
               </button>
             )}
             {!done && !lost && <HoldToStopButton className="ghost-btn ghost-btn--end" onComplete={() => send('end')} title="Hold 1.5 s to end the meeting" ariaLabel="End Meeting (hold 1.5 seconds)" hint="[ HOLD ]">[ END MEETING ]</HoldToStopButton>}
+            {state.live && !done && !lost && (
+              <button type="button" className="ghost-btn" onClick={() => send('switch')} title="Switch to Ghost Caption" aria-label="Switch to Ghost Caption">[ ⇄ ]</button>
+            )}
             <button type="button" className={`ghost-btn${lost || done ? ' ghost-btn--accent' : ''}`} onClick={() => send('expand')}>[ OPEN ]</button>
             </>
         </div>
@@ -446,6 +495,9 @@ const PLACEHOLDER = (widget: GhostWidget): GhostState => ({
   actionEnabled: null,
   micMuted: false,
   mutedHint: false,
+  skipClearConfirmation: false,
+  captionFontSize: 14,
+  captionOpacity: 78,
 });
 
 interface GhostAppProps {

@@ -47,6 +47,10 @@ export interface UserPreferences {
   compactCaptionHeight?: number;
   // Ghost Caption width in px (320–760), set by dragging the caption's left/right edge (AUG-187).
   compactCaptionWidth?: number;
+  // AUG-188: Ghost Caption text size in px, one of 12/14/16/18/22.
+  compactCaptionFontSize?: number;
+  // AUG-188: Ghost Caption background opacity in %, one of 40/60/78/90/100 (text stays opaque).
+  compactCaptionOpacity?: number;
   // One-time "snap your call" hint. Stored here, not localStorage: the packaged app's origin port changes every launch.
   compactHintSeen?: boolean;
 }
@@ -82,6 +86,8 @@ export const DEFAULT_PREFERENCES: Required<UserPreferences> = {
   compactStripWidth: 360,
   compactCaptionHeight: 112,
   compactCaptionWidth: 760,
+  compactCaptionFontSize: 14,
+  compactCaptionOpacity: 78,
   compactHintSeen: false,
 };
 

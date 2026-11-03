@@ -33,6 +33,8 @@ export interface CompactActions {
   editActionItem(id: string, patch: { text?: string; owner?: string }): void;
   deleteActionItem(id: string): void;
   setMicMuted(muted: boolean): void; // AUG-181
+  startLive(): void; // AUG-188: Start Live Text again (saved engine, empty window)
+  sendToPraxis(ids: string[]): void; // AUG-188: open the Send to Praxis modal with these items
 }
 
 export interface CompactController {

@@ -21,6 +21,18 @@ const ACCEPTED_EXTENSIONS = ['.wav', '.mp3', '.ogg', '.flac', '.m4a', '.mp4', '.
 // Must match the multer fileSize limit in server/src/routes/sessions.ts
 const MAX_UPLOAD_BYTES = 2 * 1024 * 1024 * 1024;
 const AUDIO_BARS_COUNT = 12;
+
+// AUG-188: in Ghost Mode the main window is hidden and has no document focus, so navigator.clipboard rejects; the
+// desktop bridge writes the clipboard from the main process.
+async function writeClipboard(text: string): Promise<void> {
+  const bridge = window.august?.writeClipboard;
+  if (bridge) {
+    const r = await bridge(text);
+    if (!r.ok) throw new Error('clipboard write failed');
+    return;
+  }
+  await navigator.clipboard.writeText(text);
+}
 const BAR_BASE_HEIGHT = [14, 8, 12, 6, 15, 10, 7, 13, 6, 11, 9, 14];
 
 interface FileUploadProps {
@@ -98,6 +110,8 @@ const FileUpload: React.FC<FileUploadProps> = ({ onUploaded, onRecordingChange, 
   const liveParticipantsRef = useRef<Participants>({ me: '', them: '' });
   const liveKeyRef = useRef<string | null>(null);
   const [praxisExport, setPraxisExport] = useState<{ ids: string[]; mode: 'separate' | 'common'; liveKey: string } | null>(null);
+  const recordingLiveSourceRef = useRef<{ micStream: MediaStream | null; systemStream: MediaStream | null; captureId: string | null } | null>(null); // AUG-188: what Start Live Text needs, kept for the whole recording
+  const liveKeyHolderRef = useRef<{ key: string | null } | null>(null); // AUG-188: the upload reads the key from this holder
   const liveStartArgsRef = useRef<{ micStream: MediaStream | null; systemStream: MediaStream | null; engine: LiveEngine; captureId: string | null } | null>(null);
 
   const fileInputRef = useRef<HTMLInputElement>(null);
@@ -346,6 +360,9 @@ const FileUpload: React.FC<FileUploadProps> = ({ onUploaded, onRecordingChange, 
     // AUG-165: one key per live recording; the upload carries it so the server moves the collected action items into the session.
     const recordingLiveKey = useLive ? crypto.randomUUID() : null;
     liveKeyRef.current = recordingLiveKey;
+    // A Default recording that starts Live later gets its key here, so the upload still attaches its action items.
+    const liveKeyHolder = { key: recordingLiveKey };
+    liveKeyHolderRef.current = liveKeyHolder;
     if (useLive) {
       liveParticipantsRef.current = { me: '', them: '' };
       setLiveParticipants({ me: '', them: '' });
@@ -435,7 +452,7 @@ const FileUpload: React.FC<FileUploadProps> = ({ onUploaded, onRecordingChange, 
         setIsUploading(true);
         setUploadProgress(null);
         try {
-          await uploadDualAudio(micFile, sysFile, language, setUploadProgress, recordingLiveKey, dualState.mutes);
+          await uploadDualAudio(micFile, sysFile, language, setUploadProgress, liveKeyHolder.key, dualState.mutes);
           onUploaded();
         } catch (err) {
           setError((err as Error).message || 'Upload failed');
@@ -460,9 +477,9 @@ const FileUpload: React.FC<FileUploadProps> = ({ onUploaded, onRecordingChange, 
             setCaptureNotice(`System audio track was lost (${(err as Error).message}) — saving the microphone track only.`);
           }
           if (captureStopped) {
-            await uploadDualAudioWithCapture(micFile, capture.captureId, micStartedAtRef.current, language, setUploadProgress, recordingLiveKey, mutes);
+            await uploadDualAudioWithCapture(micFile, capture.captureId, micStartedAtRef.current, language, setUploadProgress, liveKeyHolder.key, mutes);
           } else {
-            await uploadAudio(micFile, language, setUploadProgress, recordingLiveKey, mutes);
+            await uploadAudio(micFile, language, setUploadProgress, liveKeyHolder.key, mutes);
           }
           onUploaded();
         } catch (err) {
@@ -561,7 +578,7 @@ const FileUpload: React.FC<FileUploadProps> = ({ onUploaded, onRecordingChange, 
           setIsUploading(true);
           setUploadProgress(null);
           try {
-            await uploadAudio(file, language, setUploadProgress, recordingLiveKey, mutes);
+            await uploadAudio(file, language, setUploadProgress, liveKeyHolder.key, mutes);
             onUploaded();
           } catch (err) {
             setError((err as Error).message || 'Upload failed');
@@ -576,7 +593,8 @@ const FileUpload: React.FC<FileUploadProps> = ({ onUploaded, onRecordingChange, 
 
       if (useServerCapture) {
         try {
-          serverCapture = await startServerCapture({ live: useLive });
+          // AUG-188: always tee live PCM so Start Live Text can attach in a Default recording; the tee is drained when nothing is attached and the WAV is unchanged.
+          serverCapture = await startServerCapture({ live: true });
         } catch (err) {
           setCaptureNotice(`Direct system capture failed to start (${(err as Error).message}) — falling back to the browser screen picker.`);
         }
@@ -676,6 +694,7 @@ const FileUpload: React.FC<FileUploadProps> = ({ onUploaded, onRecordingChange, 
       setIsRecording(true);
       onRecordingChange?.(true);
 
+      recordingLiveSourceRef.current = { micStream: recordStream, systemStream: liveSystemStream, captureId: serverCapture?.captureId ?? null };
       if (useLive) {
         liveStartArgsRef.current = { micStream: recordStream, systemStream: liveSystemStream, engine: liveEngine, captureId: serverCapture?.captureId ?? null };
         startLiveTranscription(recordStream, liveSystemStream, liveEngine, serverCapture?.captureId ?? null);
@@ -736,6 +755,8 @@ const FileUpload: React.FC<FileUploadProps> = ({ onUploaded, onRecordingChange, 
     }
     liveKeyRef.current = null; // the recording's onstop closure keeps its own copy for the upload
     liveStartArgsRef.current = null;
+    recordingLiveSourceRef.current = null;
+    liveKeyHolderRef.current = null;
     setCaptureLost(false);
     micMutedRef.current = false;
     setMicMuted(false);
@@ -858,14 +879,14 @@ const FileUpload: React.FC<FileUploadProps> = ({ onUploaded, onRecordingChange, 
   const handleLivePause = useCallback(() => liveClientRef.current?.pause(), []);
   const handleLiveResume = useCallback(() => liveClientRef.current?.resume(), []);
   const handleLiveCopyAll = useCallback(() => {
-    navigator.clipboard.writeText(liveLinesToText(liveLines)).catch(() => {});
+    writeClipboard(liveLinesToText(liveLines)).catch(() => {});
   }, [liveLines]);
   // AUG-182: clear only after the clipboard write resolves; remove the copied line objects by identity so a chunk
   // that arrives (or merges into the last line) during the write is kept, never lost. Rejection -> nothing removed.
   const handleLiveCopyAndClear = useCallback(() => {
     if (liveLines.length === 0) return;
     const copied = new Set(liveLines);
-    navigator.clipboard.writeText(liveLinesToText(liveLines)).then(
+    writeClipboard(liveLinesToText(liveLines)).then(
       () => setLiveLines((prev) => prev.filter((l) => !copied.has(l))),
       () => {},
     );
@@ -907,6 +928,24 @@ const FileUpload: React.FC<FileUploadProps> = ({ onUploaded, onRecordingChange, 
     startLiveTranscription(args.micStream, args.systemStream, args.engine, args.captureId, true);
   }, [startLiveTranscription]);
 
+  // AUG-188: Start Live Text again — after Stop Live Text or in a recording started without Live. Saved engine, empty window;
+  // the recording and the server capture keep running (attach-capture re-attaches, same path as Retry).
+  const handleLiveRestart = useCallback(() => {
+    const src = recordingLiveSourceRef.current;
+    const rec = mediaRecorderRef.current;
+    if (!src || liveClientRef.current || !rec || rec.state !== 'recording') return;
+    const engine: LiveEngine = preferences?.liveEngine === 'groq' && groqAvailable ? 'groq' : 'local';
+    if (!liveKeyRef.current) {
+      const key = crypto.randomUUID();
+      liveKeyRef.current = key;
+      if (liveKeyHolderRef.current) liveKeyHolderRef.current.key = key;
+      liveParticipantsRef.current = { me: '', them: '' };
+      setLiveParticipants({ me: '', them: '' });
+    }
+    liveStartArgsRef.current = { micStream: src.micStream, systemStream: src.systemStream, engine, captureId: src.captureId };
+    startLiveTranscription(src.micStream, src.systemStream, engine, src.captureId);
+  }, [preferences?.liveEngine, groqAvailable, startLiveTranscription]);
+
   // Compact Mode bridge: publish a snapshot for the widgets and register stable actions (latest callbacks via ref).
   useEffect(() => {
     compactStore.publish({
@@ -928,8 +967,8 @@ const FileUpload: React.FC<FileUploadProps> = ({ onUploaded, onRecordingChange, 
     });
   }, [isRecording, liveActive, liveLines, liveStatus, liveError, captureLost, elapsedSeconds, audioLevels, captureSystemAudio, preferences?.skipClearConfirmation, liveActionItems, liveParticipants, liveActionEnabled, micMuted, mutedSpeechHint]);
 
-  const compactActionsRef = useRef({ stopRecording, handleLivePause, handleLiveResume, handleLiveStop, handleLiveRetry, handleLiveCopyAll, handleLiveCopyAndClear, handleLiveClearAll, handleActionAdd, handleActionEdit, handleActionDelete, setMicMute });
-  compactActionsRef.current = { stopRecording, handleLivePause, handleLiveResume, handleLiveStop, handleLiveRetry, handleLiveCopyAll, handleLiveCopyAndClear, handleLiveClearAll, handleActionAdd, handleActionEdit, handleActionDelete, setMicMute };
+  const compactActionsRef = useRef({ stopRecording, handleLivePause, handleLiveResume, handleLiveStop, handleLiveRetry, handleLiveRestart, handleLiveCopyAll, handleLiveCopyAndClear, handleLiveClearAll, handleActionAdd, handleActionEdit, handleActionDelete, setMicMute });
+  compactActionsRef.current = { stopRecording, handleLivePause, handleLiveResume, handleLiveStop, handleLiveRetry, handleLiveRestart, handleLiveCopyAll, handleLiveCopyAndClear, handleLiveClearAll, handleActionAdd, handleActionEdit, handleActionDelete, setMicMute };
   useEffect(() => {
     compactStore.setActions({
       end: () => compactActionsRef.current.stopRecording(),
@@ -945,6 +984,11 @@ const FileUpload: React.FC<FileUploadProps> = ({ onUploaded, onRecordingChange, 
       editActionItem: (id, patch) => compactActionsRef.current.handleActionEdit(id, patch),
       deleteActionItem: (id) => compactActionsRef.current.handleActionDelete(id),
       setMicMuted: (muted) => compactActionsRef.current.setMicMute(muted),
+      startLive: () => compactActionsRef.current.handleLiveRestart(),
+      sendToPraxis: (ids) => {
+        const liveKey = liveKeyRef.current;
+        if (liveKey && ids.length > 0) setPraxisExport({ ids, mode: 'separate', liveKey });
+      },
     });
     return () => compactStore.setActions(null);
   }, []);
@@ -1175,6 +1219,9 @@ const FileUpload: React.FC<FileUploadProps> = ({ onUploaded, onRecordingChange, 
           {micMuted && <span className="recording-mute-tag" title="Mute in August's recording">MIC OFF — your side is not recorded</span>}
           {canCompact && (
             <button type="button" className="recording-compact-btn" onClick={() => compactStore.requestCompact()} title="Shrink August to a widget (Ctrl/Cmd+Shift+C)">[ ⤡ COMPACT ]</button>
+          )}
+          {!liveActive && (
+            <button type="button" className="recording-compact-btn recording-start-live-btn" onClick={handleLiveRestart} title="Start live text again. Recording continues.">[ ▶&#xFE0E; START LIVE TEXT ]</button>
           )}
           {liveActive && (
             <button type="button" className={`recording-live-badge${liveHidden ? '' : ' recording-live-badge--dim'}`} onClick={() => setLiveHidden(prev => !prev)} aria-label={liveHidden ? 'Show live transcript' : 'Hide live transcript'}>

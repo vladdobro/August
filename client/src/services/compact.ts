@@ -4,6 +4,9 @@ import type { DesktopCompactShape } from '../desktop';
 export type CompactKind = 'indicator' | 'transcript';
 export type CompactWidget = 'dock-strip' | 'dock-square' | 'ghost-caption' | 'ghost-coin';
 
+export const CAPTION_FONT_SIZES = [12, 14, 16, 18, 22] as const;
+export const CAPTION_OPACITIES = [40, 60, 78, 90, 100] as const;
+
 export function compactPrefs(p: UserPreferences) {
   return {
     enabled: p.compactEnabled ?? DEFAULT_PREFERENCES.compactEnabled,
@@ -15,6 +18,8 @@ export function compactPrefs(p: UserPreferences) {
     stripWidth: p.compactStripWidth ?? DEFAULT_PREFERENCES.compactStripWidth,
     captionHeight: p.compactCaptionHeight ?? DEFAULT_PREFERENCES.compactCaptionHeight,
     captionWidth: p.compactCaptionWidth ?? DEFAULT_PREFERENCES.compactCaptionWidth,
+    captionFontSize: p.compactCaptionFontSize ?? DEFAULT_PREFERENCES.compactCaptionFontSize,
+    captionOpacity: p.compactCaptionOpacity ?? DEFAULT_PREFERENCES.compactCaptionOpacity,
     hintSeen: p.compactHintSeen ?? DEFAULT_PREFERENCES.compactHintSeen,
   };
 }
@@ -31,6 +36,38 @@ export function resolveCompactKind(p: UserPreferences, liveActive: boolean): Com
 export function resolveCompactWidget(p: UserPreferences, kind: CompactKind): CompactWidget {
   const c = compactPrefs(p);
   return kind === 'transcript' ? c.transcriptWidget : c.indicatorWidget;
+}
+
+export function pairWidget(w: CompactWidget): CompactWidget {
+  switch (w) {
+    case 'dock-strip': return 'dock-square';
+    case 'dock-square': return 'dock-strip';
+    case 'ghost-caption': return 'ghost-coin';
+    case 'ghost-coin': return 'ghost-caption';
+  }
+}
+
+export function isTranscriptWidget(w: CompactWidget | null): boolean {
+  return w === 'dock-strip' || w === 'ghost-caption';
+}
+
+/// AUG-188: the in-place switch is a per-recording override within the variant (Dock or Ghost); the transcript widget is
+/// unavailable while Live is off, so it falls back to its indicator pair.
+export function pickCompactWidget(p: UserPreferences, liveActive: boolean, override: CompactWidget | null): CompactWidget | null {
+  const kind = resolveCompactKind(p, liveActive);
+  if (!kind) return null;
+  if (!override) return resolveCompactWidget(p, kind);
+  if (isTranscriptWidget(override) && !liveActive) return pairWidget(override);
+  return override;
+}
+
+/// Index of the list value nearest to `value`.
+export function stepIndex(list: readonly number[], value: number): number {
+  let best = 0;
+  for (let i = 1; i < list.length; i++) {
+    if (Math.abs(list[i] - value) < Math.abs(list[best] - value)) best = i;
+  }
+  return best;
 }
 
 export function shapeForWidget(w: CompactWidget): DesktopCompactShape {

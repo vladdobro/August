@@ -75,6 +75,7 @@ const api = {
     ipcRenderer.send('august:ghost-caption-resize', opts ? { phase, ...opts } : phase);
   },
   resetGhostPosition: () => ipcRenderer.invoke('august:reset-ghost-position'),
+  writeClipboard: (text: string) => ipcRenderer.invoke('august:write-clipboard', text),
 };
 
 contextBridge.exposeInMainWorld('august', api);

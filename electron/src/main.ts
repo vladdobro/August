@@ -4,6 +4,7 @@ import { fileURLToPath, pathToFileURL } from 'node:url';
 import {
   app,
   BrowserWindow,
+  clipboard,
   desktopCapturer,
   dialog,
   globalShortcut,
@@ -572,6 +573,14 @@ function registerIpc(): void {
   ipcMain.handle('august:reset-ghost-position', (e) => {
     if (!mainWindow || e.sender !== mainWindow.webContents) return { ok: false };
     compact?.resetGhostPosition();
+    return { ok: true };
+  });
+
+  // AUG-188: compact Copy runs in the main window, which is hidden in Ghost Mode; navigator.clipboard needs document focus.
+  ipcMain.handle('august:write-clipboard', (e, text: unknown) => {
+    if (!mainWindow || e.sender !== mainWindow.webContents) return { ok: false };
+    if (typeof text !== 'string' || text.length > 5_000_000) return { ok: false };
+    clipboard.writeText(text);
     return { ok: true };
   });
 

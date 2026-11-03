@@ -151,6 +151,7 @@ const ActionItemsPanel: React.FC<ActionItemsPanelProps> = ({ items, participants
   const [adding, setAdding] = useState(false);
   const compact = variant === 'compact';
   const exportEnabled = Boolean(onSendToPraxis) && !compact;
+  const compactPraxis = compact && Boolean(onSendToPraxis); // AUG-188
   const [selected, setSelected] = useState<Set<string>>(new Set());
   const selectedIds = items.filter((i) => selected.has(i.id)).map((i) => i.id);
   const allSelected = items.length > 0 && selectedIds.length === items.length;
@@ -180,6 +181,9 @@ const ActionItemsPanel: React.FC<ActionItemsPanelProps> = ({ items, participants
             <button type="button" className={`action-items-add${compact ? ' action-items-add--compact' : ' action-items-add--header'}`} onClick={() => setAdding(true)}>
               {compact ? '[ + ADD ]' : '+ Add an item'}
             </button>
+          )}
+          {compactPraxis && items.length > 0 && (
+            <button type="button" className="action-items-add action-items-add--compact action-items-praxis-all" onClick={() => onSendToPraxis?.(items.map((i) => i.id), 'separate')} title="Send all items to Praxis">[ → PRAXIS ]</button>
           )}
         </div>
         {addForm}
@@ -239,6 +243,9 @@ const ActionItemsPanel: React.FC<ActionItemsPanelProps> = ({ items, participants
               )}
               {exportEnabled && onSendToPraxis && (
                 <button type="button" className="action-item-praxis" onClick={() => onSendToPraxis([item.id], 'separate')} title="Create a Praxis task from this item">→ Praxis</button>
+              )}
+              {compactPraxis && (
+                <button type="button" className="action-item-praxis action-item-praxis--compact" onClick={() => onSendToPraxis?.([item.id], 'separate')} title="Send to Praxis" aria-label="Send to Praxis">→</button>
               )}
               <button type="button" className="action-item-delete" onClick={() => onDelete(item.id)} aria-label="Delete action item" title="Delete">×</button>
             </div>

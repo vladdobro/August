@@ -1,0 +1,17 @@
+{
+  "version": 1,
+  "participants": {
+    "me": "",
+    "them": ""
+  },
+  "items": [
+    {
+      "id": "ai_e4df479b",
+      "text": "Снимаем.",
+      "owner": "Me",
+      "source": "Me",
+      "createdAt": "2026-11-03T20:57:45.442Z"
+    }
+  ],
+  "updatedAt": "2026-11-03T20:57:45.442Z"
+}

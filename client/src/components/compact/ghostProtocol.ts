@@ -26,15 +26,21 @@ export interface GhostState {
   actionEnabled: boolean | null;
   micMuted: boolean; // AUG-181
   mutedHint: boolean; // AUG-181
+  skipClearConfirmation: boolean;
+  captionFontSize: number;
+  captionOpacity: number; // AUG-188
 }
 
-export type GhostCommand = 'expand' | 'pause' | 'resume' | 'end' | 'retry' | 'show-transcript' | 'mute' | 'unmute' | 'stop-live';
+export type GhostCommand = 'expand' | 'pause' | 'resume' | 'end' | 'retry' | 'show-transcript' | 'mute' | 'unmute' | 'stop-live'
+  // AUG-188
+  | 'switch' | 'start-live' | 'copy-all' | 'copy-clear' | 'clear' | 'font-down' | 'font-up' | 'opacity-next';
 
 /// AUG-165: action item edits made in the ghost window; the main window applies them through compactStore actions.
 export type GhostAction =
   | { kind: 'add'; text: string; owner: string }
   | { kind: 'edit'; id: string; patch: { text?: string; owner?: string } }
-  | { kind: 'delete'; id: string };
+  | { kind: 'delete'; id: string }
+  | { kind: 'praxis'; ids: string[] }; // AUG-188
 
 export type GhostMessage =
   | { type: 'state'; state: GhostState }

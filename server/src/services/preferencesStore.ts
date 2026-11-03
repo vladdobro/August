@@ -110,7 +110,8 @@ export function sanitizePraxisProjects(input: unknown): PraxisProject[] {
 }
 
 /// Compact Mode prefs (AUG-156): booleans are strict, enums drop unknown values, the strip width clamps to 280–520
-/// and the Ghost Caption height to 72–480 and width to 320–760.
+/// and the Ghost Caption height to 72–480 and width to 320–760. AUG-188: the Ghost Caption font size and background
+/// opacity snap to the nearest step (12/14/16/18/22 px, 40/60/78/90/100 %).
 export function sanitizeCompactPreferences(patch: PreferencesRecord): PreferencesRecord {
   const out: PreferencesRecord = { ...patch };
   for (const key of ['compactEnabled', 'compactAlwaysOnTop', 'compactHintSeen']) {
@@ -139,6 +140,16 @@ export function sanitizeCompactPreferences(patch: PreferencesRecord): Preference
     const n = Number(out.compactCaptionWidth);
     if (Number.isFinite(n)) out.compactCaptionWidth = Math.min(760, Math.max(320, Math.round(n)));
     else delete out.compactCaptionWidth;
+  }
+  const steps: Record<string, readonly number[]> = {
+    compactCaptionFontSize: [12, 14, 16, 18, 22],
+    compactCaptionOpacity: [40, 60, 78, 90, 100],
+  };
+  for (const [key, list] of Object.entries(steps)) {
+    if (!(key in out)) continue;
+    const n = Number(out[key]);
+    if (Number.isFinite(n)) out[key] = list.reduce((best, v) => (Math.abs(v - n) < Math.abs(best - n) ? v : best), list[0]);
+    else delete out[key];
   }
   return out;
 }

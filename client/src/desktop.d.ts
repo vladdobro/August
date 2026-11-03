@@ -90,6 +90,8 @@ export interface AugustDesktopApi {
   ghostCaptionResize?(phase: DesktopGhostDragPhase, opts?: { edge?: DesktopGhostResizeEdge; minHeight?: number }): void;
   // Main window only: clears the saved Ghost Mode position so the caption and coin return to their default spots (AUG-187).
   resetGhostPosition?(): Promise<{ ok: boolean }>;
+  // Main window only (AUG-188): writes the system clipboard from the main process; navigator.clipboard needs document focus, which the hidden main window lacks in Ghost Mode.
+  writeClipboard?(text: string): Promise<{ ok: boolean }>;
 }
 
 declare global {
