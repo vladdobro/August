@@ -163,6 +163,48 @@ const SettingsModal: React.FC<SettingsModalProps> = ({
       ? 'This shortcut could not be registered — another application may already use it.'
       : null);
 
+  // AUG-181: mute hotkey — same capture flow as the record hotkey.
+  const [muteHotkeyCapturing, setMuteHotkeyCapturing] = useState(false);
+  const [muteHotkeyError, setMuteHotkeyError] = useState<string | null>(null);
+
+  const applyMuteHotkey = async (accelerator: string | null) => {
+    if (!desktop?.setMuteHotkey) return;
+    setMuteHotkeyError(null);
+    try {
+      const result = await desktop.setMuteHotkey(accelerator);
+      setDesktopSettings((prev) => (prev
+        ? { ...prev, muteHotkey: result.muteHotkey, muteHotkeyRegistered: result.ok && result.muteHotkey !== null }
+        : prev));
+      if (!result.ok) setMuteHotkeyError(result.error ?? 'Could not register this shortcut.');
+    } catch (err) {
+      setMuteHotkeyError((err as Error).message || 'Could not register this shortcut.');
+    }
+  };
+
+  const handleMuteHotkeyKeyDown = (e: React.KeyboardEvent<HTMLInputElement>) => {
+    if (!muteHotkeyCapturing) return;
+    e.preventDefault();
+    e.stopPropagation(); // keep Escape from closing the modal while capturing
+    if (e.key === 'Escape') {
+      setMuteHotkeyCapturing(false);
+      e.currentTarget.blur();
+      return;
+    }
+    const accelerator = acceleratorFromKeyboardEvent(e.nativeEvent);
+    if (!accelerator) return; // modifier-only press — keep waiting
+    setMuteHotkeyCapturing(false);
+    e.currentTarget.blur();
+    void applyMuteHotkey(accelerator);
+  };
+
+  const muteHotkeyDisplay = desktopSettings?.muteHotkey
+    ? formatAccelerator(desktopSettings.muteHotkey, desktop?.platform ?? '')
+    : 'Disabled';
+  const muteHotkeyWarning = muteHotkeyError
+    ?? (desktopSettings && desktopSettings.muteHotkey && !desktopSettings.muteHotkeyRegistered
+      ? 'This shortcut could not be registered — another application may already use it.'
+      : null);
+
   useEffect(() => {
     const handleEsc = (e: KeyboardEvent) => {
       if (e.key === 'Escape' && !groqConsentOpen && !groqKeyOpen) onClose();
@@ -802,6 +844,45 @@ const SettingsModal: React.FC<SettingsModalProps> = ({
               </div>
               {hotkeyWarning && <div className="settings-hint settings-hint--warn">{hotkeyWarning}</div>}
               <div className="settings-hint">Starts or stops a recording with your saved defaults from anywhere — even while August sits in the tray.</div>
+              {desktop.setMuteHotkey && (
+                <>
+                  <div className="settings-row">
+                    <label className="settings-label">Mute Hotkey</label>
+                    <div className="settings-path-group">
+                      <input
+                        type="text"
+                        readOnly
+                        className="settings-control settings-input"
+                        value={muteHotkeyCapturing ? '' : muteHotkeyDisplay}
+                        placeholder={muteHotkeyCapturing ? 'Press a key combination… (Esc to cancel)' : ''}
+                        title="Click, then press the shortcut you want"
+                        onFocus={() => setMuteHotkeyCapturing(true)}
+                        onBlur={() => setMuteHotkeyCapturing(false)}
+                        onKeyDown={handleMuteHotkeyKeyDown}
+                      />
+                      <button
+                        type="button"
+                        className="settings-btn-inline"
+                        disabled={!desktopSettings}
+                        onClick={() => void applyMuteHotkey(desktopSettings?.defaultMuteHotkey ?? null)}
+                      >
+                        Default
+                      </button>
+                      {desktopSettings?.muteHotkey && (
+                        <button
+                          type="button"
+                          className="settings-btn-inline settings-btn-inline--danger"
+                          onClick={() => void applyMuteHotkey(null)}
+                        >
+                          Disable
+                        </button>
+                      )}
+                    </div>
+                  </div>
+                  {muteHotkeyWarning && <div className="settings-hint settings-hint--warn">{muteHotkeyWarning}</div>}
+                  <div className="settings-hint">Mutes or unmutes your microphone in August's recording while recording. It does not mute Zoom, Meet or Teams.</div>
+                </>
+              )}
             </div>
           )}
           </>

@@ -1,4 +1,4 @@
-import type { ActionItemsFile, CaptureCapabilities, CorrectionStatus, CorrectionsFile, HealthStatus, LlmModelId, LlmModelInfo, LlmStatus, GroqTextStatus, ModelSetupStatus, ServerCapture, SessionMetadata, StorageSummary, TranscriptionLanguage } from './types';
+import type { ActionItemsFile, CaptureCapabilities, CorrectionStatus, CorrectionsFile, HealthStatus, LlmModelId, LlmModelInfo, LlmStatus, GroqTextStatus, ModelSetupStatus, MuteInterval, ServerCapture, SessionMetadata, StorageSummary, TranscriptionLanguage } from './types';
 
 export interface UploadProgress {
   loaded: number;
@@ -219,11 +219,13 @@ export function uploadAudio(
   language: TranscriptionLanguage | string,
   onProgress?: (progress: UploadProgress) => void,
   liveKey?: string | null,
+  muteIntervals?: MuteInterval[],
 ): Promise<SessionMetadata> {
   const formData = new FormData();
   formData.append('audio', file);
   formData.append('language', language);
   if (liveKey) formData.append('liveKey', liveKey);
+  if (muteIntervals && muteIntervals.length > 0) formData.append('muteIntervals', JSON.stringify(muteIntervals));
   return postSessionUpload(formData, onProgress);
 }
 
@@ -233,12 +235,14 @@ export function uploadDualAudio(
   language: TranscriptionLanguage | string,
   onProgress?: (progress: UploadProgress) => void,
   liveKey?: string | null,
+  muteIntervals?: MuteInterval[],
 ): Promise<SessionMetadata> {
   const formData = new FormData();
   formData.append('audio', micFile);
   formData.append('systemAudio', systemFile);
   formData.append('language', language);
   if (liveKey) formData.append('liveKey', liveKey);
+  if (muteIntervals && muteIntervals.length > 0) formData.append('muteIntervals', JSON.stringify(muteIntervals));
   return postSessionUpload(formData, onProgress);
 }
 
@@ -252,6 +256,7 @@ export function uploadDualAudioWithCapture(
   language: TranscriptionLanguage | string,
   onProgress?: (progress: UploadProgress) => void,
   liveKey?: string | null,
+  muteIntervals?: MuteInterval[],
 ): Promise<SessionMetadata> {
   const formData = new FormData();
   formData.append('audio', micFile);
@@ -259,6 +264,7 @@ export function uploadDualAudioWithCapture(
   formData.append('micStartedAt', String(micStartedAt));
   formData.append('language', language);
   if (liveKey) formData.append('liveKey', liveKey);
+  if (muteIntervals && muteIntervals.length > 0) formData.append('muteIntervals', JSON.stringify(muteIntervals));
   return postSessionUpload(formData, onProgress);
 }
 

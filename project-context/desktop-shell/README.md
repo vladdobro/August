@@ -13,8 +13,8 @@
 - Packaged builds set FFMPEG_PATH to the resources copy of ffmpeg (AUG-115), so a fresh machine needs no ffmpeg install.
 - asar is disabled so whisper-cli, ffmpeg, csc.exe and express.static work against real file paths.
 - `electron . --dev` (npm run dev:electron) attaches to the Vite dev server (default http://127.0.0.1:5175) and the tsx server on 3001 instead of embedding a server.
-- Tray icon states: idle, recording, transcribing; closing the window hides it to the tray and quitting is explicit. While compact the tray menu starts with "Expand August" and the tooltip shows the recording timer (AUG-156).
-- Global record hotkey default CommandOrControl+Alt+R, persisted in <userData>/desktop-settings.json, configurable in Settings → Desktop.
+- Tray icon states: idle, recording, transcribing; closing the window hides it to the tray and quitting is explicit. While compact the tray menu starts with "Expand August" and the tooltip shows the recording timer (AUG-156). While recording the menu also shows a "Mute microphone" checkbox item (checked while muted, AUG-181).
+- Global hotkeys, persisted in <userData>/desktop-settings.json and configurable in Settings → General → Desktop: record (default CommandOrControl+Alt+R) and mic mute (default CommandOrControl+Alt+M, AUG-181). The mute hotkey sends august:toggle-mute to the renderer only while recording and does nothing otherwise.
 - Native notifications fire on transcribing → completed/failed transitions detected by the main process polling GET /api/sessions every 5 seconds, and on recording start/stop while the window is hidden.
 - Auto-update uses electron-updater against GitHub Releases (vladdobro/August); Windows nsis and macOS zip targets update, msi and dmg do not.
 - The tray update item mirrors updater state: Check for Updates… → Checking… → Downloading (N%) → "Restart to Update to x.y.z" (AUG-141).
@@ -35,14 +35,14 @@
 - The Archive page opens the sessions data dir via window.august.revealSessionsDir() over august:reveal-sessions-dir; main calls shell.openPath(sessionsDir()) and takes no path from the renderer (AUG-150). The method is optional in desktop.d.ts; the browser build shows the path as text.
 - Compact Mode (AUG-156): CompactController (electron/src/compact.ts) resizes the main window to a right-edge Dock Strip or a 180×180 Dock Square, or hides it behind a frameless transparent always-on-top ghost window (Ghost Caption / Ghost Coin) loading the same app URL with ?ghost=caption|coin; setCompactMode({ shape: 'none' }) restores the saved bounds, maximized flag and the 960×600 minimum.
 - Always-on-top diverges: macOS setAlwaysOnTop(on, 'floating') + setVisibleOnAllWorkspaces(on, { visibleOnFullScreen: true }); Windows setAlwaysOnTop(on) only.
-- Also known as: reveal sessions folder, open data directory (AUG-150), Compact Mode, dock strip, dock square, ghost window, ghost caption, ghost coin, setCompactMode (AUG-156), nsis update data loss, data-backup, KeepsUserData, customRemoveFiles (AUG-158), update item in ControlsPanel (AUG-160).
+- Also known as: reveal sessions folder, open data directory (AUG-150), Compact Mode, dock strip, dock square, ghost window, ghost caption, ghost coin, setCompactMode (AUG-156), nsis update data loss, data-backup, KeepsUserData, customRemoveFiles (AUG-158), update item in ControlsPanel (AUG-160), mute hotkey, Ctrl+Alt+M, Mute microphone tray item, august:toggle-mute (AUG-181).
 - Key files: electron/build/installer.nsh, electron/src/main.ts, electron/src/compact.ts, electron/src/preload.cts, electron/src/tray.ts, electron/src/hotkey.ts, electron/src/sessionWatcher.ts, electron/src/updater.ts, electron/electron-builder.yml, server/src/app.ts, client/src/desktop.d.ts.
 
 This route documents how August's Electron desktop shell embeds the existing web app instead of replacing it.
 
 ## Purpose
 
-A desktop shell exists so non-technical users get a one-click install with no terminal or Node.js setup, plus native affordances a browser tab cannot offer: a tray icon, a global record hotkey, and native OS notifications. The Express server was kept intact rather than rebuilt on Electron IPC to minimize migration risk and keep one codebase serving both the web and desktop builds.
+A desktop shell exists so non-technical users get a one-click install with no terminal or Node.js setup, plus native affordances a browser tab cannot offer: a tray icon, global record and mic mute hotkeys, and native OS notifications. The Express server was kept intact rather than rebuilt on Electron IPC to minimize migration risk and keep one codebase serving both the web and desktop builds.
 
 ## Core Concepts
 
@@ -50,10 +50,10 @@ A desktop shell exists so non-technical users get a one-click install with no te
 - Preload bridge: `window.august`, exposed under contextIsolation and sandbox, implemented in electron/src/preload.cts and typed in client/src/desktop.d.ts.
 - Embedded server: the startServer export in server/src/app.ts; server/src/index.ts stays a thin CLI wrapper around it.
 - Dev renderer mode: the --dev flag that points the shell at the Vite dev server and the tsx server on 3001 instead of embedding a server.
-- Desktop settings store: <userData>/desktop-settings.json, holding shell-only settings such as the hotkey.
+- Desktop settings store: <userData>/desktop-settings.json, holding shell-only settings such as the record and mute hotkeys (recordHotkey, muteHotkey).
 - Session watcher: the main-process poller that detects session state transitions for notifications.
 - Tray: the persistent tray icon reflecting idle, recording and transcribing states.
-- Global hotkey: the OS-level shortcut that toggles recording regardless of window focus.
+- Global hotkey: an OS-level shortcut that works regardless of window focus; August has two slots, record (toggles recording) and mute (toggles the mic mute while recording).
 - Auto-updater: electron-updater checking GitHub Releases for new versions.
 - Smoke test: AUGUST_SMOKE_TEST=1 prints SMOKE_OK and exits after the first renderer load, for CI verification.
 
@@ -80,6 +80,8 @@ A desktop shell exists so non-technical users get a one-click install with no te
 - backgroundThrottling is disabled on the window so a recording continues at full rate while hidden in the tray.
 - The window hides on close; the app quits only via tray Quit, Cmd+Q or app.quit().
 - The hotkey must contain at least one modifier; a failed registration keeps the previous shortcut and reports the error to Settings.
+- hotkey.ts keeps a per-slot registry (record, mute) and unregisters only the changed slot's accelerator, never globalShortcut.unregisterAll() on a change (only on will-quit), so both hotkeys coexist. The same accelerator in both slots is refused with "... is already in use by the Record/Mute hotkey." (AUG-181).
+- Mic mute is renderer-only on both platforms: main only forwards the hotkey/tray toggle (august:toggle-mute) and receives the state (august:mic-muted-state) for the tray check mark; micMuted resets when recording stops. preload exposes setMuteHotkey, setMicMutedState, onToggleMute (optional in desktop.d.ts).
 - Session notifications are derived by polling; the first poll only seeds state so pre-existing completed sessions never notify.
 - macOS GUI apps do not inherit the shell PATH, so the shell appends /opt/homebrew/bin and /usr/local/bin before starting the server (the audiotee and ffmpeg PATH fallbacks; the packaged app ships its own audiotee in resources/whisper/bin/darwin-<arch>/).
 - Windows packaged builds carry a pre-compiled wasapi-loopback.exe in data/tools/ (placed by afterPack); the server's ensureWasapiHelper skips csc.exe compilation when the source hash matches.
@@ -178,7 +180,7 @@ A desktop shell exists so non-technical users get a one-click install with no te
 - electron/src/compact.ts — CompactController: compact shapes, bounds snapshot/restore, ghost window lifecycle, drag/snap, always-on-top per platform (AUG-156).
 - electron/src/preload.cts — implements the window.august bridge exposed to the renderer.
 - electron/src/tray.ts — tray icon creation, idle/recording/transcribing state updates and the update menu item driven by UpdateState; Expand August item and compact tooltip timer (AUG-156).
-- electron/src/hotkey.ts — global record hotkey registration, validation and persistence.
+- electron/src/hotkey.ts — per-slot global hotkey registration (record, mute) and validation.
 - electron/src/sessionWatcher.ts — polls GET /api/sessions to detect state transitions for notifications.
 - electron/src/updater.ts — electron-updater wiring against GitHub Releases; exposes UpdateState, checkNow/installNow/start controls and the update notifications (AUG-141).
 - electron/src/settings.ts — reads/writes <userData>/desktop-settings.json.

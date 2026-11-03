@@ -11,6 +11,15 @@ export interface DesktopSettings {
   recordHotkey: string | null;
   defaultRecordHotkey: string;
   hotkeyRegistered: boolean;
+  muteHotkey?: string | null;
+  defaultMuteHotkey?: string;
+  muteHotkeyRegistered?: boolean;
+}
+
+export interface DesktopMuteHotkeyResult {
+  ok: boolean;
+  muteHotkey: string | null;
+  error?: string;
 }
 
 export interface DesktopHotkeyResult {
@@ -55,6 +64,10 @@ export interface AugustDesktopApi {
   revealSessionsDir?(): Promise<DesktopRevealResult>;
   setRecordingState(recording: boolean): void;
   onToggleRecording(cb: () => void): () => void;
+  // AUG-181: mic mute. onToggleMute fires on the global mute hotkey / tray item, only while recording.
+  setMuteHotkey?(accelerator: string | null): Promise<DesktopMuteHotkeyResult>;
+  setMicMutedState?(muted: boolean): void;
+  onToggleMute?(cb: () => void): () => void;
   onOpenSession(cb: (sessionId: string) => void): () => void;
   // Compact Mode (AUG-156). Main window: resize to a dock shape or hide behind a ghost window; 'none' restores the saved bounds.
   setCompactMode?(request: DesktopCompactRequest): Promise<DesktopCompactResult>;

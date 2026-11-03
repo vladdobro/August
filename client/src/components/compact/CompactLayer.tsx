@@ -247,6 +247,8 @@ const CompactLayer: React.FC<CompactLayerProps> = (props) => {
       actionItems: s.actionItems,
       participants: s.participants,
       actionEnabled: s.actionEnabled,
+      micMuted: s.micMuted,
+      mutedHint: s.mutedHint,
     };
   }, [kind]);
 
@@ -286,6 +288,8 @@ const CompactLayer: React.FC<CompactLayerProps> = (props) => {
       case 'resume': actions?.resumeLive(); break;
       case 'end': actions?.end(); break;
       case 'retry': actions?.retryLive(); break;
+      case 'mute': actions?.setMicMuted(true); break;
+      case 'unmute': actions?.setMicMuted(false); break;
       case 'show-transcript': actions?.showLivePanel(); void expand(); break;
     }
   };

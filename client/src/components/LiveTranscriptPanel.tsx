@@ -13,6 +13,8 @@ export interface LiveLine {
   speaker: Speaker;
   text: string;
   parts?: LiveLinePart[];
+  /// AUG-181: '— mic muted —' divider inserted when the mic is muted; speaker is ignored.
+  kind?: 'gap';
 }
 
 export type { LiveStatus };
@@ -34,6 +36,10 @@ interface LiveTranscriptPanelProps {
   // Compact Mode (AUG-156): shrink August to a widget. Set only on the desktop shell.
   onCompact?: () => void;
   aside?: React.ReactNode; // AUG-165: Action items column next to the transcript
+  // AUG-181: mute the mic in August's recording
+  micMuted?: boolean;
+  onToggleMute?: () => void;
+  mutedHint?: boolean;
 }
 
 const STATUS_LABEL: Record<LiveStatus, string> = {
@@ -45,7 +51,7 @@ const STATUS_LABEL: Record<LiveStatus, string> = {
 };
 
 const LiveTranscriptPanel: React.FC<LiveTranscriptPanelProps> = ({
-  lines, status, error, warning, micUnavailable, onPause, onResume, onCopyAll, onClose, onStop, onClearAll, elapsed, onEndRecording, onCompact, aside,
+  lines, status, error, warning, micUnavailable, onPause, onResume, onCopyAll, onClose, onStop, onClearAll, elapsed, onEndRecording, onCompact, aside, micMuted, onToggleMute, mutedHint,
 }) => {
   const bodyRef = useRef<HTMLDivElement>(null);
   const [autoScroll, setAutoScroll] = useState(true);
@@ -93,6 +99,12 @@ const LiveTranscriptPanel: React.FC<LiveTranscriptPanelProps> = ({
         </span>
         <div className="live-topbar-actions">
           <button type="button" className="live-panel-btn live-panel-btn--pause" onClick={isPaused ? onResume : onPause} disabled={isDone}>{isPaused ? 'Resume' : 'Pause'}</button>
+          {onToggleMute && (
+            <button type="button" className={`live-panel-btn live-panel-btn--mute${micMuted ? ' live-panel-btn--mute-on' : ''}`} onClick={onToggleMute} aria-pressed={micMuted} title="Mute in August's recording">
+              <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" aria-hidden="true"><rect x="9" y="3" width="6" height="12"/><path d={micMuted ? 'M5 11a7 7 0 0 0 14 0M12 18v3M3 3l18 18' : 'M5 11a7 7 0 0 0 14 0M12 18v3'}/></svg>
+              {' '}{micMuted ? 'Unmute mic' : 'Mute mic'}
+            </button>
+          )}
           <button type="button" className="live-panel-btn live-panel-btn--copy" onClick={onCopyAll} disabled={lines.length === 0}>Copy All</button>
           <button type="button" className="live-panel-btn live-panel-btn--clear" onClick={() => setConfirmAction('clearAll')} disabled={lines.length === 0}>Clear All</button>
           <button type="button" className="live-panel-btn live-panel-btn--stop" onClick={() => setConfirmAction('stop')} disabled={isDone} title="Stop live transcription, keep recording">Stop Live</button>
@@ -118,11 +130,12 @@ const LiveTranscriptPanel: React.FC<LiveTranscriptPanelProps> = ({
         </div>
       )}
 
-      {(micUnavailable || error || warning) && (
+      {(micUnavailable || error || warning || mutedHint) && (
         <div className="live-panel-notices">
           {micUnavailable && <div className="live-panel-notice">Microphone unavailable — showing Them only</div>}
           {error && <div className="live-panel-warning">{error}</div>}
           {warning && <div className="live-panel-notice">{warning}</div>}
+          {mutedHint && <div className="live-panel-notice live-panel-notice--muted">You're muted in August</div>}
         </div>
       )}
       <div className="live-panel-main">
@@ -140,7 +153,9 @@ const LiveTranscriptPanel: React.FC<LiveTranscriptPanelProps> = ({
             {lines.length === 0 && (status === 'listening' || status === 'connecting') && (
               <div className="live-panel-empty">Waiting for speech…</div>
             )}
-            {lines.map((line, i) => (
+            {lines.map((line, i) => line.kind === 'gap' ? (
+              <div key={i} className="live-line live-line--gap">{line.text}</div>
+            ) : (
               <div key={i} className="live-line">
                 <span className={`live-line-speaker live-line-speaker--${line.speaker.toLowerCase()}`}>
                   {line.speaker}:

@@ -35,6 +35,8 @@ export interface SessionMetadata {
   // AUG-152: set when the converted WAV(s) were removed automatically after a confident transcription; source audio stays.
   wavAutoDeletedAt?: string;
   participants?: { me: string; them: string }; // AUG-165: names for Me / Them entered at live recording start
+  // AUG-181: mic mute ranges, ms relative to the mic recorder start. Stored for the batch merge; never shown in the UI.
+  muteIntervals?: MuteInterval[];
 }
 
 /// AUG-152: how confidenceScore was derived. 'no-speech-prob' when the binary exported no_speech_prob, 'token-logprob'
@@ -135,6 +137,8 @@ export interface WhisperJsonOutput {
     tokens?: Array<{ text: string; id?: number; p: number }>;
   }>;
 }
+
+export interface MuteInterval { startMs: number; endMs: number }
 
 export interface MergedUtterance {
   start: number;

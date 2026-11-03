@@ -17,10 +17,10 @@ import {
 } from 'electron';
 
 import { CompactController, parseCompactRequest, type CompactEvent } from './compact.js';
-import { applyRecordHotkey } from './hotkey.js';
+import { applyMuteHotkey, applyRecordHotkey } from './hotkey.js';
 import { installFileLogger } from './log.js';
 import { startSessionWatcher } from './sessionWatcher.js';
-import { DEFAULT_RECORD_HOTKEY, SettingsStore } from './settings.js';
+import { DEFAULT_MUTE_HOTKEY, DEFAULT_RECORD_HOTKEY, SettingsStore } from './settings.js';
 import { AppTray } from './tray.js';
 import { fitWindowState, readWindowState, WINDOW_MIN_SIZE, writeWindowState } from './windowState.js';
 import { setupAutoUpdater, type UpdateState } from './updater.js';
@@ -67,6 +67,8 @@ let server: RunningServer | null = null;
 let isQuitting = false;
 let recording = false;
 let hotkeyRegistered = false;
+let muteHotkeyRegistered = false;
+let micMuted = false;
 const settings = new SettingsStore(app.getPath('userData'));
 
 function whisperPlatformDir(): string | null {
@@ -247,6 +249,13 @@ function notify(title: string, body: string, onClick?: () => void): void {
 /// (hidden or shown) so a hotkey press during a call never steals focus.
 function requestToggleRecording(): void {
   mainWindow?.webContents.send('august:toggle-recording');
+}
+
+/// AUG-181: mute hotkey/tray toggle. The renderer owns the audio graph, so main only forwards the request;
+/// no-op when not recording.
+function requestToggleMute(): void {
+  if (!recording) return;
+  mainWindow?.webContents.send('august:toggle-mute');
 }
 
 function openSession(sessionId: string): void {
@@ -442,6 +451,8 @@ function registerIpc(): void {
     ...settings.get(),
     defaultRecordHotkey: DEFAULT_RECORD_HOTKEY,
     hotkeyRegistered,
+    defaultMuteHotkey: DEFAULT_MUTE_HOTKEY,
+    muteHotkeyRegistered,
   }));
 
   ipcMain.handle('august:reveal-session', (_e, sessionId: unknown) => revealSession(sessionId));
@@ -461,12 +472,36 @@ function registerIpc(): void {
     return { ok: result.ok, recordHotkey: settings.get().recordHotkey, error: result.error };
   });
 
+  // AUG-181: same flow as the record hotkey, for the mic-mute shortcut.
+  ipcMain.handle('august:set-mute-hotkey', (_e, accelerator: unknown) => {
+    const next = typeof accelerator === 'string' && accelerator.trim() ? accelerator.trim() : null;
+    const result = applyMuteHotkey(next, requestToggleMute);
+    if (result.ok) {
+      settings.update({ muteHotkey: next });
+      muteHotkeyRegistered = next !== null;
+      tray?.update({ muteAccelerator: next });
+    } else {
+      // Keep the previous working shortcut instead of leaving the user with none.
+      const previous = settings.get().muteHotkey;
+      muteHotkeyRegistered = applyMuteHotkey(previous, requestToggleMute).ok && previous !== null;
+    }
+    return { ok: result.ok, muteHotkey: settings.get().muteHotkey, error: result.error };
+  });
+
+  ipcMain.on('august:mic-muted-state', (_e, value: unknown) => {
+    const next = value === true;
+    if (next === micMuted) return;
+    micMuted = next;
+    tray?.update({ micMuted });
+  });
+
   ipcMain.on('august:recording-state', (_e, value: unknown) => {
     const next = value === true;
     if (next === recording) return;
     recording = next;
     recordingSince = recording ? Date.now() : null;
-    tray?.update({ recording, recordingSince });
+    if (!recording) micMuted = false;
+    tray?.update(recording ? { recording, recordingSince } : { recording, recordingSince, micMuted: false });
     // In compact mode the compact widget is the visible surface, so no notification.
     if (mainWindow && !mainWindow.isVisible() && !(compact && compact.shape !== 'none')) {
       notify(
@@ -576,6 +611,7 @@ async function main(): Promise<void> {
   tray = new AppTray(path.join(appRoot, 'electron', 'build', 'tray'), {
     showWindow,
     toggleRecording: requestToggleRecording,
+    toggleMute: requestToggleMute,
     expandCompact: () => sendCompactEvent({ type: 'expand' }),
     updater,
     quit: () => {
@@ -590,6 +626,12 @@ async function main(): Promise<void> {
   const hotkey = applyRecordHotkey(initialHotkey, requestToggleRecording);
   hotkeyRegistered = hotkey.ok && initialHotkey !== null;
   if (!hotkey.ok) console.warn(`Record hotkey not registered: ${hotkey.error}`);
+
+  const initialMute = settings.get().muteHotkey;
+  const mute = applyMuteHotkey(initialMute, requestToggleMute);
+  muteHotkeyRegistered = mute.ok && initialMute !== null;
+  if (!mute.ok) console.warn(`Mute hotkey not registered: ${mute.error}`);
+  tray?.update({ muteAccelerator: settings.get().muteHotkey });
 
   const stopWatcher = startSessionWatcher(apiBase, {
     onTranscribingCount: (count) => tray?.update({ transcribing: count }),

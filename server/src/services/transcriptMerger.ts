@@ -4,7 +4,7 @@
 // line-for-line for the single-stream (imported media) path used by August.
 // Do not re-tune the thresholds — they are copied exactly, not re-derived.
 
-import type { MergedUtterance, TranscriptSegment } from '../types.js';
+import type { MergedUtterance, MuteInterval, TranscriptSegment } from '../types.js';
 
 /// Segments whose normalized text is exactly one of these are dropped as
 /// content-free filler (whisper.cpp's own bracketed-tag vocabulary,
@@ -292,6 +292,81 @@ export function formatTimestamp(seconds: number): string {
   return `${pad(hours)}:${pad(minutes)}:${pad(secs)}`;
 }
 
+export const MAX_MUTE_INTERVALS = 1000;
+
+/// AUG-181: validates the client's muteIntervals form field (JSON string or array). Drops malformed entries, sorts, merges overlaps.
+export function parseMuteIntervals(raw: unknown): MuteInterval[] {
+  let value: unknown = raw;
+  if (typeof raw === 'string') {
+    try {
+      value = JSON.parse(raw);
+    } catch {
+      return [];
+    }
+  }
+  if (!Array.isArray(value)) return [];
+  const valid: MuteInterval[] = [];
+  for (const entry of value) {
+    if (valid.length >= MAX_MUTE_INTERVALS) break;
+    if (!entry || typeof entry !== 'object') continue;
+    const { startMs, endMs } = entry as { startMs?: unknown; endMs?: unknown };
+    if (typeof startMs !== 'number' || typeof endMs !== 'number') continue;
+    if (!Number.isFinite(startMs) || !Number.isFinite(endMs)) continue;
+    if (startMs < 0 || endMs <= startMs) continue;
+    valid.push({ startMs: Math.round(startMs), endMs: Math.round(endMs) });
+  }
+  valid.sort((a, b) => a.startMs - b.startMs);
+  const merged: MuteInterval[] = [];
+  for (const interval of valid) {
+    const last = merged[merged.length - 1];
+    if (last && interval.startMs <= last.endMs) {
+      last.endMs = Math.max(last.endMs, interval.endMs);
+    } else {
+      merged.push({ ...interval });
+    }
+  }
+  return merged;
+}
+
+/// AUG-181: drops segments that lie mostly (>= 50 % of their length) inside a mute range. offsetSec is the shift already
+/// applied to these segments by alignDualSegments, so the ranges move with them.
+export function dropMutedSegments(
+  segments: TranscriptSegment[],
+  intervals: MuteInterval[],
+  offsetSec = 0,
+): TranscriptSegment[] {
+  if (intervals.length === 0) return segments;
+  const ranges = intervals.map((i) => ({ s: i.startMs / 1000 + offsetSec, e: i.endMs / 1000 + offsetSec }));
+  return segments.filter((seg) => {
+    const length = seg.end - seg.start;
+    if (length <= 0) {
+      return !ranges.some((r) => seg.start >= r.s && seg.start <= r.e);
+    }
+    let overlap = 0;
+    for (const r of ranges) {
+      overlap += Math.max(0, Math.min(seg.end, r.e) - Math.max(seg.start, r.s));
+    }
+    return overlap < 0.5 * length;
+  });
+}
+
+/// AUG-181: mic shift (seconds) alignDualSegments applies to mic segments: the mic moves forward only when it started later.
+export function micShiftSec(systemOffsetMs: number): number {
+  return Math.max(0, -(Number.isFinite(systemOffsetMs) ? systemOffsetMs : 0) / 1000);
+}
+
+/// Total minutes (not wrapped at the hour) as mm:ss, e.g. 75:03.
+export function formatGapClock(seconds: number): string {
+  const total = Math.max(0, Math.floor(Number.isFinite(seconds) ? seconds : 0));
+  const minutes = Math.floor(total / 60);
+  const secs = total % 60;
+  return `${minutes.toString().padStart(2, '0')}:${secs.toString().padStart(2, '0')}`;
+}
+
+export function muteGapLine(startSec: number, endSec: number): string {
+  return `— mic muted ${formatGapClock(startSec)}–${formatGapClock(endSec)} —`;
+}
+
 /// Renders utterances as transcript.md: a header followed by one
 /// `[HH:MM:SS] text` line per utterance (`[HH:MM:SS] [Me]/[Them] text` when
 /// utterances carry roles). Direct port of TranscriptMerger.cs's
@@ -299,10 +374,13 @@ export function formatTimestamp(seconds: number): string {
 /// server-capture alignment offset (session.systemOffsetMs) is applied by
 /// alignDualSegments before merging and is deliberately not printed here —
 /// it is a diagnostic that belongs in session.json, not in a user-facing transcript.
+/// AUG-181: muteGaps add `— mic muted mm:ss–mm:ss —` marker lines between utterances. They deliberately carry no
+/// `[HH:MM:SS]` prefix: transcriptCorrections.ts and the client count timestamp lines as utterance indexes.
 export function renderTranscript(
   utterances: MergedUtterance[],
   startedAt: string,
   duration: number,
+  muteGaps: Array<{ startSec: number; endSec: number }> = [],
 ): string {
   const date = new Date(startedAt);
   const dateLabel = Number.isNaN(date.getTime())
@@ -311,9 +389,18 @@ export function renderTranscript(
 
   const lines = ['# Transcript', '', `- Date: ${dateLabel}`, `- Duration: ${formatTimestamp(duration)}`, ''];
 
+  const gaps = [...muteGaps].sort((a, b) => a.startSec - b.startSec);
+  let gapIndex = 0;
   for (const utterance of utterances) {
+    while (gapIndex < gaps.length && utterance.start >= gaps[gapIndex].startSec) {
+      lines.push(muteGapLine(gaps[gapIndex].startSec, gaps[gapIndex].endSec));
+      gapIndex++;
+    }
     const rolePrefix = utterance.role ? `[${utterance.role}] ` : '';
     lines.push(`[${formatTimestamp(utterance.start)}] ${rolePrefix}${utterance.text}`);
+  }
+  for (; gapIndex < gaps.length; gapIndex++) {
+    lines.push(muteGapLine(gaps[gapIndex].startSec, gaps[gapIndex].endSec));
   }
 
   return lines.join('\n') + '\n';

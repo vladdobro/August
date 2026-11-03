@@ -4,6 +4,14 @@ import { formatClock } from '../../services/compact';
 import { statusTag } from './ghostProtocol';
 import ActionItemsPanel from '../ActionItemsPanel';
 
+/// AUG-181: small mic glyph, slashed when muted.
+export const MicGlyph: React.FC<{ muted: boolean }> = ({ muted }) => (
+  <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" aria-hidden="true">
+    <rect x="9" y="3" width="6" height="12" />
+    <path d={muted ? 'M5 11a7 7 0 0 0 14 0M12 18v3M3 3l18 18' : 'M5 11a7 7 0 0 0 14 0M12 18v3'} />
+  </svg>
+);
+
 interface DockProps {
   snap: CompactSnapshot;
   actions: CompactActions | null;
@@ -78,6 +86,7 @@ export const DockStrip: React.FC<DockProps> = ({ snap, actions, onExpand }) => {
           <span className={`compact-rec${paused ? ' compact-rec--paused' : ''}`} aria-hidden="true" />
           <span className={`compact-timer${paused ? ' compact-timer--paused' : ''}`}>{formatClock(snap.elapsedSeconds)}</span>
           <span className={`compact-tag compact-tag--${tag.tone}`}>{tag.label}</span>
+          {snap.micMuted && <span className="compact-tag compact-tag--muted">{snap.mutedHint ? "YOU'RE MUTED" : 'MIC OFF'}</span>}
           <span className="compact-spacer" />
           <button type="button" className="compact-btn compact-btn--icon" onClick={onExpand} title="Expand August (Esc)" aria-label="Expand August">[ ⤢ ]</button>
         </div>
@@ -106,7 +115,9 @@ export const DockStrip: React.FC<DockProps> = ({ snap, actions, onExpand }) => {
       <div className="compact-strip-bodywrap">
         <div className="compact-strip-body" ref={bodyRef} onScroll={onScroll}>
           {snap.lines.length === 0 && <div className="compact-strip-empty">Waiting for speech…</div>}
-          {snap.lines.map((line, i) => (
+          {snap.lines.map((line, i) => line.kind === 'gap' ? (
+            <div key={i} className="compact-line compact-line--gap">{line.text}</div>
+          ) : (
             <div key={i} className={`compact-line compact-line--${line.speaker.toLowerCase()}`}>{line.text}</div>
           ))}
         </div>
@@ -138,6 +149,15 @@ export const DockStrip: React.FC<DockProps> = ({ snap, actions, onExpand }) => {
         >
           {paused ? '[ RESUME ]' : '[ PAUSE ]'}
         </button>
+        <button
+          type="button"
+          className={`compact-btn compact-btn--mute${snap.micMuted ? ' compact-btn--mute-on' : ''}`}
+          onClick={() => actions?.setMicMuted(!snap.micMuted)}
+          aria-pressed={snap.micMuted}
+          title="Mute in August's recording"
+        >
+          {snap.micMuted ? '[ UNMUTE ]' : '[ MUTE ]'}
+        </button>
         <button type="button" className="compact-btn compact-btn--end-fill" onClick={handleEnd}>[ END ]</button>
       </div>
 
@@ -159,8 +179,8 @@ export const DockSquare: React.FC<SquareProps> = ({ snap, actions, onExpand, sho
   const interrupted = snap.liveStatus === 'interrupted';
   const lost = snap.captureLost;
 
-  const tagLabel = lost ? 'LOST' : paused ? 'PAUSED' : snap.dualTrack ? 'MIC + SYS' : 'MIC';
-  const tagTone = lost ? 'error' : paused ? 'pause' : 'idle';
+  const tagLabel = lost ? 'LOST' : paused ? 'PAUSED' : snap.micMuted ? (snap.dualTrack ? 'SYS · MIC OFF' : 'MIC OFF') : (snap.dualTrack ? 'MIC + SYS' : 'MIC');
+  const tagTone = lost ? 'error' : paused ? 'pause' : snap.micMuted ? 'muted' : 'idle';
 
   const handleStop = () => {
     if (snap.skipStopConfirmation) actions?.end();
@@ -176,6 +196,16 @@ export const DockSquare: React.FC<SquareProps> = ({ snap, actions, onExpand, sho
           <button type="button" className="compact-btn compact-btn--count" onClick={onShowTranscript} title="Show the live transcript">▤ {snap.lines.length}</button>
         )}
         <span className="compact-spacer" />
+        <button
+          type="button"
+          className={`compact-btn compact-btn--icon compact-btn--mute${snap.micMuted ? ' compact-btn--mute-on' : ''}`}
+          onClick={() => actions?.setMicMuted(!snap.micMuted)}
+          aria-pressed={snap.micMuted}
+          aria-label={snap.micMuted ? 'Unmute microphone' : 'Mute microphone'}
+          title="Mute in August's recording"
+        >
+          [ <MicGlyph muted={snap.micMuted} /> ]
+        </button>
         <button type="button" className="compact-btn compact-btn--icon" onClick={onExpand} title="Expand August (Esc)" aria-label="Expand August">[ ⤢ ]</button>
       </div>
 
@@ -185,6 +215,7 @@ export const DockSquare: React.FC<SquareProps> = ({ snap, actions, onExpand, sho
         ) : (
           <span className={`compact-square-timer${paused ? ' compact-timer--paused' : ''}`}>{formatClock(snap.elapsedSeconds)}</span>
         )}
+        {snap.mutedHint && !lost && <span className="compact-tag compact-tag--muted">YOU'RE MUTED</span>}
         {interrupted && !lost && (
           <button type="button" className="compact-btn compact-btn--small" onClick={() => actions?.retryLive()}>[ RETRY ]</button>
         )}
@@ -192,7 +223,7 @@ export const DockSquare: React.FC<SquareProps> = ({ snap, actions, onExpand, sho
 
       <div className="compact-bars" aria-hidden="true">
         {snap.levels.map((level, i) => (
-          <i key={i} style={{ height: paused || lost ? '10%' : `${Math.round((0.1 + Math.min(1, level) * 0.9) * 100)}%` }} />
+          <i key={i} style={{ height: paused || lost || (snap.micMuted && !snap.dualTrack) ? '10%' : `${Math.round((0.1 + Math.min(1, level) * 0.9) * 100)}%` }} />
         ))}
       </div>
 

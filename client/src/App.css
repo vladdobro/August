@@ -723,6 +723,18 @@ body {
   white-space: nowrap;
 }
 
+.recording-mute-tag {
+  font-size: 10px;
+  font-weight: 700;
+  letter-spacing: 0.06em;
+  text-transform: uppercase;
+  color: var(--status-failed);
+  border: 1px solid var(--status-failed);
+  border-radius: 0;
+  padding: 1px 6px;
+  white-space: nowrap;
+}
+
 .recording-tracks {
   font-size: 11px;
   font-weight: 700;
@@ -1217,6 +1229,16 @@ body {
   gap: 16px;
   font-size: 15px;
   line-height: 1.7;
+}
+
+.transcript-line--gap {
+  justify-content: center;
+  margin: 6px 0;
+  padding-top: 6px;
+  font-size: 12px;
+  line-height: 1.4;
+  color: var(--text-secondary);
+  border-top: 1px solid var(--border-color);
 }
 
 .transcript-timestamp {
@@ -1987,6 +2009,20 @@ body {
   box-shadow: 0 0 16px var(--accent-glow), inset 0 0 8px var(--accent-light);
 }
 
+/* AUG-181: muted mic node (red, never the amber pause colour). The node stays a circle by design. */
+.circuit-node.circuit-node--muted,
+.circuit-node.circuit-node--muted:hover:not(:disabled),
+:root[data-theme='dark'] .circuit-node.circuit-node--muted,
+:root[data-theme='dark'] .circuit-node.circuit-node--muted:hover {
+  background: rgba(224, 85, 85, 0.12);
+  border-color: var(--status-failed);
+  box-shadow: 0 0 16px rgba(224, 85, 85, 0.35), inset 0 0 8px rgba(224, 85, 85, 0.12);
+}
+.circuit-node--muted .circuit-node-icon svg,
+.circuit-node--muted .circuit-node-label {
+  color: var(--status-failed);
+}
+
 /* ---- Recording State ---- */
 .circuit-recording .circuit-node--center {
   background: radial-gradient(circle, rgba(224, 85, 85, 0.15), rgba(224, 85, 85, 0.05));
@@ -2006,6 +2042,13 @@ body {
 .circuit-recording .circuit-node--corner {
   opacity: 0.3;
   pointer-events: none;
+}
+
+/* AUG-181: the Mic node stays live during recording — it is the mute toggle. */
+.circuit-recording .circuit-node--corner.circuit-node--top-right {
+  opacity: 1;
+  pointer-events: auto;
+  cursor: pointer;
 }
 
 .circuit-recording .circuit-line {
@@ -4909,6 +4952,41 @@ body {
   box-shadow: 0 0 8px rgba(212, 168, 67, 0.25);
 }
 
+.live-panel-btn--mute svg {
+  width: 12px;
+  height: 12px;
+  vertical-align: -2px;
+}
+
+/* AUG-181: muted = solid red fill (mockup Variant 1). Theme-qualified so the dark-theme
+   `.live-panel-btn { background: transparent }` override cannot wipe the fill. */
+.live-panel-btn.live-panel-btn--mute-on,
+.live-panel-btn.live-panel-btn--mute-on:hover:not(:disabled),
+:root[data-theme='dark'] .live-panel-btn.live-panel-btn--mute-on,
+:root[data-theme='dark'] .live-panel-btn.live-panel-btn--mute-on:hover:not(:disabled) {
+  background: #e05555;
+  border-color: #e05555;
+  border-left-color: #e05555;
+  color: #fff;
+}
+
+.live-panel-notice--muted {
+  color: var(--status-failed);
+  background: rgba(224, 85, 85, 0.08);
+  border-left-color: var(--status-failed);
+}
+
+.live-line--gap {
+  text-align: center;
+  font-size: 11px;
+  line-height: 1.4;
+  color: var(--sidebar-text-muted);
+  border-left-color: transparent;
+  border-top: 1px solid var(--border-color);
+  padding-top: 6px;
+  padding-bottom: 6px;
+}
+
 .live-panel-btn--stop {
   border-color: rgba(224, 85, 85, 0.3);
   border-left-color: rgba(224, 85, 85, 0.5);
@@ -7329,6 +7407,12 @@ button:hover:not(:disabled):not(.sidebar-menu-item):not(.export-menu-item):not(.
   background: rgba(212, 154, 0, 0.08);
 }
 
+.mic-notice--muted {
+  color: var(--status-failed);
+  border-color: var(--status-failed);
+  background: rgba(224, 85, 85, 0.08);
+}
+
 .mic-notice-dismiss {
   background: none;
   border: none;
@@ -8209,6 +8293,12 @@ html.compact-dock body {
 .compact-tag--ok { color: var(--accent); }
 .compact-tag--pause { color: var(--status-uploading); }
 .compact-tag--error { color: var(--status-failed); }
+.compact-tag--muted {
+  color: var(--status-failed);
+  font-weight: 700;
+  border: 1px solid var(--status-failed);
+  padding: 0 4px;
+}
 
 /* Buttons share one bracket-style look. */
 .compact-btn {
@@ -8284,6 +8374,26 @@ html.compact-dock body {
   color: var(--status-uploading);
   border-color: var(--status-uploading);
   background: color-mix(in srgb, var(--status-uploading) 14%, transparent);
+}
+
+.compact-btn--mute svg {
+  width: 12px;
+  height: 12px;
+  vertical-align: -2px;
+}
+
+.compact-btn--mute-on,
+.compact-btn--mute-on:hover:not(:disabled) {
+  color: #fff;
+  background: var(--status-failed);
+  border-color: var(--status-failed);
+}
+
+.compact-line--gap {
+  border-left-color: transparent;
+  text-align: center;
+  font-size: 10px;
+  color: var(--text-secondary);
 }
 
 .compact-btn--end-fill {
@@ -9018,6 +9128,23 @@ html.ghost-root #root > * {
 .ghost-btn--accent { color: var(--ghost-accent); border-color: var(--ghost-accent); }
 .ghost-btn--pause { color: var(--ghost-amber); border-color: var(--ghost-amber); }
 .ghost-btn--pause:hover { color: var(--ghost-amber); border-color: var(--ghost-amber); background: rgba(212, 160, 32, 0.15); }
+.ghost-btn--mute svg {
+  width: 12px;
+  height: 12px;
+  vertical-align: -2px;
+}
+.ghost-btn--mute-on,
+.ghost-btn--mute-on:hover {
+  color: #fff;
+  background: var(--ghost-red);
+  border-color: var(--ghost-red);
+}
+.ghost-tag--muted {
+  color: var(--ghost-red);
+  font-weight: 700;
+  border: 1px solid var(--ghost-red);
+  padding: 0 3px;
+}
 .ghost-btn--end { color: var(--ghost-red); border-color: var(--ghost-red); }
 .ghost-btn--end:hover { color: var(--ghost-red); border-color: var(--ghost-red); background: rgba(224, 85, 85, 0.15); }
 
@@ -9180,6 +9307,13 @@ html.ghost-root #root > * {
 .ghost-line--old { color: var(--ghost-fg); opacity: 0.7; }
 .ghost-line--older { opacity: 0.45; }
 
+.ghost-line--gap {
+  border-left-color: transparent;
+  text-align: center;
+  font-size: 11px;
+  color: var(--ghost-muted);
+}
+
 .ghost-line--empty {
   border-left-color: transparent;
   color: var(--ghost-muted);
@@ -9203,6 +9337,29 @@ html.ghost-root #root > * {
 
 .ghost-coin--error {
   border-color: var(--ghost-red);
+}
+
+.ghost-coin--muted {
+  box-sizing: border-box;
+  border: 2px solid var(--ghost-red);
+}
+
+.ghost-coin-muted {
+  font-family: var(--font-terminal);
+  font-size: 8px;
+  font-weight: 700;
+  letter-spacing: 0.06em;
+  color: var(--ghost-red);
+}
+
+.ghost-coin-muted--hint {
+  animation: compact-blink 1s steps(2, start) infinite;
+}
+
+/* AUG-181: four buttons in the expanded coin */
+.ghost-coin-actions .ghost-btn {
+  font-size: 9px;
+  padding: 1px 3px;
 }
 
 .ghost-coin-face {
@@ -9295,6 +9452,7 @@ html.ghost-root #root > * {
   .ghost-rec,
   .ghost-timer--paused,
   .ghost-btn,
+  .ghost-coin-muted--hint,
   .ghost-caption-tools,
   .ghost-caption-resize::after {
     animation: none !important;

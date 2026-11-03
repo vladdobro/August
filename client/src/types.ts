@@ -2,6 +2,9 @@ export type TranscriptionLanguage = 'auto' | 'en' | 'ru';
 
 export type SessionStatus = 'uploading' | 'preparing' | 'transcribing' | 'completed' | 'failed';
 
+/// AUG-181: a mic-muted range, ms relative to the mic MediaRecorder start.
+export interface MuteInterval { startMs: number; endMs: number }
+
 export interface SessionMetadata {
   id: string;
   title: string;

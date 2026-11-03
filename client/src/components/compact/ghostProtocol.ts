@@ -25,9 +25,11 @@ export interface GhostState {
   actionItems: ActionItem[]; // AUG-165
   participants: Participants;
   actionEnabled: boolean | null;
+  micMuted: boolean; // AUG-181
+  mutedHint: boolean; // AUG-181
 }
 
-export type GhostCommand = 'expand' | 'pause' | 'resume' | 'end' | 'retry' | 'show-transcript';
+export type GhostCommand = 'expand' | 'pause' | 'resume' | 'end' | 'retry' | 'show-transcript' | 'mute' | 'unmute';
 
 /// AUG-165: action item edits made in the ghost window; the main window applies them through compactStore actions.
 export type GhostAction =

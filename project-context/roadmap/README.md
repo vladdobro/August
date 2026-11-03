@@ -53,6 +53,28 @@ Ship the three pillars of the product so managers get real time savings.
 - [ ] Photo screening — upload a batch of photos and surface the relevant ones.
 - [ ] Self-hosted AI inference pipeline — deploy and wire up the open-source models backing all three features.
 
+## Rodion feedback (Nov 2026)
+
+Turn the 1–2 Nov 2026 user feedback (@docs/feedback/2026-11-rodion-feedback.md) into agreed work: every item starts as a research task, and a research task closes only when an agreed implementation task is created — its ID is then appended to the item line as "→ impl AUG-NNN". UI items are agreed on a self-contained HTML mockup in docs/mockups/AUG-NNN/, and the implementation task links the chosen variant.
+
+### M1 Quick fixes
+
+- [x] z-index overlap on Recording completed screen — Copy/Export menus are covered; research AUG-170 → impl AUG-180.
+- [ ] Remember Praxis projects picked by folder — no re-picking the path in Send to Praxis; research AUG-171.
+- [ ] Resizable Default Prompt field — see the whole prompt while editing; research AUG-172.
+- [ ] Split Online text correction toggle — live line correction and live action items on separate checkboxes; research AUG-173.
+
+### M2 Live session control
+
+- [x] Mic mute/unmute during a meeting — keep office noise out of the transcript without stopping recording; research AUG-174 → impl AUG-181 (macOS check pending in a release build).
+- [ ] Live mode Copy & Clear / Clear + clear confirmation + Stop Live protection — manage the live window without accidental loss; research AUG-175.
+- [ ] Ghost Mode free X/Y drag + Stop Meeting protection — place the overlay anywhere, no accidental stop; research AUG-176.
+- [ ] Post-100% processing spinner — show the job is still running after the progress bar ends; research AUG-177.
+
+### M3 Compact Mode
+
+- [ ] Compact Mode daily-use controls — add the buttons that make Compact Mode usable every day (after M2 research is agreed); research AUG-178.
+
 ## Backlog
 
 Items not yet assigned to a phase.

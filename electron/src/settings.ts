@@ -4,12 +4,16 @@ import path from 'node:path';
 export interface DesktopSettings {
   // Electron accelerator string, or null when the global record hotkey is disabled.
   recordHotkey: string | null;
+  // AUG-181: global mic-mute hotkey accelerator, null = disabled.
+  muteHotkey: string | null;
 }
 
 // Ctrl/Cmd+Alt+R: free of the browser-reload chord (Ctrl+Shift+R) so it never fights other apps.
 export const DEFAULT_RECORD_HOTKEY = 'CommandOrControl+Alt+R';
 
-const DEFAULTS: DesktopSettings = { recordHotkey: DEFAULT_RECORD_HOTKEY };
+export const DEFAULT_MUTE_HOTKEY = 'CommandOrControl+Alt+M';
+
+const DEFAULTS: DesktopSettings = { recordHotkey: DEFAULT_RECORD_HOTKEY, muteHotkey: DEFAULT_MUTE_HOTKEY };
 
 /// Shell-only settings persisted as <userData>/desktop-settings.json. Kept apart from the server's
 /// user-preferences.json because the main process needs them before the server is up.

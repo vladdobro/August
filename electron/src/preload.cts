@@ -7,6 +7,7 @@ const api = {
   getAppInfo: () => ipcRenderer.invoke('august:get-app-info'),
   getSettings: () => ipcRenderer.invoke('august:get-settings'),
   setRecordHotkey: (accelerator: string | null) => ipcRenderer.invoke('august:set-record-hotkey', accelerator),
+  setMuteHotkey: (accelerator: string | null) => ipcRenderer.invoke('august:set-mute-hotkey', accelerator),
   revealSession: (sessionId: string) => ipcRenderer.invoke('august:reveal-session', sessionId),
   revealSessionsDir: () => ipcRenderer.invoke('august:reveal-sessions-dir'),
   getUpdateState: () => ipcRenderer.invoke('august:get-update-state'),
@@ -31,6 +32,16 @@ const api = {
     ipcRenderer.on('august:toggle-recording', listener);
     return () => {
       ipcRenderer.removeListener('august:toggle-recording', listener);
+    };
+  },
+  setMicMutedState: (muted: boolean) => {
+    ipcRenderer.send('august:mic-muted-state', muted);
+  },
+  onToggleMute: (cb: () => void) => {
+    const listener = () => cb();
+    ipcRenderer.on('august:toggle-mute', listener);
+    return () => {
+      ipcRenderer.removeListener('august:toggle-mute', listener);
     };
   },
   onOpenSession: (cb: (sessionId: string) => void) => {

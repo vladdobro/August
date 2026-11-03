@@ -1,6 +1,6 @@
 import React, { useCallback, useEffect, useRef, useState } from 'react';
 import { sendActionItemsToPraxis, uploadAudio, uploadDualAudio, uploadDualAudioWithCapture, fetchCaptureCapabilities, startServerCapture, stopServerCapture, transcribeFromUrl, type UploadProgress } from '../api';
-import type { ActionItem, CaptureCapabilities, Participants, ServerCapture, TranscriptionLanguage } from '../types';
+import type { ActionItem, CaptureCapabilities, MuteInterval, Participants, ServerCapture, TranscriptionLanguage } from '../types';
 import { useTheme } from '../theme';
 import RecordingModePicker, { type RecordingMode } from './RecordingModePicker';
 import LanguagePicker from './LanguagePicker';
@@ -106,6 +106,15 @@ const FileUpload: React.FC<FileUploadProps> = ({ onUploaded, onRecordingChange, 
   const soundStreamRef = useRef<MediaStream | null>(null);
   const audioContextRef = useRef<AudioContext | null>(null);
   const recordCtxRef = useRef<AudioContext | null>(null);
+  // AUG-181: mic mute during recording
+  const [micMuted, setMicMuted] = useState(false);
+  const micMutedRef = useRef(false);
+  const muteGainRef = useRef<GainNode | null>(null);
+  const rawMicAnalyserRef = useRef<AnalyserNode | null>(null);
+  const muteIntervalsRef = useRef<MuteInterval[]>([]);
+  const muteStartRef = useRef<number | null>(null);
+  const [mutedSpeechHint, setMutedSpeechHint] = useState(false);
+  const hintTimerRef = useRef<ReturnType<typeof setInterval> | null>(null);
   const analyserRef = useRef<AnalyserNode | null>(null);
   const animationFrameRef = useRef<number | null>(null);
   const timerIntervalRef = useRef<ReturnType<typeof setInterval> | null>(null);
@@ -282,7 +291,7 @@ const FileUpload: React.FC<FileUploadProps> = ({ onUploaded, onRecordingChange, 
           setLiveLines((prev) => {
             const part = { id, text };
             const last = prev.length > 0 ? prev[prev.length - 1] : null;
-            if (last && last.speaker === speaker) {
+            if (last && last.speaker === speaker && !last.kind) {
               const updated = [...prev];
               updated[updated.length - 1] = { speaker, text: `${last.text} ${text}`, parts: [...(last.parts ?? [{ text: last.text }]), part] };
               return updated;
@@ -322,6 +331,11 @@ const FileUpload: React.FC<FileUploadProps> = ({ onUploaded, onRecordingChange, 
     setError(null);
     setCaptureNotice(null);
     setCaptureLost(false);
+    micMutedRef.current = false;
+    setMicMuted(false);
+    muteIntervalsRef.current = [];
+    muteStartRef.current = null;
+    setMutedSpeechHint(false);
     // Compact Mode "Always live transcript": a Default recording gets Live too (desktop only; saved recordingMode untouched).
     const autoLive = !liveMode && shouldAutoEnableLive(preferences ?? {}, Boolean(window.august));
     const useLive = liveMode || autoLive;
@@ -386,12 +400,23 @@ const FileUpload: React.FC<FileUploadProps> = ({ onUploaded, onRecordingChange, 
       recordCtxRef.current = recordCtx;
       const recordDest = recordCtx ? recordCtx.createMediaStreamDestination() : null;
       let micSource = recordCtx ? recordCtx.createMediaStreamSource(micStream) : null;
-      if (micSource && recordDest) micSource.connect(recordDest);
+      // AUG-181: mic mute is a gain node between the mic and the recorder (never MediaRecorder.pause / track.stop: both shorten
+      // the mic file and desync [Me] from [Them]). The raw-mic analyser sits before it for the "You're muted" hint.
+      const muteGain = recordCtx ? recordCtx.createGain() : null;
+      const rawMicAnalyser = recordCtx ? recordCtx.createAnalyser() : null;
+      if (rawMicAnalyser) rawMicAnalyser.fftSize = 2048;
+      if (micSource && recordDest && muteGain) {
+        micSource.connect(muteGain);
+        muteGain.connect(recordDest);
+        if (rawMicAnalyser) micSource.connect(rawMicAnalyser);
+      }
+      muteGainRef.current = muteGain;
+      rawMicAnalyserRef.current = rawMicAnalyser;
       const recordStream = recordDest ? recordDest.stream : micStream;
 
       let levelStream: MediaStream = recordStream;
 
-      const dualState = { mic: null as Blob | null, system: null as Blob | null, uploading: false };
+      const dualState = { mic: null as Blob | null, system: null as Blob | null, uploading: false, mutes: [] as MuteInterval[] };
 
       const tryDualUpload = async () => {
         if (!dualState.mic || !dualState.system || dualState.uploading) return;
@@ -407,7 +432,7 @@ const FileUpload: React.FC<FileUploadProps> = ({ onUploaded, onRecordingChange, 
         setIsUploading(true);
         setUploadProgress(null);
         try {
-          await uploadDualAudio(micFile, sysFile, language, setUploadProgress, recordingLiveKey);
+          await uploadDualAudio(micFile, sysFile, language, setUploadProgress, recordingLiveKey, dualState.mutes);
           onUploaded();
         } catch (err) {
           setError((err as Error).message || 'Upload failed');
@@ -417,7 +442,7 @@ const FileUpload: React.FC<FileUploadProps> = ({ onUploaded, onRecordingChange, 
         }
       };
 
-      const uploadWithServerCapture = async (micBlob: Blob, capture: ServerCapture) => {
+      const uploadWithServerCapture = async (micBlob: Blob, capture: ServerCapture, mutes: MuteInterval[]) => {
         const micExt = micBlob.type.includes('wav') ? 'wav' : 'webm';
         const micFile = new File([micBlob], `recording-${ts}-mic.${micExt}`, { type: micBlob.type });
 
@@ -432,9 +457,9 @@ const FileUpload: React.FC<FileUploadProps> = ({ onUploaded, onRecordingChange, 
             setCaptureNotice(`System audio track was lost (${(err as Error).message}) — saving the microphone track only.`);
           }
           if (captureStopped) {
-            await uploadDualAudioWithCapture(micFile, capture.captureId, micStartedAtRef.current, language, setUploadProgress, recordingLiveKey);
+            await uploadDualAudioWithCapture(micFile, capture.captureId, micStartedAtRef.current, language, setUploadProgress, recordingLiveKey, mutes);
           } else {
-            await uploadAudio(micFile, language, setUploadProgress, recordingLiveKey);
+            await uploadAudio(micFile, language, setUploadProgress, recordingLiveKey, mutes);
           }
           onUploaded();
         } catch (err) {
@@ -468,8 +493,11 @@ const FileUpload: React.FC<FileUploadProps> = ({ onUploaded, onRecordingChange, 
           }
           micSource?.disconnect();
           micSource = recordCtx.createMediaStreamSource(next);
-          micSource.connect(recordDest);
+          if (muteGain) micSource.connect(muteGain); // gain value is untouched: a muted state survives the device switch
+          else micSource.connect(recordDest);
+          if (rawMicAnalyser) micSource.connect(rawMicAnalyser);
           streamRef.current = next;
+          if (!muteGain) next.getAudioTracks().forEach((t) => { t.enabled = !micMutedRef.current; });
           watchMicTrack(next);
           setCaptureLost(false);
           setMicNotice('Microphone was disconnected — recording continues with the current microphone.');
@@ -497,6 +525,7 @@ const FileUpload: React.FC<FileUploadProps> = ({ onUploaded, onRecordingChange, 
       };
 
       micRecorder.onstop = async () => {
+        const mutes = muteIntervalsRef.current.slice();
         const activeMicStream = streamRef.current ?? micStream;
         activeMicStream.getTracks().forEach((track) => track.stop());
         streamRef.current = null;
@@ -515,9 +544,10 @@ const FileUpload: React.FC<FileUploadProps> = ({ onUploaded, onRecordingChange, 
         }
 
         if (captureSystemAudio && serverCapture) {
-          await uploadWithServerCapture(blob, serverCapture);
+          await uploadWithServerCapture(blob, serverCapture, mutes);
         } else if (captureSystemAudio) {
           dualState.mic = blob;
+          dualState.mutes = mutes;
           void tryDualUpload();
         } else {
           const extension = blob.type.includes('wav') ? 'wav' : 'webm';
@@ -528,7 +558,7 @@ const FileUpload: React.FC<FileUploadProps> = ({ onUploaded, onRecordingChange, 
           setIsUploading(true);
           setUploadProgress(null);
           try {
-            await uploadAudio(file, language, setUploadProgress, recordingLiveKey);
+            await uploadAudio(file, language, setUploadProgress, recordingLiveKey, mutes);
             onUploaded();
           } catch (err) {
             setError((err as Error).message || 'Upload failed');
@@ -656,7 +686,40 @@ const FileUpload: React.FC<FileUploadProps> = ({ onUploaded, onRecordingChange, 
     }
   }, [language, onUploaded, selectedMicId, captureSystemAudio, startLiveTranscription, preferences?.systemAudioSource, captureCapabilities, onCaptureCapabilitiesChange, preferences?.compactEnabled, preferences?.compactMode, preferences?.liveEngine, groqAvailable]);
 
+  // AUG-181: stable toggle, refs only; ignored when not recording.
+  const setMicMute = useCallback((next: boolean) => {
+    const rec = mediaRecorderRef.current;
+    if (!rec || rec.state !== 'recording' || micMutedRef.current === next) return;
+    micMutedRef.current = next;
+    const gain = muteGainRef.current;
+    const ctx = recordCtxRef.current;
+    if (gain && ctx) {
+      const t = ctx.currentTime;
+      gain.gain.cancelScheduledValues(t);
+      gain.gain.setValueAtTime(gain.gain.value, t);
+      gain.gain.linearRampToValueAtTime(next ? 0 : 1, t + 0.015);
+    } else {
+      // No Web Audio graph (plain browser tab): a disabled track records silence and keeps the file length.
+      streamRef.current?.getAudioTracks().forEach((track) => { track.enabled = !next; });
+    }
+    const at = Math.max(0, Date.now() - micStartedAtRef.current);
+    if (next) {
+      muteStartRef.current = at;
+      if (liveClientRef.current) setLiveLines((prev) => [...prev, { speaker: 'Me', text: '— mic muted —', kind: 'gap' }]);
+    } else {
+      if (muteStartRef.current !== null) muteIntervalsRef.current.push({ startMs: muteStartRef.current, endMs: at });
+      muteStartRef.current = null;
+      setMutedSpeechHint(false);
+    }
+    setMicMuted(next);
+  }, []);
+  const toggleMicMute = useCallback(() => setMicMute(!micMutedRef.current), [setMicMute]);
+
   const stopRecording = useCallback(() => {
+    if (muteStartRef.current !== null) {
+      muteIntervalsRef.current.push({ startMs: muteStartRef.current, endMs: Math.max(0, Date.now() - micStartedAtRef.current) });
+      muteStartRef.current = null;
+    }
     mediaRecorderRef.current?.stop();
     soundRecorderRef.current?.stop();
     soundRecorderRef.current = null;
@@ -671,6 +734,11 @@ const FileUpload: React.FC<FileUploadProps> = ({ onUploaded, onRecordingChange, 
     liveKeyRef.current = null; // the recording's onstop closure keeps its own copy for the upload
     liveStartArgsRef.current = null;
     setCaptureLost(false);
+    micMutedRef.current = false;
+    setMicMuted(false);
+    setMutedSpeechHint(false);
+    muteGainRef.current = null;
+    rawMicAnalyserRef.current = null;
     setLiveActive(false);
     setLiveHidden(false);
 
@@ -785,7 +853,7 @@ const FileUpload: React.FC<FileUploadProps> = ({ onUploaded, onRecordingChange, 
   const handleLivePause = useCallback(() => liveClientRef.current?.pause(), []);
   const handleLiveResume = useCallback(() => liveClientRef.current?.resume(), []);
   const handleLiveCopyAll = useCallback(() => {
-    const text = liveLines.map((l) => `${l.speaker}: ${l.text}`).join('\n');
+    const text = liveLines.map((l) => l.kind === 'gap' ? l.text : `${l.speaker}: ${l.text}`).join('\n');
     navigator.clipboard.writeText(text).catch(() => {});
   }, [liveLines]);
   const handleLiveHide = useCallback(() => {
@@ -841,11 +909,13 @@ const FileUpload: React.FC<FileUploadProps> = ({ onUploaded, onRecordingChange, 
       actionItems: liveActionItems,
       participants: liveParticipants,
       actionEnabled: liveActionEnabled,
+      micMuted,
+      mutedHint: mutedSpeechHint,
     });
-  }, [isRecording, liveActive, liveLines, liveStatus, liveError, captureLost, elapsedSeconds, audioLevels, captureSystemAudio, preferences?.skipStopConfirmation, liveActionItems, liveParticipants, liveActionEnabled]);
+  }, [isRecording, liveActive, liveLines, liveStatus, liveError, captureLost, elapsedSeconds, audioLevels, captureSystemAudio, preferences?.skipStopConfirmation, liveActionItems, liveParticipants, liveActionEnabled, micMuted, mutedSpeechHint]);
 
-  const compactActionsRef = useRef({ stopRecording, handleLivePause, handleLiveResume, handleLiveStop, handleLiveRetry, handleLiveCopyAll, handleActionAdd, handleActionEdit, handleActionDelete });
-  compactActionsRef.current = { stopRecording, handleLivePause, handleLiveResume, handleLiveStop, handleLiveRetry, handleLiveCopyAll, handleActionAdd, handleActionEdit, handleActionDelete };
+  const compactActionsRef = useRef({ stopRecording, handleLivePause, handleLiveResume, handleLiveStop, handleLiveRetry, handleLiveCopyAll, handleActionAdd, handleActionEdit, handleActionDelete, setMicMute });
+  compactActionsRef.current = { stopRecording, handleLivePause, handleLiveResume, handleLiveStop, handleLiveRetry, handleLiveCopyAll, handleActionAdd, handleActionEdit, handleActionDelete, setMicMute };
   useEffect(() => {
     compactStore.setActions({
       end: () => compactActionsRef.current.stopRecording(),
@@ -858,9 +928,50 @@ const FileUpload: React.FC<FileUploadProps> = ({ onUploaded, onRecordingChange, 
       addActionItem: (text, owner) => compactActionsRef.current.handleActionAdd(text, owner),
       editActionItem: (id, patch) => compactActionsRef.current.handleActionEdit(id, patch),
       deleteActionItem: (id) => compactActionsRef.current.handleActionDelete(id),
+      setMicMuted: (muted) => compactActionsRef.current.setMicMute(muted),
     });
     return () => compactStore.setActions(null);
   }, []);
+
+  // AUG-181: "You're muted" hint - raw mic (before the mute gain) carries speech for ~2 s while muted.
+  useEffect(() => {
+    if (!isRecording || !micMuted || !rawMicAnalyserRef.current) return;
+    const analyser = rawMicAnalyserRef.current;
+    const buf = new Float32Array(analyser.fftSize);
+    const frame = Math.max(1, Math.round(analyser.context.sampleRate * 0.02));
+    let speechMs = 0;
+    let silenceMs = 0;
+    let shown = false;
+    hintTimerRef.current = setInterval(() => {
+      analyser.getFloatTimeDomainData(buf);
+      // same frame RMS threshold as the live chunker (liveTranscriptionClient.ts SPEECH_FRAME_RMS_THRESHOLD)
+      let speech = false;
+      for (let off = 0; off + frame <= buf.length && !speech; off += frame) {
+        let sum = 0;
+        for (let k = off; k < off + frame; k++) sum += buf[k] * buf[k];
+        if (Math.sqrt(sum / frame) > 0.006) speech = true;
+      }
+      if (speech) { speechMs += 100; silenceMs = 0; } else { silenceMs += 100; }
+      if (!shown) {
+        if (silenceMs >= 1500) speechMs = 0;
+        if (speechMs >= 2000) { shown = true; setMutedSpeechHint(true); }
+      } else if (silenceMs >= 5000) {
+        shown = false;
+        speechMs = 0;
+        setMutedSpeechHint(false);
+      }
+    }, 100);
+    return () => {
+      if (hintTimerRef.current) { clearInterval(hintTimerRef.current); hintTimerRef.current = null; }
+    };
+  }, [isRecording, micMuted]);
+
+  // AUG-181: desktop bridge (shortcut toggle + muted state back to the shell)
+  useEffect(() => { window.august?.setMicMutedState?.(micMuted); }, [micMuted]);
+  useEffect(() => {
+    const off = window.august?.onToggleMute?.(() => toggleMicMute());
+    return () => { off?.(); };
+  }, [toggleMicMute]);
 
   const canCompact = Boolean(window.august?.setCompactMode) && (preferences?.compactEnabled ?? true);
 
@@ -944,15 +1055,17 @@ const FileUpload: React.FC<FileUploadProps> = ({ onUploaded, onRecordingChange, 
 
         <button
           type="button"
-          className="circuit-node circuit-node--corner circuit-node--top-right"
-          aria-label="Microphone selection"
-          onClick={() => !isUploading && !isRecording && setShowMicPicker(true)}
-          disabled={isUploading || isRecording}
+          className={`circuit-node circuit-node--corner circuit-node--top-right${isRecording && micMuted ? ' circuit-node--muted' : ''}`}
+          aria-label={isRecording ? (micMuted ? 'Unmute microphone' : 'Mute microphone') : 'Microphone selection'}
+          aria-pressed={isRecording ? micMuted : undefined}
+          title={isRecording ? "Mute in August's recording" : undefined}
+          onClick={() => { if (isRecording) toggleMicMute(); else if (!isUploading) setShowMicPicker(true); }}
+          disabled={isUploading}
         >
           <span className="circuit-node-icon" aria-hidden="true">
-            <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><rect x="9" y="2" width="6" height="11" rx="3" /><path d="M5 10a7 7 0 0 0 14 0" /><line x1="12" y1="19" x2="12" y2="22" /></svg>
+            <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><rect x="9" y="2" width="6" height="11" rx="3" /><path d="M5 10a7 7 0 0 0 14 0" /><line x1="12" y1="19" x2="12" y2="22" />{isRecording && micMuted && <line x1="3" y1="3" x2="21" y2="21" />}</svg>
           </span>
-          <span className="circuit-node-label">Mic</span>
+          <span className="circuit-node-label">{micMuted && isRecording ? 'Muted' : 'Mic'}</span>
         </button>
         {showMicPicker && (
           <MicPicker
@@ -1040,6 +1153,7 @@ const FileUpload: React.FC<FileUploadProps> = ({ onUploaded, onRecordingChange, 
           <span className="recording-dot" aria-hidden="true" />
           <span className="recording-timer">{formatTime(elapsedSeconds)}</span>
           {captureSystemAudio && <span className="recording-tracks">2 tracks</span>}
+          {micMuted && <span className="recording-mute-tag" title="Mute in August's recording">MIC OFF — your side is not recorded</span>}
           {canCompact && (
             <button type="button" className="recording-compact-btn" onClick={() => compactStore.requestCompact()} title="Shrink August to a widget (Ctrl/Cmd+Shift+C)">[ ⤡ COMPACT ]</button>
           )}
@@ -1051,6 +1165,8 @@ const FileUpload: React.FC<FileUploadProps> = ({ onUploaded, onRecordingChange, 
           )}
         </div>
       )}
+
+      {isRecording && mutedSpeechHint && <div className="mic-notice mic-notice--muted" role="status">You're muted in August</div>}
 
       {showDefaultsInfo && isRecording && (
         <div className="recording-defaults-banner">
@@ -1154,6 +1270,9 @@ const FileUpload: React.FC<FileUploadProps> = ({ onUploaded, onRecordingChange, 
           elapsed={formatTime(elapsedSeconds)}
           onEndRecording={stopRecording}
           onCompact={canCompact ? () => compactStore.requestCompact() : undefined}
+          micMuted={micMuted}
+          onToggleMute={toggleMicMute}
+          mutedHint={mutedSpeechHint}
           aside={
             <ActionItemsPanel
               variant="live"
@@ -1189,7 +1308,7 @@ const FileUpload: React.FC<FileUploadProps> = ({ onUploaded, onRecordingChange, 
               // AUG-166: live text exists only in memory; separate cards attach it as context
               const r = await sendActionItemsToPraxis({
                 projectPath, mode: praxisExport.mode, itemIds: praxisExport.ids, liveKey: praxisExport.liveKey, force,
-                transcript: liveLines.map((l) => `${l.speaker}: ${l.text}`).join('\n'),
+                transcript: liveLines.map((l) => l.kind === 'gap' ? l.text : `${l.speaker}: ${l.text}`).join('\n'),
               });
               setLiveActionItems(r.file.items);
               return { taskIds: r.tasks.map((t) => t.taskId) };

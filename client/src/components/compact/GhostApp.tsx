@@ -1,6 +1,7 @@
 import React, { useCallback, useEffect, useLayoutEffect, useRef, useState } from 'react';
 import { formatClock } from '../../services/compact';
 import ActionItemsPanel from '../ActionItemsPanel';
+import { MicGlyph } from './DockWidgets';
 import { GHOST_CHANNEL, statusTag, type GhostAction, type GhostCommand, type GhostMessage, type GhostState, type GhostWidget } from './ghostProtocol';
 
 type Send = (command: GhostCommand) => void;
@@ -16,7 +17,7 @@ interface GhostCaptionProps extends GhostViewProps {
 }
 
 const COIN_SIZE = 56;
-const COIN_EXPANDED_WIDTH = 248;
+const COIN_EXPANDED_WIDTH = 296; // AUG-181: room for the fourth (MUTE) button
 
 /// Window-level pointer helpers: ignore-mouse toggling and cursor-driven dragging are driven from the main process.
 function setIgnoreMouse(ignore: boolean): void {
@@ -147,6 +148,7 @@ const GhostCaption: React.FC<GhostCaptionProps> = ({ state, send, sendAction }) 
               <span className={`ghost-timer${paused ? ' ghost-timer--paused' : ''}`}>{formatClock(state.elapsedSeconds)}</span>
             </div>
             <span className={`ghost-tag ghost-tag--${lost ? 'error' : tag.tone}`}>{lost ? 'CAPTURE LOST' : tag.label}</span>
+            {state.micMuted && !lost && <span className="ghost-tag ghost-tag--muted">{state.mutedHint ? "YOU'RE MUTED" : 'MIC OFF'}</span>}
             {interrupted && !lost && (
               <div className="ghost-caption-tools ghost-caption-tools--always">
                 <button type="button" className="ghost-btn" onClick={() => send('retry')}>[ RETRY ]</button>
@@ -179,6 +181,16 @@ const GhostCaption: React.FC<GhostCaptionProps> = ({ state, send, sendAction }) 
                     [ {paused ? '▶' : '⏸'} ]
                   </button>
                 )}
+                <button
+                  type="button"
+                  className={`ghost-btn ghost-btn--mute${state.micMuted ? ' ghost-btn--mute-on' : ''}`}
+                  onClick={() => send(state.micMuted ? 'unmute' : 'mute')}
+                  aria-pressed={state.micMuted}
+                  aria-label={state.micMuted ? 'Unmute microphone' : 'Mute microphone'}
+                  title="Mute in August's recording"
+                >
+                  [ <MicGlyph muted={state.micMuted} /> ]
+                </button>
                 <button type="button" className="ghost-btn ghost-btn--end" onClick={handleEnd} title="End recording" aria-label="End recording">[ ■ ]</button>
               </div>
             )}
@@ -191,7 +203,7 @@ const GhostCaption: React.FC<GhostCaptionProps> = ({ state, send, sendAction }) 
         {lines.map((line, i) => (
           <div
             key={`${state.lineCount - lines.length + i}`}
-            className={`ghost-line ghost-line--${line.speaker.toLowerCase()}${i < lines.length - 1 ? ' ghost-line--old' : ''}${i < lines.length - 2 ? ' ghost-line--older' : ''}`}
+            className={`ghost-line ghost-line--${line.kind === 'gap' ? 'gap' : line.speaker.toLowerCase()}${i < lines.length - 1 ? ' ghost-line--old' : ''}${i < lines.length - 2 ? ' ghost-line--older' : ''}`}
           >
             {line.text}
           </div>
@@ -282,7 +294,7 @@ const GhostCoin: React.FC<GhostViewProps> = ({ state, send }) => {
 
   return (
     <div
-      className={`ghost-coin${lost ? ' ghost-coin--error' : ''}${expanded ? ' ghost-coin--expanded' : ''}`}
+      className={`ghost-coin${lost ? ' ghost-coin--error' : ''}${state.micMuted ? ' ghost-coin--muted' : ''}${expanded ? ' ghost-coin--expanded' : ''}`}
       style={{ flexDirection: anchoredRight ? 'row-reverse' : 'row' }}
       onMouseEnter={() => setHovered(true)}
       onMouseLeave={() => { setHovered(false); if (!confirming) setMenu(false); }}
@@ -310,6 +322,7 @@ const GhostCoin: React.FC<GhostViewProps> = ({ state, send }) => {
               {state.showCount && <span className="ghost-coin-count">▤ {state.lineCount}</span>}
             </span>
             <span className={`ghost-coin-time${paused ? ' ghost-timer--paused' : ''}`}>{formatClock(state.elapsedSeconds)}</span>
+            {state.micMuted && <span className={`ghost-coin-muted${state.mutedHint ? ' ghost-coin-muted--hint' : ''}`}>MUTED</span>}
           </>
         )}
       </div>
@@ -331,6 +344,15 @@ const GhostCoin: React.FC<GhostViewProps> = ({ state, send }) => {
                   onClick={() => send(paused ? 'resume' : 'pause')}
                 >
                   {paused ? '[ RESUME ]' : '[ PAUSE ]'}
+                </button>
+              )}
+              {!done && !lost && (
+                <button
+                  type="button"
+                  className={`ghost-btn ghost-btn--mute${state.micMuted ? ' ghost-btn--mute-on' : ''}`}
+                  onClick={() => send(state.micMuted ? 'unmute' : 'mute')}
+                >
+                  {state.micMuted ? '[ UNMUTE ]' : '[ MUTE ]'}
                 </button>
               )}
               {!done && !lost && <button type="button" className="ghost-btn ghost-btn--end" onClick={handleEnd}>[ END ]</button>}
@@ -358,6 +380,8 @@ const PLACEHOLDER = (widget: GhostWidget): GhostState => ({
   actionItems: [],
   participants: { me: '', them: '' },
   actionEnabled: null,
+  micMuted: false,
+  mutedHint: false,
 });
 
 interface GhostAppProps {

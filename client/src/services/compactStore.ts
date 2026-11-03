@@ -15,6 +15,8 @@ export interface CompactSnapshot {
   actionItems: ActionItem[]; // AUG-165
   participants: Participants;
   actionEnabled: boolean | null;
+  micMuted: boolean; // AUG-181
+  mutedHint: boolean; // AUG-181: speaking while muted
 }
 
 export interface CompactActions {
@@ -28,6 +30,7 @@ export interface CompactActions {
   addActionItem(text: string, owner: string): void;
   editActionItem(id: string, patch: { text?: string; owner?: string }): void;
   deleteActionItem(id: string): void;
+  setMicMuted(muted: boolean): void; // AUG-181
 }
 
 export interface CompactController {
@@ -50,6 +53,8 @@ let snapshot: CompactSnapshot = {
   actionItems: [],
   participants: { me: '', them: '' },
   actionEnabled: null,
+  micMuted: false,
+  mutedHint: false,
 };
 const listeners = new Set<() => void>();
 let currentActions: CompactActions | null = null;

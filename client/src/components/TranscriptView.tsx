@@ -880,6 +880,10 @@ const TranscriptView: React.FC<TranscriptViewProps> = ({ session, transcript, on
               <p className="transcript-empty">No speech was detected in this recording.</p>
             )}
             {parsedLines.map((line, index) => {
+              // AUG-181: mic-muted divider (no timestamp, no corrections)
+              if (!line.timestamp && /^— mic muted .*—$/.test(line.text)) {
+                return <div key={index} className="transcript-line transcript-line--gap">{line.text}</div>;
+              }
               // A fix targets one flagged segment inside the line (single-track lines merge many segments).
               const lineItems = (utteranceIndexByLine[index] >= 0 ? correctionsByIndex.get(utteranceIndexByLine[index]) : undefined)
                 ?.filter((c) => line.text.includes(c.original)) ?? [];

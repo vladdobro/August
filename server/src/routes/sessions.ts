@@ -6,7 +6,7 @@ import multer from 'multer';
 import { config } from '../config.js';
 import * as sessionManager from '../services/sessionManager.js';
 import { transcribe, ensureWav, boostAudio, checkFfmpegAvailable, getAudioDuration, WhisperError, cancelTranscription, beginTranscriptionJob, isTranscribing, FFMPEG_MISSING_MESSAGE, fileExists } from '../services/whisper.js';
-import { mergeSingleStreamDetailed, mergeDualStreamDetailed, renderTranscript, alignDualSegments, alignedDualDuration, describeTrackMismatch } from '../services/transcriptMerger.js';
+import { mergeSingleStreamDetailed, mergeDualStreamDetailed, renderTranscript, alignDualSegments, alignedDualDuration, describeTrackMismatch, parseMuteIntervals, dropMutedSegments, micShiftSec } from '../services/transcriptMerger.js';
 import { readPreferences } from '../services/preferencesStore.js';
 import { runSemanticPass } from '../services/semanticCheck.js';
 import { applyCorrections, clearCorrections, readCorrections, setAllPendingStatus, setCorrectionStatus, writeCorrections } from '../services/transcriptCorrections.js';
@@ -117,20 +117,22 @@ async function runTranscription(sessionId: string, audioPath: string, language: 
     }
 
     const segments = await transcribe(inputPath, language, sessionId, isCancelled);
-    const merged = mergeSingleStreamDetailed(segments);
+    const session = await sessionManager.getSession(sessionId);
+    const mutes = session?.muteIntervals ?? []; // AUG-181
+    const kept = dropMutedSegments(segments, mutes);
+    const merged = mergeSingleStreamDetailed(kept);
     const utterances = merged.utterances;
 
-    const session = await sessionManager.getSession(sessionId);
     const startedAt = session?.createdAt ?? new Date().toISOString();
     const duration = utterances.length > 0 ? utterances[utterances.length - 1].end : 0;
     const audioSec = session?.duration && session.duration > 0 ? session.duration : duration;
     const { confidence, corrections, model: semanticModel } = await runSemanticPass({
-      sessionId, tracks: [segments], utterances, dropped: merged.dropped, audioDurationSec: audioSec, language, isCancelled,
+      sessionId, tracks: [kept], utterances, dropped: merged.dropped, audioDurationSec: audioSec, language, isCancelled,
     });
     if (isCancelled()) return;
     console.log(`[session ${sessionId}] confidence ${confidence.score}% (${confidence.detail.source}, coverage ${confidence.detail.coverage}, lowLogProb ${confidence.detail.lowLogProbShare}, dropped ${confidence.detail.dropped}/${confidence.detail.segments})`);
 
-    const transcript = renderTranscript(utterances, startedAt, duration);
+    const transcript = renderTranscript(utterances, startedAt, duration, mutes.map((m) => ({ startSec: m.startMs / 1000, endSec: m.endMs / 1000 })));
     await clearCorrections(sessionId);
     await writeTranscriptWithActionItems(sessionId, transcript, () => readSessionActionItems(sessionId)); // AUG-166: keeps the Action items section
     if (corrections && corrections.length > 0) {
@@ -189,23 +191,26 @@ async function runDualTranscription(
     const micSegments = await transcribe(micInput, language, sessionId, isCancelled);
     const systemSegments = await transcribe(systemInput, language, sessionId, isCancelled);
 
+    const session = await sessionManager.getSession(sessionId);
     const aligned = alignDualSegments(micSegments, systemSegments, systemOffsetMs);
-    const merged = mergeDualStreamDetailed(aligned.mic, aligned.system);
+    const mutes = session?.muteIntervals ?? []; // AUG-181
+    const shift = micShiftSec(systemOffsetMs);
+    const micKept = dropMutedSegments(aligned.mic, mutes, shift);
+    const merged = mergeDualStreamDetailed(micKept, aligned.system);
     const utterances = merged.utterances;
 
-    const session = await sessionManager.getSession(sessionId);
     const startedAt = session?.createdAt ?? new Date().toISOString();
     const tracks = session?.trackDurations;
     const audioDuration = tracks ? alignedDualDuration(tracks.mic, tracks.system, systemOffsetMs) : 0;
     const lastEnd = utterances.length > 0 ? Math.max(...utterances.map((u) => u.end)) : 0;
     const duration = Math.max(audioDuration, lastEnd);
     const { confidence, corrections, model: semanticModel } = await runSemanticPass({
-      sessionId, tracks: [aligned.mic, aligned.system], utterances, dropped: merged.dropped, audioDurationSec: duration, language, isCancelled,
+      sessionId, tracks: [micKept, aligned.system], utterances, dropped: merged.dropped, audioDurationSec: duration, language, isCancelled,
     });
     if (isCancelled()) return;
     console.log(`[session ${sessionId}] confidence ${confidence.score}% (${confidence.detail.source}, coverage ${confidence.detail.coverage}, lowLogProb ${confidence.detail.lowLogProbShare}, dropped ${confidence.detail.dropped}/${confidence.detail.segments})`);
 
-    const transcript = renderTranscript(utterances, startedAt, duration);
+    const transcript = renderTranscript(utterances, startedAt, duration, mutes.map((m) => ({ startSec: m.startMs / 1000 + shift, endSec: m.endMs / 1000 + shift })));
     await clearCorrections(sessionId);
     await writeTranscriptWithActionItems(sessionId, transcript, () => readSessionActionItems(sessionId)); // AUG-166: keeps the Action items section
     if (corrections && corrections.length > 0) {
@@ -671,6 +676,7 @@ router.post('/upload', (req, res, next) => {
   const captureId = typeof req.body?.captureId === 'string' && req.body.captureId.trim() ? req.body.captureId.trim() : null;
   const micStartedAt = Number(req.body?.micStartedAt);
   const liveKey = isValidLiveKey(req.body?.liveKey) ? req.body.liveKey : null; // AUG-165
+  const muteIntervals = parseMuteIntervals(req.body?.muteIntervals); // AUG-181
   const isDual = !!systemFile || !!captureId;
 
   if (systemFile && captureId) {
@@ -718,6 +724,7 @@ router.post('/upload', (req, res, next) => {
       isDual,
     );
     createdSessionId = session.id;
+    if (muteIntervals.length > 0) await sessionManager.updateSession(session.id, { muteIntervals });
     if (liveKey) {
       // AUG-165: action items and participants collected during the live recording move into this session.
       try {

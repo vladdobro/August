@@ -8,11 +8,14 @@ export interface TrayState {
   update: UpdateState;
   compact: boolean;
   recordingSince: number | null;
+  micMuted: boolean;
+  muteAccelerator: string | null;
 }
 
 export interface TrayActions {
   showWindow(): void;
   toggleRecording(): void;
+  toggleMute(): void;
   updater: UpdaterControls | null;
   expandCompact(): void;
   quit(): void;
@@ -24,7 +27,7 @@ type Variant = 'idle' | 'recording' | 'transcribing';
 /// hides here instead of closing, so this is the only always-visible surface of the app.
 export class AppTray {
   private readonly tray: Tray;
-  private state: TrayState = { recording: false, transcribing: 0, update: { phase: 'idle' }, compact: false, recordingSince: null };
+  private state: TrayState = { recording: false, transcribing: 0, update: { phase: 'idle' }, compact: false, recordingSince: null, micMuted: false, muteAccelerator: null };
 
   constructor(private readonly iconDir: string, private readonly actions: TrayActions) {
     this.tray = new Tray(this.iconFor(this.state));
@@ -95,6 +98,15 @@ export class AppTray {
     const template: Electron.MenuItemConstructorOptions[] = [
       ...(this.state.compact ? [{ label: 'Expand August', click: () => this.actions.expandCompact() }] : []),
       { label: 'Show August', click: () => this.actions.showWindow() },
+      ...(this.state.recording
+        ? [{
+            label: 'Mute microphone',
+            type: 'checkbox' as const,
+            checked: this.state.micMuted,
+            ...(this.state.muteAccelerator ? { accelerator: this.state.muteAccelerator, registerAccelerator: false } : {}),
+            click: () => this.actions.toggleMute(),
+          }]
+        : []),
       { label: this.state.recording ? 'Stop Recording' : 'Start Recording', click: () => this.actions.toggleRecording() },
       { type: 'separator' },
       { label: `Status: ${this.statusText()}`, enabled: false },
