@@ -8,5 +8,41 @@
       ".agents/skills/agentation-init/references/script-templates.md",
       ".agents/skills/agentation-init/references/verification-checks.md"
     ]
+  },
+  "comment-scanner": {
+    "installedAt": "2026-11-03T14:46:03.573Z",
+    "version": "1.0.0",
+    "files": [
+      ".agents/skills/comment-scanner/SKILL.md",
+      ".agents/skills/comment-scanner/scripts/scan_comments.py",
+      ".agents/skills/comment-scanner/scripts/comment_lexer.py",
+      ".agents/skills/comment-scanner/scripts/file_walker.py",
+      ".agents/skills/comment-scanner/scripts/lexer_base.py",
+      ".agents/skills/comment-scanner/scripts/py_lexer.py"
+    ],
+    "fileHashes": {
+      ".agents/skills/comment-scanner/SKILL.md": "fnv1a:964854b6",
+      ".agents/skills/comment-scanner/scripts/scan_comments.py": "fnv1a:73bfd781",
+      ".agents/skills/comment-scanner/scripts/comment_lexer.py": "fnv1a:c8ba15aa",
+      ".agents/skills/comment-scanner/scripts/file_walker.py": "fnv1a:70e7f985",
+      ".agents/skills/comment-scanner/scripts/lexer_base.py": "fnv1a:306b4953",
+      ".agents/skills/comment-scanner/scripts/py_lexer.py": "fnv1a:2db94913"
+    }
+  },
+  "test-scanner": {
+    "installedAt": "2026-11-03T14:46:25.863Z",
+    "version": "1.0.0",
+    "files": [
+      ".agents/skills/test-scanner/SKILL.md",
+      ".agents/skills/test-scanner/scripts/scan_tests.py",
+      ".agents/skills/test-scanner/scripts/detectors.py",
+      ".agents/skills/test-scanner/scripts/file_walker.py"
+    ],
+    "fileHashes": {
+      ".agents/skills/test-scanner/SKILL.md": "fnv1a:3917ac97",
+      ".agents/skills/test-scanner/scripts/scan_tests.py": "fnv1a:55d02423",
+      ".agents/skills/test-scanner/scripts/detectors.py": "fnv1a:1ef04e47",
+      ".agents/skills/test-scanner/scripts/file_walker.py": "fnv1a:70e7f985"
+    }
   }
 }

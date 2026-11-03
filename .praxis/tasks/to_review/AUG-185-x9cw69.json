@@ -1,0 +1,18 @@
+{
+  "id": "AUG-185-x9cw69",
+  "assignee": "assistant.json",
+  "priority": "medium",
+  "status": "to_review",
+  "title": "[AUG-185] Audit test code token cost with Test Scanner",
+  "why_we_need_this": "Test files are a large token sink for agents reading the codebase. Knowing the frameworks, test counts and token weight lets the user decide how agents should treat tests. This task was created from the Boosts view; the scanner skill was written to `.agents/skills/test-scanner/`.",
+  "acceptance_criteria": "- Follow `.agents/skills/test-scanner/SKILL.md` and run the scanner on the project root.\n- The user gets a short summary: test files, cases, frameworks, config files, estimated tokens, share of source tokens and the heaviest files.\n- The full Markdown report is shared with the user.\n- Options are proposed: document the test strategy in project-context, tell agents to skip tests unless relevant.\n- No test is deleted, moved or modified without explicit user approval.",
+  "important_constraints": "- The scanner only reports; it never edits files.\n- Never delete or disable tests without approval.\n- Do not change test configuration.",
+  "labels": [
+    "boost",
+    "test-scanner"
+  ],
+  "on_hold_reason": "",
+  "contextRouterIncluded": true,
+  "created_at": 1793717188625,
+  "column_entered_at": 1793717611407
+}

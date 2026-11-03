@@ -1,0 +1,395 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Mic Mute Mockup</title>
+<style>
+:root {
+  --bg:#f2efe8; --surface:rgba(250,248,244,.92); --line:rgba(45,58,51,.25); --fg:#1e2b24; --muted:#566b5e;
+  --accent:#0d8c5c; --accent-light:rgba(13,140,92,.12); --pause:#d49a00; --danger:#d44040; --them:#9a7a1a;
+  --on-accent:#f2efe8; --body-bg:#e6e2d8; --glow:rgba(13,140,92,.18);
+  --mono:'Cascadia Code','Fira Code',Consolas,monospace;
+}
+@media (prefers-color-scheme: dark) { :root:not([data-theme="light"]) {
+  --bg:#0a110d; --surface:rgba(12,20,16,.92); --line:rgba(0,200,118,.18); --fg:#c0cec4; --muted:#5e7d6a;
+  --accent:#00c876; --accent-light:rgba(0,200,118,.10); --pause:#d4a020; --danger:#e05555; --them:#d4a843;
+  --on-accent:#0a110d; --body-bg:#0f1914; --glow:rgba(0,200,118,.3); color-scheme:dark; } }
+:root[data-theme="dark"] {
+  --bg:#0a110d; --surface:rgba(12,20,16,.92); --line:rgba(0,200,118,.18); --fg:#c0cec4; --muted:#5e7d6a;
+  --accent:#00c876; --accent-light:rgba(0,200,118,.10); --pause:#d4a020; --danger:#e05555; --them:#d4a843;
+  --on-accent:#0a110d; --body-bg:#0f1914; --glow:rgba(0,200,118,.3); color-scheme:dark; }
+
+* { box-sizing:border-box; border-radius:0; }
+body { margin:0; background:var(--bg); color:var(--fg); font-family:var(--mono); font-size:13px; line-height:1.5;
+  padding:0 max(16px,env(safe-area-inset-left,0px)) 48px; }
+.wrap { max-width:1000px; margin:0 auto; display:grid; gap:24px; }
+header { padding-top:24px; }
+h1 { margin:0; font-size:20px; text-wrap:balance; }
+h2 { margin:0 0 10px; font-size:13px; letter-spacing:.08em; text-transform:uppercase; color:var(--accent); border-bottom:1px solid var(--line); padding-bottom:6px; }
+h3 { margin:14px 0 6px; font-size:13px; }
+.lead { margin:4px 0 0; color:var(--muted); max-width:75ch; }
+.note { margin:6px 0 0; font-size:11px; color:var(--muted); }
+button { font-family:var(--mono); cursor:pointer; }
+button:focus-visible { outline:2px solid var(--accent); outline-offset:2px; }
+
+/* sticky bar */
+.bar { position:sticky; top:0; z-index:20; background:var(--bg); border-bottom:1px solid var(--line); padding:10px 0; display:flex; flex-wrap:wrap; gap:10px 16px; align-items:center; }
+.grp { display:flex; align-items:center; gap:6px; flex-wrap:wrap; }
+.grp > span { font-size:10px; text-transform:uppercase; letter-spacing:.06em; color:var(--muted); }
+.seg { display:flex; border:1px solid var(--line); flex-wrap:wrap; }
+.seg button { border:0; background:transparent; color:var(--fg); font-size:11px; padding:6px 10px; }
+.seg button[aria-pressed="true"] { background:var(--accent); color:var(--on-accent); }
+.seg.mic button[aria-pressed="true"][data-v="muted"] { background:var(--danger); color:#fff; }
+.hint { font-size:10px; color:var(--muted); }
+
+.grid { display:grid; grid-template-columns:repeat(auto-fit,minmax(300px,1fr)); gap:20px; }
+.cell { min-width:0; display:flex; flex-direction:column; align-items:flex-start; gap:6px; }
+.cap { font-size:11px; color:var(--muted); }
+.cap b { color:var(--fg); }
+
+/* state visibility */
+.s-m { display:none !important; }
+body[data-muted="true"] .s-m { display:revert !important; }
+body[data-muted="true"] .s-u { display:none !important; }
+body[data-variant="2"] .v1 { display:none !important; }
+body:not([data-variant="2"]) .v2 { display:none !important; }
+
+/* compact bracket buttons */
+.cb { font-size:10px; text-transform:uppercase; letter-spacing:.05em; padding:3px 7px; border:1px solid var(--line); background:transparent; color:var(--fg); white-space:nowrap; }
+.cb.green { color:var(--accent); border-color:var(--accent); }
+.cb.pause { color:var(--pause); border-color:var(--pause); }
+.cb.red { color:var(--danger); border-color:var(--danger); }
+.cb.redf { background:var(--danger); border-color:var(--danger); color:#fff; }
+.cb.mute.on { background:var(--danger); border-color:var(--danger); color:#fff; }
+.cb svg, .nbtn svg { width:12px; height:12px; vertical-align:-2px; }
+.tg { font-size:9px; text-transform:uppercase; letter-spacing:.08em; color:var(--accent); }
+.tg.red { color:var(--danger); font-weight:700; border:1px solid var(--danger); padding:0 4px; }
+.sq { width:8px; height:8px; background:var(--danger); display:inline-block; flex:none; }
+.sp { flex:1; }
+
+/* circuit frame */
+.circ { position:relative; width:320px; max-width:100%; aspect-ratio:1; border:1px solid var(--line); background:var(--body-bg); }
+.node { position:absolute; display:flex; flex-direction:column; align-items:center; justify-content:center; border-radius:50% !important;
+  background:var(--surface); border:2px solid var(--accent); color:var(--accent); transform:translate(-50%,-50%); box-shadow:0 0 12px var(--glow); font-family:var(--mono); padding:0; }
+.node.corner { width:64px; height:64px; }
+.node .l { font-size:9px; font-weight:700; text-transform:uppercase; letter-spacing:.05em; color:var(--muted); }
+.node .g { font-size:12px; font-weight:800; line-height:1.2; }
+.node svg { width:20px; height:20px; }
+.tl{top:18%;left:18%}.tr{top:18%;left:82%}.bl{top:82%;left:18%}.br{top:82%;left:82%}
+.node.mic.on { border-color:var(--danger); color:var(--danger); box-shadow:0 0 12px rgba(212,64,64,.3); }
+.node.mic.on .l { color:var(--danger); }
+.stop { top:50%; left:50%; width:100px; height:100px; border-width:3px; border-color:var(--danger); color:var(--danger); }
+.stop i { width:18px; height:18px; background:var(--danger); display:block; }
+.stop .t { font-size:13px; font-weight:700; color:var(--fg); margin-top:4px; }
+.stop::after { content:""; position:absolute; inset:-8px; border:1.5px solid var(--danger); border-radius:50%; opacity:.4; animation:ring 1.6s ease-out infinite; }
+@keyframes ring { from{transform:scale(.92);opacity:.5} to{transform:scale(1.25);opacity:0} }
+.chip { font-size:11px; color:var(--danger); border:1px solid var(--danger); padding:3px 8px; }
+
+/* bars */
+.bars { display:flex; align-items:center; gap:3px; height:24px; }
+.bars i { width:4px; background:var(--accent); height:100%; transform:scaleY(.2); animation:bar 1s ease-in-out infinite alternate; transform-origin:center; }
+body[data-muted="true"] .bars i { animation:none; transform:scaleY(.1); background:var(--danger); opacity:.6; }
+@keyframes bar { from{transform:scaleY(.15)} to{transform:scaleY(1)} }
+.radial { position:absolute; inset:0; pointer-events:none; }
+.radial i { position:absolute; left:50%; top:50%; width:3px; height:14px; margin:-7px 0 0 -1.5px; background:var(--accent); opacity:.7; }
+.radial i b { display:block; width:100%; height:100%; background:inherit; animation:bar 1s ease-in-out infinite alternate; }
+body[data-muted="true"] .radial i { background:var(--danger); opacity:.5; }
+body[data-muted="true"] .radial i b { animation:none; transform:scaleY(.15); }
+
+/* live bar */
+.live { width:100%; max-width:560px; border:1px solid var(--line); background:var(--body-bg); }
+.topbar { min-height:48px; display:flex; flex-wrap:wrap; align-items:center; gap:6px 8px; padding:6px 10px; border-bottom:1px solid var(--line); background:var(--surface); }
+.dot { width:9px; height:9px; background:var(--danger); border-radius:50% !important; animation:blink 1.2s steps(2) infinite; display:inline-block; }
+@keyframes blink { 50%{opacity:.3} }
+.nbtn { font-size:11px; padding:5px 9px; border:1px solid var(--line); background:transparent; color:var(--fg); }
+.nbtn.pause { color:var(--pause); border-color:var(--pause); }
+.nbtn.green { color:var(--accent); border-color:var(--accent); }
+.nbtn.red { color:var(--danger); border-color:var(--danger); }
+.nbtn.redf { background:var(--danger); border-color:var(--danger); color:#fff; }
+.nbtn.mute.on { background:var(--danger); border-color:var(--danger); color:#fff; }
+.lines { padding:10px 12px; display:grid; gap:6px; font-size:12px; }
+.lines .me { color:var(--accent); } .lines .them { color:var(--them); }
+.gap { text-align:center; color:var(--muted); font-size:10px; border-top:1px solid var(--line); padding-top:4px; }
+
+/* compact widgets */
+.dock { width:360px; max-width:100%; height:420px; border:1px solid var(--line); background:var(--surface); display:flex; flex-direction:column; }
+.row { display:flex; align-items:center; gap:6px; padding:8px 10px; }
+.row.head { border-bottom:1px solid var(--line); } .row.foot { border-top:1px solid var(--line); flex-wrap:wrap; }
+.dock .body { flex:1; overflow:hidden; padding:8px 10px; display:grid; gap:6px; align-content:start; font-size:11px; }
+.tm { font-size:12px; font-weight:700; }
+.sqw { width:200px; height:200px; border:1px solid var(--line); background:var(--surface); display:flex; flex-direction:column; padding:8px; gap:6px; }
+.sqw .big { font-size:30px; font-weight:700; text-align:center; flex:1; display:flex; align-items:center; justify-content:center; }
+.sqw .bars { justify-content:center; }
+.sqw .cb.full { width:100%; padding:7px; }
+.ghost { width:520px; max-width:100%; height:90px; background:rgba(10,17,13,.82); color:#c0cec4; border:1px solid rgba(0,200,118,.25); display:flex; gap:12px; padding:8px 12px; position:relative; overflow:hidden; }
+.ghost .lc { display:flex; flex-direction:column; gap:4px; flex:none; width:96px; }
+.ghost .tools { position:absolute; top:4px; right:6px; display:flex; gap:4px; }
+.ghost .tools .cb { color:#c0cec4; border-color:rgba(192,206,196,.35); padding:1px 5px; }
+.ghost .tools .cb.mute.on { background:var(--danger); border-color:var(--danger); color:#fff; }
+.ghost .cl { flex:1; min-width:0; font-size:12px; padding-top:14px; display:grid; gap:2px; align-content:start; }
+.ghost .tg { color:#00c876; }
+.ghost .tg.red { color:#e05555; border-color:#e05555; }
+.coins { display:flex; gap:16px; flex-wrap:wrap; align-items:flex-start; }
+.coin { height:56px; background:rgba(10,17,13,.82); color:#c0cec4; border:1px solid rgba(0,200,118,.25); display:flex; align-items:center; gap:8px; padding:6px 8px; }
+.coin.c { width:56px; flex-direction:column; justify-content:center; gap:0; }
+.coin.e { width:248px; max-width:100%; }
+body[data-muted="true"] .coin { border:2px solid var(--danger); }
+.coin .f { display:flex; flex-direction:column; align-items:center; line-height:1.2; font-size:11px; }
+.coin .f .mw { font-size:8px; color:#e05555; font-weight:700; letter-spacing:.06em; }
+.coin .acts { display:flex; gap:3px; flex-wrap:nowrap; }
+.coin .cb { color:#c0cec4; border-color:rgba(192,206,196,.35); font-size:8px; padding:2px 3px; }
+.coin .cb.mute.on, .coin .cb.redf { background:var(--danger); border-color:var(--danger); color:#fff; }
+
+/* tray + settings */
+.menu { width:280px; max-width:100%; border:1px solid var(--line); background:var(--surface); padding:4px 0; }
+.menu div { padding:6px 14px; display:flex; justify-content:space-between; gap:12px; }
+.menu .hl { background:var(--accent-light); }
+.menu hr { border:0; border-top:1px solid var(--line); margin:3px 0; }
+.set { border:1px solid var(--line); background:var(--surface); padding:8px 12px; display:grid; gap:8px; width:100%; max-width:460px; }
+.set div { display:flex; align-items:center; gap:8px; flex-wrap:wrap; }
+.set span.k { width:120px; color:var(--muted); }
+
+/* research */
+.res { max-width:80ch; font-size:12px; }
+.res ul { padding-left:18px; margin:6px 0; } .res li { margin-bottom:5px; }
+.tw { overflow-x:auto; border:1px solid var(--line); }
+table { border-collapse:collapse; min-width:900px; font-size:11px; }
+th, td { border:1px solid var(--line); padding:6px 8px; text-align:left; vertical-align:top; }
+th { background:var(--accent-light); }
+@media (prefers-reduced-motion: reduce) { *, *::before, *::after { animation:none !important; transition:none !important; } }
+</style>
+</head>
+<body data-muted="false" data-variant="1">
+<div class="wrap">
+<header>
+  <h1>AUG-174 · Mic mute during recording</h1>
+  <p class="lead">Mute keeps the recording and system audio running; only your microphone goes silent in August's recording and transcript.</p>
+</header>
+
+<div class="bar" role="toolbar" aria-label="Mockup controls">
+  <div class="grp"><span>Mic:</span>
+    <div class="seg mic">
+      <button type="button" id="micOn" data-v="on" aria-pressed="true" aria-label="Set microphone ON">ON</button>
+      <button type="button" id="micMuted" data-v="muted" aria-pressed="false" aria-label="Set microphone MUTED">MUTED</button>
+    </div></div>
+  <div class="grp"><span>Variant:</span>
+    <div class="seg">
+      <button type="button" data-variant="1" aria-pressed="true" aria-label="Variant 1, control everywhere">1 · Control everywhere</button>
+      <button type="button" data-variant="2" aria-pressed="false" aria-label="Variant 2, standard view plus hotkey">2 · Standard view + hotkey</button>
+    </div></div>
+  <div class="grp"><span>Theme:</span>
+    <div class="seg">
+      <button type="button" data-theme-btn="light" aria-pressed="false" aria-label="Light theme">Light</button>
+      <button type="button" data-theme-btn="dark" aria-pressed="false" aria-label="Dark theme">Dark</button>
+    </div></div>
+  <span class="hint">Hotkey: Ctrl/Cmd+Alt+M</span>
+</div>
+
+<section>
+  <h2>Standard recording view</h2>
+  <div class="grid">
+    <div class="cell">
+      <div class="cap"><b>a) Default recording (circuit layout)</b></div>
+      <div class="circ">
+        <div class="radial" id="radial" aria-hidden="true"></div>
+        <button class="node corner tl" type="button" aria-label="Language EN"><span class="g">EN</span><span class="l">Language</span></button>
+        <button class="node corner tr mic" type="button" data-mute aria-pressed="false" aria-label="Toggle microphone mute">
+          <span class="s-u"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><rect x="9" y="3" width="6" height="12"/><path d="M5 11a7 7 0 0 0 14 0M12 18v3"/></svg></span>
+          <span class="s-m"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><rect x="9" y="3" width="6" height="12"/><path d="M5 11a7 7 0 0 0 14 0M12 18v3M3 3l18 18"/></svg></span>
+          <span class="l"><span class="s-u">Mic</span><span class="s-m">Muted</span></span>
+        </button>
+        <button class="node corner bl" type="button" aria-label="System audio on"><span class="g">On</span><span class="l">System</span></button>
+        <button class="node corner br" type="button" aria-label="Theme"><span class="g">◐</span><span class="l">Theme</span></button>
+        <button class="node stop" type="button" aria-label="Stop recording"><i></i><span class="t">12:41</span></button>
+      </div>
+      <div class="chip s-m">MIC OFF — your side is not recorded</div>
+      <div class="note">Top-right Mic node is the mute toggle while recording. Radial bars stay flat while muted.</div>
+    </div>
+    <div class="cell">
+      <div class="cap"><b>b) Live transcript top bar</b></div>
+      <div class="live">
+        <div class="topbar">
+          <span class="dot"></span><b>12:41</b><span class="tg">LISTENING</span><span class="sp"></span>
+          <button class="nbtn pause" type="button" aria-label="Pause live transcript">Pause</button>
+          <button class="nbtn mute" type="button" data-mute aria-pressed="false" aria-label="Toggle microphone mute">
+            <span class="s-u"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><rect x="9" y="3" width="6" height="12"/><path d="M5 11a7 7 0 0 0 14 0M12 18v3"/></svg> Mute mic</span>
+            <span class="s-m"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><rect x="9" y="3" width="6" height="12"/><path d="M5 11a7 7 0 0 0 14 0M12 18v3M3 3l18 18"/></svg> Unmute mic</span>
+          </button>
+          <button class="nbtn green" type="button" aria-label="Copy all">Copy All</button>
+          <button class="nbtn red" type="button" aria-label="Stop live">Stop Live</button>
+          <button class="nbtn redf" type="button" aria-label="End recording">End Recording</button>
+        </div>
+        <div class="lines">
+          <div class="me">[Me] Let's start with the roadmap for next quarter.</div>
+          <div class="them">[Them] Sure, I have the draft open.</div>
+          <div class="me">[Me] The first item is the mic mute control.</div>
+          <div class="them">[Them] How does it behave in the recording?</div>
+          <div class="me">[Me] The file keeps its length, only silence.</div>
+          <div class="them">[Them] Good, that keeps the timeline in sync.</div>
+          <div class="gap s-m">— mic muted —</div>
+        </div>
+      </div>
+      <div class="note">The "— mic muted —" divider is an optional gap marker, open question. Variant 2: standard view is identical to Variant 1 (mute lives here in both variants).</div>
+    </div>
+  </div>
+</section>
+
+<section>
+  <h2>Compact widgets</h2>
+  <p class="note v2" style="margin:0 0 10px">Mute via hotkey or tray; widget only shows state.</p>
+  <div class="grid">
+    <div class="cell">
+      <div class="cap"><b>a) Dock Strip</b> 360 x ~420</div>
+      <div class="dock">
+        <div class="row head"><span class="sq"></span><span class="tm">12:41</span><span class="tg">LISTENING</span><span class="tg red s-m">MIC OFF</span><span class="sp"></span><button class="cb" type="button" aria-label="Expand">[ ⤢ ]</button></div>
+        <div class="row"><button class="cb green" type="button" aria-label="Copy all">[ Copy All ]</button><button class="cb red" type="button" aria-label="Stop live">[ Stop Live ]</button></div>
+        <div class="body">
+          <div style="color:var(--accent)">[Me] Let's start with the roadmap.</div>
+          <div style="color:var(--them)">[Them] Sure, I have the draft open.</div>
+          <div style="color:var(--accent)">[Me] First item is mic mute.</div>
+          <div style="color:var(--them)">[Them] How does it behave?</div>
+          <div style="color:var(--accent)">[Me] File keeps its length.</div>
+        </div>
+        <div class="row foot">
+          <button class="cb pause" type="button" aria-label="Pause live transcript">[ Pause ]</button>
+          <button class="cb mute v1" type="button" data-mute aria-pressed="false" aria-label="Toggle microphone mute"><span class="s-u">[ Mute ]</span><span class="s-m">[ Unmute ]</span></button>
+          <span class="sp"></span>
+          <button class="cb redf" type="button" aria-label="End recording">[ End ]</button>
+        </div>
+      </div>
+    </div>
+    <div class="cell">
+      <div class="cap"><b>b) Dock Square</b> 200 x 200</div>
+      <div class="sqw">
+        <div class="row" style="padding:0"><span class="sq"></span>
+          <span class="tg s-u">MIC + SYS</span><span class="tg red s-m">SYS · MIC OFF</span><span class="sp"></span>
+          <button class="cb mute v1" type="button" data-mute aria-pressed="false" aria-label="Toggle microphone mute"><span class="s-u">[ 🎙 ]</span><span class="s-m">[ <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><rect x="9" y="3" width="6" height="12"/><path d="M5 11a7 7 0 0 0 14 0M12 18v3M3 3l18 18"/></svg> ]</span></button>
+          <button class="cb" type="button" aria-label="Expand">[ ⤢ ]</button></div>
+        <div class="big">12:41</div>
+        <div class="bars" data-bars></div>
+        <button class="cb redf full" type="button" aria-label="Stop recording">[ Stop ]</button>
+      </div>
+    </div>
+    <div class="cell" style="grid-column:1/-1">
+      <div class="cap"><b>c) Ghost Caption</b> 520 x 90 (tools visible on hover; shown always here)</div>
+      <div class="ghost">
+        <div class="lc"><div style="display:flex;gap:6px;align-items:center"><span class="dot"></span><b>12:41</b></div><span class="tg">LISTENING</span><span class="tg red s-m" style="align-self:flex-start">MIC OFF</span></div>
+        <div class="cl"><div style="color:#d4a843">[Them] How does it behave in the recording?</div><div>[Me] The file keeps its length, only silence.</div></div>
+        <div class="tools"><button class="cb" type="button" aria-label="Expand">[ ⤢ ]</button><button class="cb" type="button" aria-label="Pause">[ ⏸ ]</button>
+          <button class="cb mute v1" type="button" data-mute aria-pressed="false" aria-label="Toggle microphone mute"><span class="s-u">[ 🎙 ]</span><span class="s-m">[ <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><rect x="9" y="3" width="6" height="12"/><path d="M5 11a7 7 0 0 0 14 0M12 18v3M3 3l18 18"/></svg> ]</span></button>
+          <button class="cb" type="button" aria-label="Stop">[ ■ ]</button></div>
+      </div>
+    </div>
+    <div class="cell" style="grid-column:1/-1">
+      <div class="cap"><b>d) Ghost Coin</b> collapsed 56 x 56, expanded 248 x 56</div>
+      <div class="coins">
+        <div class="coin c"><div class="f"><span class="dot"></span><b>12:41</b><span class="mw s-m">MUTED</span></div></div>
+        <div class="coin e"><div class="f"><span class="dot"></span><b>12:41</b><span class="mw s-m">MUTED</span></div>
+          <div class="acts"><button class="cb" type="button" aria-label="Pause">[ Pause ]</button>
+            <button class="cb mute v1" type="button" data-mute aria-pressed="false" aria-label="Toggle microphone mute"><span class="s-u">[ Mute ]</span><span class="s-m">[ Unmute ]</span></button>
+            <button class="cb redf" type="button" aria-label="End recording">[ End ]</button><button class="cb" type="button" aria-label="Open">[ Open ]</button></div></div>
+      </div>
+    </div>
+  </div>
+</section>
+
+<section>
+  <h2>Tray &amp; hotkey</h2>
+  <div class="grid">
+    <div class="cell"><div class="cap"><b>Tray context menu</b></div>
+      <div class="menu" role="menu">
+        <div role="menuitem">Expand August</div>
+        <div role="menuitem" class="hl"><span><span class="s-m">✓ </span>Mute microphone</span><span style="color:var(--muted)">Ctrl+Alt+M</span></div>
+        <div role="menuitem">Stop recording</div><hr><div role="menuitem">Quit</div>
+      </div></div>
+    <div class="cell"><div class="cap"><b>Settings → General</b></div>
+      <div class="set">
+        <div><span class="k">Record hotkey</span><button class="cb" type="button">[ Ctrl+Alt+R ]</button></div>
+        <div><span class="k">Mute hotkey</span><button class="cb" type="button">[ Ctrl+Alt+M ]</button><button class="cb" type="button">[ Change ]</button></div>
+      </div></div>
+  </div>
+</section>
+
+<section class="res">
+  <h2>Research summary</h2>
+  <h3>Audio pipeline today</h3>
+  <ul>
+    <li>Mic: getUserMedia (client/src/components/FileUpload.tsx:343) → Web Audio graph micSource → recordDest (FileUpload.tsx:380-390, AUG-125) → recordStream → MediaRecorder, 30 s timeslice (449-451, 606). Device loss re-attaches a new micSource into the same recordDest (456-480).</li>
+    <li>System track, two paths: server capture (FileUpload.tsx:544-550 → server/src/services/systemCapture.ts: Windows WASAPI loopback helper / Stereo Mix / VB-Cable via dshow, macOS audiotee / BlackHole via avfoundation, lines 14-27, 220-223) or the browser picker getDisplayMedia with its own MediaRecorder (FileUpload.tsx:552-594).</li>
+    <li>Level bars: AnalyserNode on recordStream, or the mic+system mix in picker mode (FileUpload.tsx:596-641).</li>
+    <li>Live: liveTranscriptionClient taps recordStream (FileUpload.tsx:646-648; client/src/services/liveTranscriptionClient.ts:266-286), resamples to 16 kHz, ChunkAccumulator 4 s / 1 s overlap (95-120) with an RMS speech gate (24-69). Them = browser tap (241-264) or server tee (attach-capture, AUG-113). Live Pause only stops sending chunks (294-300).</li>
+    <li>Post-recording: mic + system files upload with micStartedAt (FileUpload.tsx:396-446); server/src/routes/sessions.ts:672, 745 computes systemOffsetMs = capture.startedAt − micStartedAt; runDualTranscription (sessions.ts:165) → alignDualSegments (server/src/services/transcriptMerger.ts:210) → mergeDualStream (251). Batch whisper runs with Silero VAD (server/src/services/whisper.ts:440-517, 662).</li>
+    <li>Key fact: on both Windows and macOS the microphone is captured only in the renderer. The server capture only ever produces the system track, so mute is a renderer-only change.</li>
+  </ul>
+  <h3>Approaches compared</h3>
+  <div class="tw" tabindex="0" role="region" aria-label="Approaches comparison table"><table>
+    <thead><tr><th>Approach</th><th>Timeline sync</th><th>Live transcript</th><th>Post-recording transcript</th><th>Windows / macOS</th><th>Verdict</th></tr></thead>
+    <tbody>
+    <tr><td>A. Gain → 0 (GainNode between micSource and recordDest, ~15 ms ramp)</td><td>Kept: silence frames, file keeps wall-clock length, micStartedAt offset unchanged</td><td>Mic chunks fall under the speech gate and are dropped; Them lines continue; a window already holding speech before mute is still sent</td><td>Silero VAD skips the silence; no [Me] lines in the muted range</td><td>Identical, renderer-only; WASAPI / Stereo Mix / VB-Cable / audiotee / BlackHole untouched</td><td><b style="color:var(--accent)">Recommended</b></td></tr>
+    <tr><td>B. track.enabled = false on the mic track</td><td>Kept (Chromium emits silence)</td><td>Same as A</td><td>Same as A</td><td>Identical</td><td>Fallback only: lost on device re-attach (new track starts enabled); used when the Web Audio graph is unavailable (plain browser tab)</td></tr>
+    <tr><td>C. Pause the mic track (MediaRecorder.pause / track.stop)</td><td>Broken: mic file shorter than wall clock, [Me] lines drift earlier than [Them] after mute</td><td>Same as A</td><td>Misaligned</td><td>track.stop also fires the device-loss re-attach</td><td><b style="color:var(--danger)">Rejected</b> (also against the 2026-10-29 "no recording pause" decision)</td></tr>
+    <tr><td>D. Gap markers only (record mute intervals, cut later)</td><td>Kept</td><td>Noise still transcribed live</td><td>Needs server-side cutting</td><td>Identical</td><td>Rejected alone; as metadata on top of A (muteIntervals in session.json) it is optional</td></tr>
+    </tbody></table></div>
+  <h3>Caveats</h3>
+  <ul>
+    <li>The OS microphone indicator (macOS orange dot, Windows mic icon) stays on while muted: the device stays open so unmute is instant and the file keeps its length.</li>
+    <li>Mute in August does not mute you in Zoom/Meet/Teams; the tooltip says "Mute in August's recording".</li>
+    <li>If the mic reaches the system track (Stereo Mix with "Listen to this device", a VB-Cable/Voicemeeter route that mixes the mic into output), August's mute cannot remove it from the system track.</li>
+    <li>Mute resets to off at each new recording, so a forgotten mute never silently drops your side of the next call.</li>
+  </ul>
+  <h3>Recommendation</h3>
+  <p>Approach A (+ B as fallback), Variant 1 (control in every view + global hotkey Ctrl/Cmd+Alt+M + tray item), red "MIC OFF" indicator in every view.</p>
+</section>
+</div>
+
+<script>
+(function () {
+  var state = { muted: false, variant: 1, theme: null };
+  var $ = function (s) { return Array.prototype.slice.call(document.querySelectorAll(s)); };
+  var body = document.body, root = document.documentElement;
+
+  $('[data-bars]').forEach(function (el) {
+    for (var i = 0; i < 12; i++) { var b = document.createElement('i'); b.style.animationDelay = (i * 0.09) + 's'; b.style.animationDuration = (0.6 + (i % 4) * 0.2) + 's'; el.appendChild(b); }
+  });
+  var rad = document.getElementById('radial');
+  for (var i = 0; i < 12; i++) {
+    var d = document.createElement('i'), c = document.createElement('b');
+    d.style.transform = 'rotate(' + (i * 30) + 'deg) translateY(-82px)';
+    c.style.animationDelay = (i * 0.08) + 's'; d.appendChild(c); rad.appendChild(d);
+  }
+
+  function render() {
+    body.setAttribute('data-muted', state.muted ? 'true' : 'false');
+    body.setAttribute('data-variant', String(state.variant));
+    if (state.theme) root.setAttribute('data-theme', state.theme); else root.removeAttribute('data-theme');
+    $('[data-mute]').forEach(function (b) {
+      b.setAttribute('aria-pressed', String(state.muted));
+      b.classList.toggle('on', state.muted);
+      b.setAttribute('aria-label', state.muted ? 'Unmute microphone' : 'Mute microphone');
+      b.title = "Mute in August's recording";
+    });
+    document.getElementById('micOn').setAttribute('aria-pressed', String(!state.muted));
+    document.getElementById('micMuted').setAttribute('aria-pressed', String(state.muted));
+    $('[data-variant]').forEach(function (b) { b.setAttribute('aria-pressed', String(+b.getAttribute('data-variant') === state.variant)); });
+    var eff = state.theme || (window.matchMedia && matchMedia('(prefers-color-scheme: dark)').matches ? 'dark' : 'light');
+    $('[data-theme-btn]').forEach(function (b) { b.setAttribute('aria-pressed', String(b.getAttribute('data-theme-btn') === eff)); });
+  }
+  function toggle() { state.muted = !state.muted; render(); }
+
+  document.addEventListener('click', function (e) {
+    var t = e.target.closest('button'); if (!t) return;
+    if (t.hasAttribute('data-mute')) toggle();
+    else if (t.id === 'micOn') { state.muted = false; render(); }
+    else if (t.id === 'micMuted') { state.muted = true; render(); }
+    else if (t.hasAttribute('data-variant')) { state.variant = +t.getAttribute('data-variant'); render(); }
+    else if (t.hasAttribute('data-theme-btn')) { state.theme = t.getAttribute('data-theme-btn'); render(); }
+  });
+  document.addEventListener('keydown', function (e) {
+    if ((e.ctrlKey || e.metaKey) && e.altKey && (e.code === 'KeyM' || (e.key || '').toLowerCase() === 'm')) { e.preventDefault(); toggle(); }
+  });
+  render();
+})();
+</script>
+</body>
+</html>

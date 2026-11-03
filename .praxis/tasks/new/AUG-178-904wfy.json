@@ -1,0 +1,19 @@
+{
+  "id": "AUG-178-904wfy",
+  "assignee": "jarvis.json",
+  "priority": "medium",
+  "status": "new",
+  "title": "[AUG-178] Research: missing controls that keep Compact Mode from daily use",
+  "why_we_need_this": "Rodion's feedback: Compact Mode is not convenient for everyday use — required buttons are missing, so he went back to the standard mode. Compact Mode (AUG-156) only pays off if it covers the daily meeting flow. Source: @docs/feedback/2026-11-rodion-feedback.md",
+  "acceptance_criteria": "- [ ] Inventory: actions available in standard mode vs each compact widget (Dock Strip, Dock Square, Ghost Caption, Ghost Coin) as a table.\n- [ ] Missing controls confirmed with the user/Rodion (AskUserQuestion) — not guessed; overlap with mic mute (AUG-174), Copy & Clear (AUG-175) and Ghost Stop (AUG-176) research noted.\n- [ ] Proposal per widget: which controls to add, placement, priority.\n- [ ] HTML mockup: a self-contained file @docs/mockups/AUG-178/compact-controls.html (opens in a browser, no build) showing all four widgets with the proposed controls, reusing the agreed mockups of AUG-174/175/176; built on August's real design tokens (frontend-design route, 0 border-radius).\n- [ ] The proposal is agreed with the user on the mockup; the decision is recorded in this card.\n- [ ] CLOSURE CONDITION: an implementation task with the agreed scope, SMART acceptance criteria and a link to the chosen mockup is created on the board; its ID is written into this card and into the roadmap line in @project-context/roadmap/README.md.",
+  "important_constraints": "Research only — no code changes. Closed only by creating the agreed implementation task. Start after the mic mute, live buttons and Ghost Mode research cards are agreed (their controls feed this one). Roadmap: M3 Compact Mode. Order: 9/9 (last).\n\nUpdate 2026-11-03 (AUG-182 revision 2): already done in AUG-182 — Ghost Caption has Stop Live Text (hold) and its tools are a 3-column equal-width grid ([ ⤢ ], Pause, Mute, Stop Live Text, End Meeting); every stop control in all compact widgets is a 1.5 s hold named STOP LIVE TEXT / END MEETING; Dock Strip has COPY ALL / COPY & CLEAR / CLEAR / STOP LIVE TEXT and footer PAUSE / MUTE / END MEETING; Mute exists in every widget (AUG-181). Take this as the baseline for the inventory.",
+  "labels": [
+    "research",
+    "feedback-rodion",
+    "feature"
+  ],
+  "on_hold_reason": "",
+  "contextRouterIncluded": true,
+  "created_at": 1793655518387,
+  "column_entered_at": 1793655518387
+}

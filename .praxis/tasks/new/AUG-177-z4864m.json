@@ -1,0 +1,19 @@
+{
+  "id": "AUG-177-z4864m",
+  "assignee": "jarvis.json",
+  "priority": "low",
+  "status": "new",
+  "title": "[AUG-177] Research: in-progress spinner after transcript processing reaches 100%",
+  "why_we_need_this": "Rodion's feedback (Feature Request 2): on the EXTERMINATUS INITIATED processing screen, once the progress hits 00:00:00 / 100% there is no sign that work is still going on, so it looks frozen. He wants a spinner/animation until the process fully ends, in August's visual style. Source: @docs/feedback/2026-11-rodion-feedback.md",
+  "acceptance_criteria": "- [ ] Stages that run after 100% listed with file:line refs (merge, semantic pass, corrections, cleanup) and how long they typically take.\n- [ ] Options compared: generic spinner vs named post-processing stage text vs both; reduced-motion handling.\n- [ ] HTML mockup: a self-contained file @docs/mockups/AUG-177/processing-spinner.html (opens in a browser, no build) with the EXTERMINATUS INITIATED screen in its post-100% state and 2–3 animated spinner variants in August style, plus the reduced-motion fallback; built on August's real design tokens (frontend-design route, 0 border-radius).\n- [ ] The user picks a variant on the mockup (AskUserQuestion); the decision is recorded in this card.\n- [ ] CLOSURE CONDITION: an implementation task with the agreed scope, SMART acceptance criteria and a link to the chosen mockup is created on the board; its ID is written into this card and into the roadmap line in @project-context/roadmap/README.md.",
+  "important_constraints": "Research only — no code changes. Closed only by creating the agreed implementation task. No diagnostics (method names, timings) in user UI. Roadmap: M2 Live session control. Order: 8/10.",
+  "labels": [
+    "research",
+    "feedback-rodion",
+    "feature"
+  ],
+  "on_hold_reason": "",
+  "contextRouterIncluded": true,
+  "created_at": 1793655512982,
+  "column_entered_at": 1793655512982
+}

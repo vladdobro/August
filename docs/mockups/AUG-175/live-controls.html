@@ -1,0 +1,439 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Live Controls Mockup</title>
+<style>
+:root {
+  --bg:#f2efe8; --surface:rgba(250,248,244,.92); --line:rgba(45,58,51,.25); --fg:#1e2b24; --muted:#566b5e;
+  --accent:#0d8c5c; --accent-light:rgba(13,140,92,.12); --pause:#d49a00; --danger:#d44040; --them:#9a7a1a;
+  --on-accent:#f2efe8; --body-bg:#e6e2d8; --glow:rgba(13,140,92,.18);
+  --mono:'Cascadia Code','Fira Code',Consolas,monospace;
+}
+@media (prefers-color-scheme: dark) { :root:not([data-theme="light"]) {
+  --bg:#0a110d; --surface:rgba(12,20,16,.92); --line:rgba(0,200,118,.18); --fg:#c0cec4; --muted:#5e7d6a;
+  --accent:#00c876; --accent-light:rgba(0,200,118,.10); --pause:#d4a020; --danger:#e05555; --them:#d4a843;
+  --on-accent:#0a110d; --body-bg:#0f1914; --glow:rgba(0,200,118,.3); color-scheme:dark; } }
+:root[data-theme="dark"] {
+  --bg:#0a110d; --surface:rgba(12,20,16,.92); --line:rgba(0,200,118,.18); --fg:#c0cec4; --muted:#5e7d6a;
+  --accent:#00c876; --accent-light:rgba(0,200,118,.10); --pause:#d4a020; --danger:#e05555; --them:#d4a843;
+  --on-accent:#0a110d; --body-bg:#0f1914; --glow:rgba(0,200,118,.3); color-scheme:dark; }
+
+* { box-sizing:border-box; border-radius:0; }
+body { margin:0; background:var(--bg); color:var(--fg); font-family:var(--mono); font-size:13px; line-height:1.5;
+  padding:0 max(16px,env(safe-area-inset-left,0px)) 48px; }
+.wrap { max-width:1000px; margin:0 auto; display:grid; grid-template-columns:minmax(0,1fr); gap:24px; }
+.wrap > * { min-width:0; }
+header { padding-top:24px; }
+h1 { margin:0; font-size:20px; text-wrap:balance; }
+h2 { margin:0 0 10px; font-size:13px; letter-spacing:.08em; text-transform:uppercase; color:var(--accent); border-bottom:1px solid var(--line); padding-bottom:6px; }
+.lead { margin:4px 0 0; color:var(--muted); max-width:75ch; }
+.note { margin:6px 0 0; font-size:11px; color:var(--muted); }
+button { font-family:var(--mono); cursor:pointer; }
+button:disabled { opacity:.4; cursor:not-allowed; }
+button:focus-visible, input:focus-visible { outline:2px solid var(--accent); outline-offset:2px; }
+
+/* sticky bar */
+.bar { position:sticky; top:0; z-index:20; background:var(--bg); border-bottom:1px solid var(--line); padding:10px 0; display:flex; flex-wrap:wrap; gap:10px 16px; align-items:center; }
+.grp { display:flex; align-items:center; gap:6px; flex-wrap:wrap; }
+.grp > span { font-size:10px; text-transform:uppercase; letter-spacing:.06em; color:var(--muted); }
+.seg { display:flex; border:1px solid var(--line); flex-wrap:wrap; }
+.seg button { border:0; background:transparent; color:var(--fg); font-size:11px; padding:6px 10px; }
+.seg button[aria-pressed="true"] { background:var(--accent); color:var(--on-accent); }
+
+/* compact bracket buttons */
+.cb { font-size:10px; text-transform:uppercase; letter-spacing:.05em; padding:3px 7px; border:1px solid var(--line); background:transparent; color:var(--fg); white-space:nowrap; }
+.cb.green { color:var(--accent); border-color:var(--accent); }
+.cb.pause { color:var(--pause); border-color:var(--pause); }
+.cb.red { color:var(--danger); border-color:var(--danger); }
+.cb.redf { background:var(--danger); border-color:var(--danger); color:#fff; }
+.cb.mute.on { background:var(--danger); border-color:var(--danger); color:#fff; }
+.tg { font-size:9px; text-transform:uppercase; letter-spacing:.08em; color:var(--accent); }
+.sq { width:8px; height:8px; background:var(--danger); display:inline-block; flex:none; }
+.sp { flex:1; }
+
+/* standard live panel */
+.live { width:100%; max-width:760px; border:1px solid var(--line); background:var(--body-bg); }
+.topbar { min-height:48px; display:flex; flex-wrap:wrap; align-items:center; gap:6px 8px; padding:6px 10px; border-bottom:1px solid var(--line); background:var(--surface); }
+.dot { width:9px; height:9px; background:var(--danger); border-radius:50% !important; animation:blink 1.2s steps(2) infinite; display:inline-block; }
+body[data-state="stopped"] .dot { animation:none; opacity:.5; }
+@keyframes blink { 50%{opacity:.3} }
+.nbtn { font-size:11px; padding:5px 9px; border:1px solid var(--line); background:transparent; color:var(--fg); }
+.nbtn.pause { color:var(--pause); border-color:var(--pause); }
+.nbtn.green { color:var(--accent); border-color:var(--accent); }
+.nbtn.red { color:var(--danger); border-color:var(--danger); }
+.nbtn.redf { background:var(--danger); border-color:var(--danger); color:#fff; }
+.nbtn.mute.on { background:var(--danger); border-color:var(--danger); color:#fff; }
+.tm { font-size:12px; font-weight:700; }
+.lines { padding:10px 12px; display:grid; gap:6px; font-size:12px; align-content:start; height:220px; overflow:auto; }
+.lines .me, .dock .body .me { color:var(--accent); } .lines .them, .dock .body .them { color:var(--them); }
+.lines .empty, .dock .body .empty { color:var(--muted); }
+.confirm { display:flex; flex-wrap:wrap; align-items:center; gap:6px 8px; padding:8px 10px; border-bottom:1px solid var(--danger); background:var(--surface); font-size:12px; }
+.confirm[hidden] { display:none; }
+.toast { min-height:18px; margin-top:6px; font-size:11px; color:var(--muted); opacity:0; transition:opacity .4s; }
+.toast.show { opacity:1; }
+
+/* stop slot */
+.slot { position:relative; display:inline-flex; }
+.menu-dd { position:absolute; top:100%; right:0; margin-top:2px; min-width:120px; border:1px solid var(--line); background:var(--surface); z-index:5; }
+.menu-dd button { display:block; width:100%; text-align:left; border:0; background:transparent; color:var(--danger); padding:6px 10px; font-size:11px; }
+.menu-dd button:hover { background:var(--accent-light); }
+.hold { background:linear-gradient(to right, var(--danger) var(--p,0%), transparent var(--p,0%)); color:var(--danger); border-color:var(--danger); user-select:none; touch-action:none; }
+.hold.past { color:#fff; }
+
+/* dock */
+.dock { width:360px; max-width:100%; height:420px; border:1px solid var(--line); background:var(--surface); display:flex; flex-direction:column; }
+.row { display:flex; align-items:center; gap:6px; padding:8px 10px; }
+.row.head { border-bottom:1px solid var(--line); }
+.row.tools { flex-wrap:wrap; border-bottom:1px solid var(--line); }
+.row.foot { border-top:1px solid var(--line); flex-wrap:wrap; }
+.row.confirm-row { border-bottom:1px solid var(--danger); flex-wrap:wrap; font-size:10px; text-transform:uppercase; letter-spacing:.05em; color:var(--danger); font-weight:700; }
+.row.confirm-row[hidden] { display:none; }
+.dock .body { flex:1; min-height:0; overflow:auto; padding:8px 10px; display:grid; gap:6px; align-content:start; font-size:11px; }
+
+/* settings + tables */
+.settings { border:1px solid var(--line); background:var(--surface); padding:12px; max-width:520px; display:grid; gap:10px; }
+.settings .t { font-size:11px; letter-spacing:.08em; color:var(--muted); font-weight:700; }
+.srow { display:flex; align-items:center; justify-content:space-between; gap:12px; flex-wrap:wrap; }
+.srow label.tgl { display:inline-flex; align-items:center; gap:6px; font-size:11px; }
+.srow input { accent-color:var(--accent); width:16px; height:16px; margin:0; }
+.tw { overflow-x:auto; border:1px solid var(--line); }
+table { border-collapse:collapse; min-width:640px; width:100%; font-size:11px; }
+th, td { border:1px solid var(--line); padding:6px 8px; text-align:left; vertical-align:top; }
+th { background:var(--accent-light); }
+ul.res { padding-left:18px; margin:6px 0; max-width:80ch; font-size:12px; } ul.res li { margin-bottom:5px; }
+@media (prefers-reduced-motion: reduce) { *, *::before, *::after { animation:none !important; transition:none !important; } }
+</style>
+</head>
+<body data-opt="B" data-state="live">
+<div class="wrap">
+<header>
+  <h1>AUG-175 · Live controls: Copy &amp; Clear, Clear, Stop Live protection</h1>
+  <p class="lead">Rodion's request: Copy &amp; Clear, Clear, a clear confirmation in Settings, and protection against an accidental Stop Live. Pick an option in the bar; both views and the Settings toggle are live.</p>
+</header>
+
+<div class="bar" role="toolbar" aria-label="Mockup controls">
+  <div class="grp"><span>Option</span>
+    <div class="seg">
+      <button type="button" data-optbtn="A" aria-pressed="false">A Confirm</button>
+      <button type="button" data-optbtn="B" aria-pressed="true">B Hold to stop</button>
+      <button type="button" data-optbtn="C" aria-pressed="false">C In menu</button>
+      <button type="button" data-optbtn="D" aria-pressed="false">D Off compact</button>
+    </div></div>
+  <div class="grp"><span>Theme</span>
+    <div class="seg">
+      <button type="button" data-theme-btn="auto" aria-pressed="true">Auto</button>
+      <button type="button" data-theme-btn="light" aria-pressed="false">Light</button>
+      <button type="button" data-theme-btn="dark" aria-pressed="false">Dark</button>
+    </div></div>
+  <button type="button" class="cb" id="reset">[ RESET DEMO ]</button>
+</div>
+
+<section>
+  <h2>Today (as built)</h2>
+  <div class="tw" tabindex="0" role="region" aria-label="Current controls table"><table>
+    <thead><tr><th>View</th><th>Controls</th><th>Protection</th></tr></thead>
+    <tbody>
+    <tr><td>Standard live panel — <code>LiveTranscriptPanel.tsx:101-111</code></td><td>Pause, Mute mic, Copy All, Clear All, Stop Live, End Recording</td><td>Clear All and Stop Live: "Are you sure?" inline confirm, always (not tied to Settings)</td></tr>
+    <tr><td>Dock Strip — <code>DockWidgets.tsx:93-96, 143-162</code></td><td>[ COPY ALL ] [ STOP LIVE ] (hover row); footer PAUSE · MUTE · END</td><td>STOP LIVE: none. END: "END RECORDING?" unless Skip Stop Confirmation</td></tr>
+    <tr><td>Dock Square — <code>DockWidgets.tsx:233</code></td><td>[ STOP ] = end recording</td><td>"END RECORDING?" unless Skip Stop Confirmation</td></tr>
+    <tr><td>Ghost Caption — <code>GhostApp.tsx:163-197</code></td><td>⤢, pause, mute, ■ end</td><td>"END?" unless Skip Stop Confirmation</td></tr>
+    <tr><td>Ghost Coin — <code>GhostApp.tsx:332-358</code></td><td>PAUSE, MUTE, END, OPEN</td><td>"END?" unless Skip Stop Confirmation</td></tr>
+    </tbody></table></div>
+  <p class="note">Settings → General → Confirmations already has 'Skip Clear Confirmation' (SettingsModal.tsx:796-806), but no code reads it. Stop Live also wipes the visible lines (FileUpload.tsx:863-873).</p>
+</section>
+
+<section>
+  <h2>What Clear means</h2>
+  <ul class="res">
+    <li>Clear empties the live window only. Recording, the WebSocket and action items keep running.</li>
+    <li>Live text is never saved, so the session folder, transcript.md and the post-recording transcript are unaffected. The full transcript is still built from the audio after End Recording.</li>
+    <li>Action items are not cleared: they are stored per recording and may have been edited by hand.</li>
+    <li>Copy &amp; Clear copies first and clears only if the copy succeeded. It never asks for confirmation, because the text is already on the clipboard.</li>
+  </ul>
+</section>
+
+<section>
+  <h2>Standard live panel</h2>
+  <div class="live">
+    <div class="topbar">
+      <span class="dot"></span><span class="tm" data-timer>12:41</span><span class="tg" data-status>Listening</span><span class="sp"></span>
+      <button type="button" class="nbtn pause" data-act="pause">Pause</button>
+      <button type="button" class="nbtn mute" data-act="mute" aria-pressed="false">Mute mic</button>
+      <button type="button" class="nbtn green" data-act="copy" data-needs-lines>Copy All</button>
+      <button type="button" class="nbtn green" data-act="copyclear" data-needs-lines>Copy &amp; Clear</button>
+      <button type="button" class="nbtn red" data-act="clear" data-needs-lines>Clear</button>
+      <span class="slot" data-slot="std"></span>
+      <button type="button" class="nbtn redf" data-act="end">End Recording</button>
+    </div>
+    <div class="confirm" id="stdConfirm" role="alertdialog" aria-label="Confirm" hidden>
+      <span id="stdConfirmText"></span>
+      <button type="button" class="nbtn redf" data-act="confirm-yes" id="stdYes">[ Yes ]</button>
+      <button type="button" class="nbtn" data-act="confirm-no">No, return</button>
+    </div>
+    <div class="lines" data-lines></div>
+  </div>
+  <div class="toast" data-toast aria-live="polite"></div>
+</section>
+
+<section>
+  <h2>Dock Strip (compact)</h2>
+  <div class="dock">
+    <div class="row head"><span class="sq"></span><span class="tm" data-timer>12:41</span><span class="tg" data-status-tag>LIVE</span><span class="sp"></span><button type="button" class="cb" aria-label="Expand">[ ⤢ ]</button></div>
+    <div class="row tools">
+      <button type="button" class="cb green" data-act="copy" data-needs-lines>[ Copy All ]</button>
+      <button type="button" class="cb green" data-act="copyclear" data-needs-lines>[ Copy &amp; Clear ]</button>
+      <button type="button" class="cb red" data-act="clear" data-needs-lines>[ Clear ]</button>
+      <span class="slot" data-slot="dock"></span>
+    </div>
+    <div class="row confirm-row" id="dockConfirm" role="alertdialog" aria-label="Confirm" hidden>
+      <span id="dockConfirmText"></span><span class="sp"></span>
+      <button type="button" class="cb redf" data-act="confirm-yes">[ YES ]</button>
+      <button type="button" class="cb" data-act="confirm-no">[ NO ]</button>
+    </div>
+    <div class="body" data-lines></div>
+    <div class="row foot">
+      <button type="button" class="cb pause" data-act="pause">[ Pause ]</button>
+      <button type="button" class="cb mute" data-act="mute" aria-pressed="false">[ Mute ]</button>
+      <span class="sp"></span>
+      <button type="button" class="cb redf" data-act="end">[ End ]</button>
+    </div>
+  </div>
+  <div class="toast" data-toast aria-live="polite"></div>
+</section>
+
+<section>
+  <h2>Settings → General → Confirmations</h2>
+  <div class="settings">
+    <div class="t">CONFIRMATIONS</div>
+    <div class="srow"><span>Skip Stop Confirmation <span class="note">(unchanged: governs END)</span></span>
+      <label class="tgl"><input type="checkbox" id="skipStop"><span id="skipStopTxt">Off</span></label></div>
+    <div>
+      <div class="srow"><span>Skip Clear Confirmation</span>
+        <label class="tgl"><input type="checkbox" id="skipClear"><span id="skipClearTxt">Off</span></label></div>
+      <p class="note">Off = Clear asks first in the live panel and the Dock Strip. Copy &amp; Clear never asks.</p>
+    </div>
+  </div>
+</section>
+
+<section>
+  <h2>Stop Live protection: options</h2>
+  <div class="tw" tabindex="0" role="region" aria-label="Options table"><table>
+    <thead><tr><th>Option</th><th>How it works</th><th>Pros</th><th>Cons</th></tr></thead>
+    <tbody>
+    <tr><td>A Confirm</td><td>Inline "STOP LIVE?" yes/no in every view where Stop Live exists; Dock Strip gains the confirm it lacks today</td><td>Same pattern as END? and Clear; no new UI idea</td><td>Still one wrong click away on the hover row next to COPY</td></tr>
+    <tr><td>B Hold to stop (chosen)</td><td>Press and hold 1.5 s, a fill shows progress, early release cancels</td><td>Hard to trigger by accident, no dialog</td><td>New pattern not used anywhere else in August; slower; harder to discover</td></tr>
+    <tr><td>C In menu</td><td>Stop Live moves into a <code>[ ⋯ ]</code> menu, then confirm</td><td>Removes the button from the hot row</td><td>Two extra clicks; a menu inside a 360px strip</td></tr>
+    <tr><td>D Off compact</td><td>The Dock Strip loses Stop Live; the standard panel keeps it behind confirm</td><td>Rodion's case: in compact Stop Live is more risk than use. The freed slot holds Copy &amp; Clear / Clear. Also matches Ghost views, which never had Stop Live</td><td>To stop Live while compact you expand first</td></tr>
+    </tbody></table></div>
+  <p class="note">Decision (2026-11-03): B, hold to stop for 1.5 s, in the standard panel and the Dock Strip. AUG-176 (Ghost Stop Meeting) uses the same hold pattern, so the app has one Stop pattern.</p>
+</section>
+</div>
+
+<script>
+(function () {
+  var $ = function (s) { return Array.prototype.slice.call(document.querySelectorAll(s)); };
+  var body = document.body, root = document.documentElement;
+  var START = 761;
+  var POOL = [
+    ['them', 'Can we go over the timeline once more?'],
+    ['me', 'Sure, the beta is planned for the end of the month.'],
+    ['them', 'And the pricing page, who owns that?'],
+    ['me', 'Marketing owns it, I will send them the draft today.'],
+    ['them', 'We should also confirm the budget for the pilot.'],
+    ['me', 'Agreed, I will add it to the action items.'],
+    ['them', 'What about the integration with the calendar?'],
+    ['me', 'It is on the list, but not for the first release.'],
+    ['them', 'Okay, that works for us.'],
+    ['me', 'Great, let us wrap up the open questions.'],
+    ['them', 'One more thing, can you share the notes afterwards?'],
+    ['me', 'Of course, they will be in the shared folder.']
+  ];
+  var SEED = [
+    ['me', "Let's start with the roadmap for next quarter."],
+    ['them', 'Sure, I have the draft open.'],
+    ['me', 'The first item is the live transcript controls.'],
+    ['them', 'Which ones are missing today?'],
+    ['me', 'Copy and clear, plus a safer way to stop live.'],
+    ['them', 'Good, that keeps the window tidy during long calls.']
+  ];
+  var S = { opt: 'B', theme: 'auto', lines: [], live: true, paused: false, muted: false, confirm: null, menu: null,
+            seconds: START, poolIdx: 0, skipClear: false, skipStop: false };
+
+  function store(k, v) { try { if (v === undefined) return localStorage.getItem(k); localStorage.setItem(k, v); } catch (e) {} return null; }
+  function seed() { S.lines = SEED.map(function (l) { return { who: l[0], text: l[1] }; }); }
+  function fmt(s) { var m = Math.floor(s / 60), r = s % 60; return (m < 10 ? '0' : '') + m + ':' + (r < 10 ? '0' : '') + r; }
+
+  var toastTimer = null;
+  function toast(msg) {
+    $('[data-toast]').forEach(function (t) { t.textContent = msg; t.classList.add('show'); });
+    clearTimeout(toastTimer);
+    toastTimer = setTimeout(function () { $('[data-toast]').forEach(function (t) { t.classList.remove('show'); }); }, 2500);
+  }
+
+  function linesText() { return S.lines.map(function (l) { return (l.who === 'me' ? 'Me: ' : 'Them: ') + l.text; }).join('\n'); }
+  function copyLines() {
+    return new Promise(function (resolve, reject) {
+      try { navigator.clipboard.writeText(linesText()).then(resolve, reject); } catch (e) { reject(e); }
+    });
+  }
+  function doCopy() {
+    if (!S.lines.length) return;
+    var n = S.lines.length;
+    copyLines().then(function () { toast('Copied ' + n + ' lines'); }, function () { toast('Copy failed — clipboard not available'); });
+  }
+  function doCopyClear() {
+    if (!S.lines.length) return;
+    var n = S.lines.length;
+    copyLines().then(function () { S.lines = []; render(); toast('Copied ' + n + ' lines and cleared · recording continues'); },
+                     function () { toast('Copy failed — nothing cleared'); });
+  }
+  function doClear() {
+    if (!S.lines.length) return;
+    if (S.skipClear) { S.lines = []; S.confirm = null; render(); toast('Cleared · recording continues'); }
+    else { S.confirm = 'clear'; S.menu = null; renderSlots(); }
+  }
+  function doStop() {
+    if (!S.live) return;
+    S.live = false; S.paused = false; S.lines = []; S.confirm = null; S.menu = null;
+    renderSlots();
+    toast('Live stopped · recording continues · use [ RESET DEMO ] to restore');
+  }
+  function reset() {
+    S.live = true; S.paused = false; S.muted = false; S.confirm = null; S.menu = null; S.seconds = START; S.poolIdx = 0;
+    seed(); renderSlots(); toast('Demo reset');
+  }
+
+  function bindHold(btn) {
+    var t0 = 0, raf = 0, active = false;
+    function cancel() { active = false; cancelAnimationFrame(raf); btn.style.setProperty('--p', '0%'); btn.classList.remove('past'); }
+    function step() {
+      if (!active) return;
+      var p = Math.min(1, (performance.now() - t0) / 1500);
+      btn.style.setProperty('--p', (p * 100) + '%'); btn.classList.toggle('past', p > 0.5);
+      if (p >= 1) { cancel(); doStop(); return; }
+      raf = requestAnimationFrame(step);
+    }
+    function start() { if (active || btn.disabled) return; active = true; t0 = performance.now(); raf = requestAnimationFrame(step); }
+    btn.addEventListener('pointerdown', function (e) { if (e.button === 0) start(); });
+    ['pointerup', 'pointerleave', 'pointercancel', 'blur'].forEach(function (ev) { btn.addEventListener(ev, cancel); });
+    btn.addEventListener('keydown', function (e) { if ((e.key === ' ' || e.key === 'Enter') && !e.repeat) { e.preventDefault(); start(); } });
+    btn.addEventListener('keyup', function (e) { if (e.key === ' ' || e.key === 'Enter') { e.preventDefault(); cancel(); } });
+  }
+  function mk(cls, label, extra) {
+    var b = document.createElement('button'); b.type = 'button'; b.className = cls; b.textContent = label; b.setAttribute('data-stop', ''); if (extra) extra(b); return b;
+  }
+  function renderSlots() {
+    $('[data-slot]').forEach(function (slot) {
+      var dock = slot.getAttribute('data-slot') === 'dock', o = S.opt;
+      slot.textContent = '';
+      var base = dock ? 'cb' : 'nbtn';
+      if (dock && o === 'D') return;
+      if (o === 'A' || o === 'D') {
+        slot.appendChild(mk(base + ' red', dock ? '[ STOP LIVE ]' : 'Stop Live', function (b) { b.setAttribute('data-act', 'ask-stop'); }));
+      } else if (o === 'B') {
+        slot.appendChild(mk(base + ' hold', dock ? '[ HOLD TO STOP ]' : 'Hold to stop', function (b) { b.title = 'Hold 1.5 s to stop Live'; bindHold(b); }));
+      } else if (o === 'C') {
+        slot.appendChild(mk(base, dock ? '[ ⋯ ]' : '⋯', function (b) {
+          b.setAttribute('data-act', 'menu'); b.setAttribute('aria-haspopup', 'true');
+          b.setAttribute('aria-expanded', String(S.menu === (dock ? 'dock' : 'std'))); b.title = 'More';
+        }));
+        if (S.menu === (dock ? 'dock' : 'std')) {
+          var dd = document.createElement('div'); dd.className = 'menu-dd'; dd.setAttribute('role', 'menu');
+          var it = document.createElement('button'); it.type = 'button'; it.setAttribute('role', 'menuitem'); it.textContent = 'Stop Live'; it.setAttribute('data-act', 'ask-stop');
+          dd.appendChild(it); slot.appendChild(dd);
+        }
+      }
+    });
+    render();
+  }
+
+  function renderLines() {
+    $('[data-lines]').forEach(function (box) {
+      box.textContent = '';
+      if (!S.lines.length) { var e = document.createElement('div'); e.className = 'empty'; e.textContent = 'Waiting for speech…'; box.appendChild(e); }
+      S.lines.forEach(function (l) {
+        var d = document.createElement('div'); d.className = l.who; d.textContent = (l.who === 'me' ? 'Me: ' : 'Them: ') + l.text; box.appendChild(d);
+      });
+      box.scrollTop = box.scrollHeight;
+    });
+  }
+  function render() {
+    var state = !S.live ? 'stopped' : S.paused ? 'paused' : 'live';
+    body.setAttribute('data-state', state);
+    body.setAttribute('data-opt', S.opt);
+    $('[data-timer]').forEach(function (t) { t.textContent = fmt(S.seconds); });
+    $('[data-status]').forEach(function (t) { t.textContent = state === 'live' ? 'Listening' : state === 'paused' ? 'Paused' : 'Stopped'; });
+    $('[data-status-tag]').forEach(function (t) { t.textContent = state.toUpperCase(); });
+    $('[data-act="pause"]').forEach(function (b) {
+      var c = b.classList.contains('cb');
+      b.textContent = S.paused ? (c ? '[ Resume ]' : 'Resume') : (c ? '[ Pause ]' : 'Pause'); b.disabled = !S.live;
+    });
+    $('[data-act="mute"]').forEach(function (b) {
+      var c = b.classList.contains('cb');
+      b.classList.toggle('on', S.muted); b.setAttribute('aria-pressed', String(S.muted));
+      b.textContent = S.muted ? (c ? '[ Unmute ]' : 'Unmute mic') : (c ? '[ Mute ]' : 'Mute mic');
+    });
+    $('[data-needs-lines]').forEach(function (b) { b.disabled = !S.lines.length; });
+    $('[data-stop]').forEach(function (b) { b.disabled = !S.live; });
+    var isClear = S.confirm === 'clear';
+    document.getElementById('stdConfirm').hidden = !S.confirm;
+    document.getElementById('dockConfirm').hidden = !S.confirm;
+    document.getElementById('stdConfirmText').textContent = isClear
+      ? 'Clear the live transcript? Recording continues; the full transcript is still made after End.'
+      : 'Stop Live? The live transcript will be cleared; recording continues.';
+    document.getElementById('dockConfirmText').textContent = isClear ? 'CLEAR TRANSCRIPT?' : 'STOP LIVE?';
+    document.getElementById('stdYes').textContent = isClear ? '[ Yes, clear ]' : '[ Yes, stop ]';
+    $('[data-optbtn]').forEach(function (b) { b.setAttribute('aria-pressed', String(b.getAttribute('data-optbtn') === S.opt)); });
+    $('[data-theme-btn]').forEach(function (b) { b.setAttribute('aria-pressed', String(b.getAttribute('data-theme-btn') === S.theme)); });
+    if (S.theme === 'auto') root.removeAttribute('data-theme'); else root.setAttribute('data-theme', S.theme);
+    document.getElementById('skipClearTxt').textContent = S.skipClear ? 'On' : 'Off';
+    document.getElementById('skipStopTxt').textContent = S.skipStop ? 'On' : 'Off';
+    renderLines();
+  }
+
+  document.addEventListener('click', function (e) {
+    var t = e.target.closest('button');
+    if (!t) { if (S.menu) { S.menu = null; renderSlots(); } return; }
+    var act = t.getAttribute('data-act');
+    if (act === 'menu') { var k = t.closest('.dock') ? 'dock' : 'std'; S.menu = S.menu === k ? null : k; renderSlots(); return; }
+    if (S.menu && !t.closest('.menu-dd')) { S.menu = null; renderSlots(); }
+    if (act === 'pause') { S.paused = !S.paused; render(); }
+    else if (act === 'mute') { S.muted = !S.muted; render(); }
+    else if (act === 'copy') doCopy();
+    else if (act === 'copyclear') doCopyClear();
+    else if (act === 'clear') doClear();
+    else if (act === 'end') toast('End Recording is out of scope here');
+    else if (act === 'ask-stop') { if (!S.live) return; S.confirm = 'stop'; S.menu = null; renderSlots(); }
+    else if (act === 'confirm-yes') {
+      if (S.confirm === 'clear') { S.lines = []; S.confirm = null; render(); toast('Cleared · recording continues'); }
+      else if (S.confirm === 'stop') doStop();
+    }
+    else if (act === 'confirm-no') { S.confirm = null; render(); }
+    else if (t.hasAttribute('data-optbtn')) { S.opt = t.getAttribute('data-optbtn'); S.confirm = null; S.menu = null; store('aug175opt', S.opt); renderSlots(); }
+    else if (t.hasAttribute('data-theme-btn')) { S.theme = t.getAttribute('data-theme-btn'); store('aug175theme', S.theme); render(); }
+    else if (t.id === 'reset') reset();
+  });
+  document.addEventListener('keydown', function (e) {
+    if (e.key === 'Escape' && (S.confirm || S.menu)) { S.confirm = null; S.menu = null; renderSlots(); }
+  });
+  document.getElementById('skipClear').addEventListener('change', function (e) { S.skipClear = e.target.checked; render(); });
+  document.getElementById('skipStop').addEventListener('change', function (e) { S.skipStop = e.target.checked; render(); });
+
+  setInterval(function () { S.seconds++; $('[data-timer]').forEach(function (t) { t.textContent = fmt(S.seconds); }); }, 1000);
+  setInterval(function () {
+    if (!S.live || S.paused) return;
+    var p = POOL[S.poolIdx++ % POOL.length], last = S.lines[S.lines.length - 1];
+    if (last && last.who === p[0]) last.text += ' ' + p[1]; else S.lines.push({ who: p[0], text: p[1] });
+    render();
+  }, 2500);
+
+  var so = store('aug175opt'), st = store('aug175theme');
+  if (so && /^[ABCD]$/.test(so)) S.opt = so;
+  if (st && /^(auto|light|dark)$/.test(st)) S.theme = st;
+  seed(); renderSlots();
+})();
+</script>
+</body>
+</html>

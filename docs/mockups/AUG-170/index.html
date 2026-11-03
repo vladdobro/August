@@ -1,0 +1,164 @@
+<title>Export Menu Overlap</title>
+<meta name="claude:viewport-fit-sides" content="cover">
+<style>
+/* Layout: two app frames side by side (before / after), built with the app's real stacking rules */
+:root {
+  --bg: #f2efe8; --surface: rgba(250, 248, 244, 0.92); --line: rgba(45, 58, 51, 0.25);
+  --fg: #1e2b24; --muted: #566b5e; --accent: #0d8c5c; --glow: rgba(13, 140, 92, 0.18);
+  --on-accent: #e0e8e3; --bad: #b8860b; --body-bg: #e6e2d8;
+  --mono: 'Cascadia Code', 'Fira Code', Consolas, monospace;
+  --sans: 'IBM Plex Sans', system-ui, sans-serif;
+}
+@media (prefers-color-scheme: dark) { :root:not([data-theme="light"]) {
+  --bg: #0a110d; --surface: rgba(12, 20, 16, 0.92); --line: rgba(0, 200, 118, 0.18);
+  --fg: #c0cec4; --muted: #5e7d6a; --accent: #00c876; --glow: rgba(0, 200, 118, 0.3);
+  --on-accent: #0a110d; --bad: #e0b23c; --body-bg: #0f1914; color-scheme: dark; } }
+:root[data-theme="dark"] {
+  --bg: #0a110d; --surface: rgba(12, 20, 16, 0.92); --line: rgba(0, 200, 118, 0.18);
+  --fg: #c0cec4; --muted: #5e7d6a; --accent: #00c876; --glow: rgba(0, 200, 118, 0.3);
+  --on-accent: #0a110d; --bad: #e0b23c; --body-bg: #0f1914; color-scheme: dark; }
+
+body { background: var(--bg); color: var(--fg); font-family: var(--sans); line-height: 1.5;
+  padding-left: max(16px, env(safe-area-inset-left, 0px)); padding-right: max(16px, env(safe-area-inset-right, 0px)); padding-block: 28px 48px; }
+.wrap { max-width: 980px; margin: 0 auto; display: grid; gap: 20px; }
+h1 { margin: 0; font-size: 22px; text-wrap: balance; }
+.lead { margin: 4px 0 0; color: var(--muted); max-width: 70ch; }
+.tag { font-family: var(--mono); font-size: 11px; letter-spacing: .06em; text-transform: uppercase; color: var(--muted); }
+
+.controls { display: flex; gap: 0; border: 1px solid var(--line); width: fit-content; }
+.controls button { font: 600 13px var(--sans); padding: 8px 14px; border: 0; border-radius: 0; background: transparent; color: var(--fg); cursor: pointer; }
+.controls button[aria-pressed="true"] { background: var(--accent); color: var(--on-accent); }
+.controls button:focus-visible { outline: 2px solid var(--accent); outline-offset: 2px; }
+
+.compare { display: grid; grid-template-columns: repeat(auto-fit, minmax(300px, 1fr)); gap: 20px; }
+.col { display: grid; gap: 8px; min-width: 0; }
+.col-head { display: flex; align-items: baseline; gap: 10px; }
+.col-head strong { font-size: 15px; }
+.verdict { font-family: var(--mono); font-size: 11px; padding: 2px 8px; border: 1px solid; }
+.verdict--bad { color: var(--bad); }
+.verdict--ok { color: var(--accent); }
+.note { margin: 0; font-size: 13px; color: var(--muted); }
+code { font-family: var(--mono); font-size: 12px; }
+
+/* ---- mini app frame: same structure and rules as TranscriptView ---- */
+.app { border: 1px solid var(--line); background: var(--body-bg); height: 440px; overflow: hidden; display: flex; flex-direction: column; }
+.hdr { display: flex; flex-direction: column; align-items: center; padding: 16px 16px 16px; border-bottom: 1px solid var(--line);
+  background: var(--surface); backdrop-filter: blur(8px); gap: 10px; }
+.app--fixed .hdr { position: relative; z-index: 3; } /* the agreed fix */
+.title { margin: 0; font-size: 16px; font-weight: 800; color: var(--accent); text-align: center; }
+.meta { font-size: 11px; color: var(--muted); text-align: center; }
+.diagram { position: relative; width: 100%; max-width: 300px; height: 100px; }
+.diagram svg { position: absolute; inset: 0; width: 100%; height: 100%; }
+.diagram line { stroke: var(--accent); stroke-width: 1; stroke-dasharray: 6 3; }
+.node { position: absolute; display: flex; flex-direction: column; align-items: center; justify-content: center;
+  border-radius: 50%; border: 2px solid var(--accent); background: var(--surface); color: var(--accent); box-shadow: 0 0 8px var(--glow); }
+.node--info { width: 40px; height: 40px; left: 50%; top: 4px; transform: translateX(-50%); z-index: 1; font: 700 15px var(--mono); }
+.act { position: absolute; bottom: 4px; z-index: 1; transform: translateX(-50%); display: flex; flex-direction: column; align-items: center; }
+.act--copy { left: 25%; } .act--export { left: 50%; } .act--redo { left: 75%; }
+.act .node { position: static; width: 38px; height: 38px; font: 700 7px var(--sans); letter-spacing: .05em; text-transform: uppercase; color: var(--muted); }
+.act .node b { color: var(--accent); font-size: 13px; line-height: 1; }
+.act--open .node { box-shadow: 0 0 16px var(--glow); }
+.menu { position: absolute; top: calc(100% + 6px); left: 50%; transform: translateX(-50%); min-width: 180px; z-index: 100;
+  background: var(--surface); border: 1px solid var(--line); backdrop-filter: blur(12px); padding: 5px; box-shadow: 0 8px 24px rgba(0,0,0,.18); }
+.menu div { padding: 7px 12px; font-size: 12px; white-space: nowrap; }
+.menu .hl { background: var(--accent); color: var(--on-accent); }
+.menu hr { border: 0; height: 1px; background: var(--line); margin: 3px 8px; }
+.menu label { display: flex; gap: 6px; align-items: center; padding: 7px 12px; font-size: 12px; }
+
+.body { flex: 1; padding: 20px 16px; overflow: hidden; }
+.panel { position: relative; z-index: 2; border: 1px solid var(--line); background: var(--surface); padding: 10px 12px; margin-bottom: 14px; }
+.panel h4 { margin: 0 0 8px; font: 700 11px var(--mono); letter-spacing: .06em; text-transform: uppercase; color: var(--accent); }
+.panel p { margin: 0 0 6px; font-size: 12px; }
+.panel p span { color: var(--muted); }
+.line { font-size: 12px; margin: 0 0 8px; color: var(--fg); }
+.line time { font-family: var(--mono); color: var(--muted); margin-right: 6px; }
+
+.legend { display: grid; gap: 6px; border-top: 1px solid var(--line); padding-top: 14px; font-size: 13px; }
+.legend p { margin: 0; max-width: 80ch; }
+@media (prefers-reduced-motion: reduce) { * { transition: none !important; animation: none !important; } }
+</style>
+
+<div class="wrap">
+  <header>
+    <span class="tag">AUG-170 → AUG-180 · экран завершённой записи</span>
+    <h1>Меню Export и Redo: сейчас и после фикса</h1>
+    <p class="lead">Оба макета собраны на тех же CSS-правилах, что и в приложении, поэтому перекрытие здесь настоящее, а не нарисованное. Справа добавлено одно правило: <code>.transcript-circuit-header { position: relative; z-index: 3 }</code>.</p>
+  </header>
+
+  <div class="controls" role="group" aria-label="Какое меню открыть">
+    <button type="button" id="show-export" aria-pressed="true">Открыть Export</button>
+    <button type="button" id="show-redo" aria-pressed="false">Открыть Redo</button>
+  </div>
+
+  <div class="compare">
+    <section class="col">
+      <div class="col-head"><strong>Сейчас</strong><span class="verdict verdict--bad">перекрыто</span></div>
+      <div class="app" data-frame></div>
+      <p class="note">Видна только первая строка меню. Остальное уходит под панель Action items (<code>z-index: 2</code>).</p>
+    </section>
+    <section class="col">
+      <div class="col-head"><strong>После AUG-180</strong><span class="verdict verdict--ok">меню сверху</span></div>
+      <div class="app app--fixed" data-frame></div>
+      <p class="note">Меню целиком лежит поверх панели, и до Send to Praxis можно дотянуться.</p>
+    </section>
+  </div>
+
+  <div class="legend">
+    <p><b>Почему так.</b> Шапка с <code>backdrop-filter</code> образует свой слой с уровнем 0. У меню <code>z-index: 100</code>, но этот уровень действует только внутри шапки. Панель Action items и плашка исправлений стоят ниже по документу с уровнем 2 и рисуются поверх всей шапки.</p>
+    <p><b>Что не меняется.</b> Боковые панели (44–47), кнопки Sessions / Controls (45) и модальные окна (50) по-прежнему выше шапки. Compact-режим не затронут.</p>
+  </div>
+</div>
+
+<template id="frame">
+  <div class="hdr">
+    <div>
+      <h3 class="title">Weekly sync — product</h3>
+      <div class="meta">03.11.2026, 14:02 • 42:17 • Russian • completed</div>
+    </div>
+    <div class="diagram">
+      <svg viewBox="0 0 300 100" preserveAspectRatio="none" aria-hidden="true">
+        <line x1="150" y1="26" x2="75" y2="76"/><line x1="150" y1="26" x2="150" y2="76"/><line x1="150" y1="26" x2="225" y2="76"/>
+      </svg>
+      <div class="node node--info">i</div>
+      <div class="act act--copy"><div class="node"><b>⧉</b>Copy</div></div>
+      <div class="act act--export" data-act="export"><div class="node"><b>↓</b>Export</div>
+        <div class="menu" data-menu="export">
+          <div>Copy with timestamps</div><div>Copy text only</div><hr>
+          <div>Download .txt</div><div>Download .srt</div><hr>
+          <div class="hl">Send to Praxis</div>
+        </div>
+      </div>
+      <div class="act act--redo" data-act="redo"><div class="node"><b>↻</b>Redo</div>
+        <div class="menu" data-menu="redo" hidden>
+          <label><input type="checkbox" tabindex="-1"> Boost audio</label><hr>
+          <div>Russian</div><div>English</div><div class="hl">Auto-detect</div>
+        </div>
+      </div>
+    </div>
+  </div>
+  <div class="body">
+    <div class="panel">
+      <h4>Action items · 3</h4>
+      <p>Отправить смету клиенту <span>· Me</span></p>
+      <p>Проверить доступы к стенду <span>· Them</span></p>
+      <p>Назначить ревью дизайна на четверг <span>· Me</span></p>
+    </div>
+    <p class="line"><time>00:00:04</time>[Me] Давайте начнём с итогов прошлой недели.</p>
+    <p class="line"><time>00:00:11</time>[Them] По релизу всё закрыли, остался один баг.</p>
+    <p class="line"><time>00:00:19</time>[Me] Хорошо, тогда по смете…</p>
+  </div>
+</template>
+
+<script>
+  const tpl = document.getElementById('frame');
+  document.querySelectorAll('[data-frame]').forEach(f => f.appendChild(tpl.content.cloneNode(true)));
+  function show(which) {
+    document.querySelectorAll('[data-menu]').forEach(m => { m.hidden = m.dataset.menu !== which; });
+    document.querySelectorAll('[data-act]').forEach(a => a.classList.toggle('act--open', a.dataset.act === which));
+    document.getElementById('show-export').setAttribute('aria-pressed', which === 'export');
+    document.getElementById('show-redo').setAttribute('aria-pressed', which === 'redo');
+  }
+  document.getElementById('show-export').addEventListener('click', () => show('export'));
+  document.getElementById('show-redo').addEventListener('click', () => show('redo'));
+  show('export');
+</script>

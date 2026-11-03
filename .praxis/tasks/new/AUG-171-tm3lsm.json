@@ -1,0 +1,19 @@
+{
+  "id": "AUG-171-tm3lsm",
+  "assignee": "jarvis.json",
+  "priority": "high",
+  "status": "new",
+  "title": "[AUG-171] Research: remember Praxis projects picked by folder in the Send to Praxis dialog",
+  "why_we_need_this": "Rodion's feedback (Bug Fix 2): in Send to Praxis, a project chosen via folder picker is not kept in the Project dropdown, so the path has to be selected again every time. Vlad's concern: auto-saving every pick leads to 15 junk projects after mistakes. Agreed minimum from the discussion: keep the last chosen path; possible extension — save picks with an [x] remove button. Source: @docs/feedback/2026-11-rodion-feedback.md",
+  "acceptance_criteria": "- [ ] Current flow described with file:line refs: how praxisProjects / default project are stored and how the folder pick is handled (AUG-142 multi-project).\n- [ ] Options compared: (a) remember last picked path only, (b) auto-add picks to the dropdown with [x] removal, (c) other — with UX and data trade-offs.\n- [ ] HTML mockup: a self-contained file @docs/mockups/AUG-171/send-to-praxis.html (opens in a browser, no build) showing the Send to Praxis dialog for each option side by side — dropdown with saved projects, [x] removal, last-path field; built on August's real design tokens (frontend-design route, 0 border-radius).\n- [ ] Recommendation given; the user picks an option on the mockup (AskUserQuestion); the decision is recorded in this card.\n- [ ] CLOSURE CONDITION: an implementation task with the agreed scope, SMART acceptance criteria and a link to the chosen mockup is created on the board; its ID is written into this card and into the roadmap line in @project-context/roadmap/README.md.",
+  "important_constraints": "Research only — no code changes. Closed only by creating the agreed implementation task. Paths must stay cross-platform (Windows non-ASCII / 8.3 paths, macOS). Roadmap: M1 Quick fixes. Order: 2/10.",
+  "labels": [
+    "research",
+    "feedback-rodion",
+    "bug"
+  ],
+  "on_hold_reason": "",
+  "contextRouterIncluded": true,
+  "created_at": 1793655479048,
+  "column_entered_at": 1793655479048
+}

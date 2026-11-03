@@ -1,0 +1,19 @@
+{
+  "id": "AUG-179-k4v7jp",
+  "assignee": "jarvis.json",
+  "priority": "low",
+  "status": "archived",
+  "title": "[AUG-179] Research: Windows onboarding without manual MCP environment variables",
+  "why_we_need_this": "From the conversation with Rodion: if August becomes a paid product, Windows needs a proper onboarding — today MCP setup requires adding environment variables by hand, which blocks non-technical users. Source: @docs/feedback/2026-11-rodion-feedback.md",
+  "acceptance_criteria": "- [ ] Current first-run and MCP setup steps on Windows and macOS listed with file:line refs and every manual step marked.\n- [ ] Options compared for removing manual steps (installer writes config, in-app setup wizard, auto-detection) with trade-offs.\n- [ ] HTML mockup: a self-contained file @docs/mockups/AUG-179/onboarding.html (opens in a browser, no build) with a clickable step-by-step first-run flow for the recommended option (success and error states for MCP setup); built on August's real design tokens (frontend-design route, 0 border-radius).\n- [ ] Recommendation given; the proposal is agreed with the user on the mockup (AskUserQuestion); the decision is recorded in this card.\n- [ ] CLOSURE CONDITION: an implementation task with the agreed scope, SMART acceptance criteria and a link to the chosen mockup is created on the board; its ID is written into this card and into the roadmap line in @project-context/roadmap/README.md.",
+  "important_constraints": "Research only — no code changes. Closed only by creating the agreed implementation task. Tied to the paid-version decision — can be parked until then. Roadmap: M3 Compact & onboarding. Order: 10/10.",
+  "labels": [
+    "research",
+    "feedback-rodion",
+    "onboarding"
+  ],
+  "on_hold_reason": "",
+  "contextRouterIncluded": true,
+  "created_at": 1793655522918,
+  "column_entered_at": 1793657115205
+}
