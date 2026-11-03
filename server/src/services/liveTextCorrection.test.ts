@@ -18,7 +18,7 @@ function makeCorrector(shouldYield: () => boolean) {
 }
 
 function makeExtractor(cloudChat: () => Promise<unknown>) {
-  const store = { liveKey: 'k', file: { items: [], participants: { me: '', them: '' } }, addItems: () => 0, applyOps: () => 0 };
+  const store = { liveKey: 'k', file: { items: [], participants: { me: '', them: '' } }, addItems: () => 0, applyOps: () => ({ applied: 0, rejected: 0 }) };
   const deps = {
     cloudChat,
     withLocal: async () => { throw new Error('x'); },

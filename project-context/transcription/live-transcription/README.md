@@ -24,9 +24,9 @@
 - Local fallback (AUG-168): when the Groq action-items call is refused and the local model is ready, the same speech is extracted by llama-server, rate-limited and serialized with local dedup.
 - Action items and participants are the only live data that is saved: per recording liveKey on the server, moved to the session folder as action-items.json on upload.
 - Export (AUG-166): selected action items go to a Praxis project as separate cards or one checklist card, live or from a saved session; sent items show the created task id. The session's transcript.md ends with a "## Action items" section kept in step with the list.
-- Also known as: online text correction, live text correction, Groq LLM correction, groqText (AUG-164), action items, agreements, tasks from meeting, participants, liveKey, action-items.json, dedup, merge/delete operations (AUG-165), export to Praxis, Separate tasks, One task, Action items section in transcript.md (AUG-166), LiveTextCorrector, Groq priority, correction yields to action-items, shared Groq rate limit starvation (AUG-167), local fallback, local extraction, liveLocalSlot, llama-server action items (AUG-168).
-- Live transcript fills the whole main area while visible (AUG-154): a 48px top bar holds the rec dot + timer, status, Pause/Resume (yellow), Copy All (green), Clear All (red frame), Stop Live (red frame), End Recording (red filled) and × hide; the circuit diagram is hidden (not unmounted) behind it.
-- Stop and Clear All require a confirmation dialog ("Are you sure?") before executing.
+- Also known as: online text correction, live text correction, Groq LLM correction, groqText (AUG-164), action items, agreements, tasks from meeting, participants, liveKey, action-items.json, dedup, merge/delete operations (AUG-165), export to Praxis, Separate tasks, One task, Action items section in transcript.md (AUG-166), LiveTextCorrector, Groq priority, correction yields to action-items, shared Groq rate limit starvation (AUG-167), local fallback, local extraction, liveLocalSlot, llama-server action items (AUG-168), Copy & Clear, Clear (was Clear All), hold to stop, HoldToStopButton, useHoldToStop, Stop Live Text, End Meeting, skipClearConfirmation wired, skipStopConfirmation removed (AUG-182).
+- Live transcript fills the whole main area while visible (AUG-154): a 48px top bar holds the rec dot + timer, status, Pause/Resume (yellow), Mute mic, Copy All (green), Copy & Clear (green), Clear (red frame), Stop Live Text (red frame, 1.5 s hold, AUG-182), End Meeting (red filled, 1.5 s hold) and × hide; the circuit diagram is hidden (not unmounted) behind it.
+- Clear asks for an inline confirmation unless skipClearConfirmation is on; Copy & Clear never asks; every stop control (Stop Live Text, End Meeting) is a 1.5 s hold with no dialog (HoldToStopButton / useHoldToStop, AUG-182).
 - Live local chunks run whisper-cli with Silero VAD (vad: true in transcribeChunk); a chunk with no detected speech emits no line (AUG-127).
 - Live text has no overlap dedup, so words in the 1 s overlap appear twice in consecutive lines (AUG-126).
 - Groq is called with response_format=text, so no_speech_prob is discarded and cannot gate hallucinations (AUG-126).
@@ -73,11 +73,14 @@ Document the mechanics of the live transcription mode — how audio is captured 
 - Server PCM tee: POST /api/capture/start { live: true } adds a second ffmpeg output (-f s16le -ac 1 -ar 16000 pipe:1) next to the unchanged WAV; systemCapture.ts drains stdout from spawn and forwards bytes to at most one CaptureLiveSink.
 - LivePcmFeeder (server/src/services/liveChunking.ts) converts the s16le bytes to Float32 (carrying an odd trailing byte between chunks) and feeds a server-side ChunkAccumulator with the same 64000/16000/0.006 constants as the browser one; full windows are queued as speaker Them on the same per-connection queue and engine as mic chunks.
 - LiveTranscriptPanel (client/src/components/LiveTranscriptPanel.tsx): an in-flow flex panel inside FileUpload's `.circuit-layout.live-open` that takes the full main area, with a 48px top bar and a scan-lined transcript canvas of interleaved Me/Them lines (15px, max-width 860px, accent left border on the latest line) with auto-scroll. FileUpload adds `live-open` only when liveActive && !liveHidden, and CSS hides every other circuit child except `.mic-notice` and `.upload-error`.
-- Top bar button order: Pause/Resume, Copy All, Clear All, Stop Live, End Recording. Stop Live calls handleLiveStop (ends live transcription, recording continues); End Recording calls FileUpload's stopRecording (same as the circuit STOP node) with no confirmation. FileUpload passes `elapsed={formatTime(elapsedSeconds)}` and `onEndRecording={stopRecording}`.
-- Button color scheme: Pause = yellow frame default / yellow fill on hover; Copy All = green frame default / green fill on hover; Stop Live and Clear All = red frame default / red fill on hover; End Recording = red filled (dark theme has explicit overrides so the generic dark .live-panel-btn reset does not drop the red).
-- Confirmation dialog: clicking Stop Live or Clear All shows an inline confirmation bar ("Are you sure?") with "Yes, proceed" (red) and "No, return" (green) buttons instead of executing immediately.
-- Clear All action: clears all transcript lines (setLiveLines([])) without stopping the WebSocket or audio capture — the session continues recording.
-- Panel hide/reopen: closing the panel (×) sets liveHidden=true, hiding it without stopping the WebSocket or clearing lines. A pulsing LIVE badge appears in the recording info bar; clicking it sets liveHidden=false, reopening the panel with all accumulated lines intact. A separate Stop Live button in the top bar calls handleLiveStop to fully terminate the live client.
+- Top bar button order (AUG-182): Pause/Resume, Mute mic, Copy All, Copy & Clear, Clear, Stop Live Text, End Meeting. Stop Live Text calls handleLiveStop after 1.5 s of continuous press (ends live transcription, recording continues); End Meeting calls FileUpload's stopRecording after a 1.5 s hold (same as the circuit center node). FileUpload passes `elapsed={formatTime(elapsedSeconds)}` and `onEndRecording={stopRecording}`.
+- Button color scheme: Pause = yellow frame default / yellow fill on hover; Copy All = green frame default / green fill on hover; Copy & Clear = green like Copy All; Stop Live Text and Clear = red frame, Stop Live Text with a red progress fill while held; End Meeting = red filled with a darker red progress fill (dark theme has explicit overrides so the generic dark .live-panel-btn reset does not drop the red).
+- Clear confirmation (AUG-182): with skipClearConfirmation false, Clear shows the inline bar "Clear live transcript?" with "Yes, clear" (red) and "No, return" (green); with it true Clear runs at once. Stop controls never show a confirmation.
+- Clear action (renamed from Clear All, AUG-182): clears the displayed lines (setLiveLines([])) without touching the WebSocket, audio capture, action items or participants; the post-recording transcript is still made from the audio.
+- Copy & Clear (AUG-182): writes the Copy All text (liveLinesToText, gap lines plain) and only after writeText resolves removes the copied line objects by identity, so a chunk arriving or merging into the last line during the write is kept; a rejected write removes nothing; it never confirms.
+- HoldToStopButton (client/src/components/HoldToStopButton.tsx, AUG-182): the one stop mechanic — every Stop Live Text / End Meeting control in the live panel, circuit center node, Dock Strip, Dock Square, Ghost Caption and Ghost Coin. The useHoldToStop hook (ref, hintVisible, handlers) drives it; the circuit node uses the hook directly with an SVG progress ring. 1.5 s press (HOLD_TO_STOP_MS) runs onComplete; progress is a CSS var (--hold-p) driving an inner fill span; pointerup/pointerleave/pointercancel/blur/window blur/disable cancel; Space or Enter held works, keyup cancels; no pointer capture so leaving the button cancels; a hold released early shows a "Hold" hint in place of the label for 1.5 s. AUG-176 (Ghost Stop Meeting protection) is covered by it. The global hotkey and the tray still stop recording instantly.
+- Circuit center node (AUG-182): while recording it reads END; a click does nothing, a 1.5 s hold fills a red ring (.hold-stop-ring) and calls stopRecording; an early release shows HOLD.
+- Panel hide/reopen: closing the panel (×) sets liveHidden=true, hiding it without stopping the WebSocket or clearing lines. A pulsing LIVE badge appears in the recording info bar; clicking it sets liveHidden=false, reopening the panel with all accumulated lines intact. The Stop Live Text button in the top bar calls handleLiveStop to fully terminate the live client.
 - Line coalescing: consecutive transcript results from the same speaker append to the previous line rather than creating a new line.
 - HTTP server upgrade: server/src/index.ts creates an http.Server wrapping the Express app, passes it to setupLiveTranscription() for WebSocket upgrade handling, then calls httpServer.listen().
 
@@ -102,9 +105,9 @@ Document the mechanics of the live transcription mode — how audio is captured 
 - Manual items go to the extraction prompt inside "items", so the model does not re-extract them as new.
 - No session exists during a live recording; it is created by POST /api/sessions/upload after stop.
 - The client generates a liveKey (crypto.randomUUID) per live recording; items and participants are kept server-side per liveKey.
-- The liveKey registry is shared by reconnects and Retry, so the same store is reused; Stop Live keeps the items.
+- The liveKey registry is shared by reconnects and Retry, so the same store is reused; Stop Live Text keeps the items.
 - Every change is persisted atomically (tmp + rename) to <sessionsDir>/../live-action-items/<liveKey>.json.
-- The upload form field liveKey moves that file to <session dir>/action-items.json and writes participants {me, them} into session.json; items attach at End Recording upload.
+- The upload form field liveKey moves that file to <session dir>/action-items.json and writes participants {me, them} into session.json; items attach at the End Meeting upload.
 - Pending files older than 7 days are deleted when a new store opens.
 - Recovery uploads (recordingRecovery) and file uploads carry no liveKey, so they get no action items.
 - Extraction runs only when Online text correction (Groq, AUG-164 consent) is active at connect time, through createGroqTextClient with openai/gpt-oss-20b and the shared free-tier limiter.
@@ -115,8 +118,11 @@ Document the mechanics of the live transcription mode — how audio is captured 
 - The model receives participants, the current items with ids (newest 40) and only the new speech (buffer of at most 4000 chars, oldest dropped).
 - It also receives "context": the last ~600 chars of already-sent speech (ACTION_CONTEXT_CHARS), because a call can fire mid-phrase — a commitment started in one call and confirmed in the next ("…давай запишем, что это моя задача") was lost without it; items must be made or confirmed in the new speech.
 - The model returns only new items {text, owner, source}; exact-duplicate texts are skipped.
+- Item language (AUG-183): both extraction payloads (Groq and local) carry "language" from speechLanguage(context + new speech) — Cyrillic-dominant speech (>= 20 Cyrillic letters, not fewer than Latin) gives "Russian", or "Ukrainian" when >= 3 of і/ї/є/ґ appear; Latin or too little text gives null (no hint). The prompts require every item text in that language. Why: with only "in the transcript's language" in an English prompt, models (the small local one above all) wrote items for a Russian meeting in English (2026-11-03).
 - AUG-164 live corrections update the text still in the action-items buffer.
-- Dedup with the local model (AUG-162): when it is enabled and downloaded, every 20 s (if the list changed and has at least 2 items) withLocalLlm returns merge(into, from) or delete operations by id.
+- Dedup with the local model (AUG-162): when it is enabled and downloaded, every 20 s (if the list changed and has at least 2 items) withLocalLlm returns merge(into, from) operations by id (DEDUP_SYSTEM_PROMPT asks for merges only).
+- Dedup guard (AUG-183): applyDedupOps applies the same rule to local and cloud (Groq) ops — every delete op is dropped (a model may never remove an item; only the user deletes), and a merge is applied only when actionTextSimilarity(into, from) >= ACTION_MERGE_MIN_SIMILARITY (0.6): Jaccard overlap of word stems (lowercase, ё→е, words < 3 chars dropped, each cut to 5 chars), texts equal after normalization score 1.
+- Why: in a 58-min dual-track meeting (2026-11-03) the small local model merged and deleted different tasks — ~14 items were added and ~13 removed, the session kept 1. The threshold is deliberately conservative: a missed merge leaves a visible duplicate, a wrong merge silently loses an agreed task.
 - Dedup never returns a new list, only operations by id.
 - Without the local model, or after LlmUnavailableError, the Groq extraction request carries dedup and returns the same operations.
 - Locks: a user edit of text or owner sets locked.text or locked.owner; model operations never delete a locked item.
@@ -132,7 +138,7 @@ Document the mechanics of the live transcription mode — how audio is captured 
 - Local results go through parseExtractionResponse and store.addItems — the same exact-duplicate skip and lock rules as cloud items; the 20 s local dedup merges later.
 - Log lines: `[actionItems] local fallback #N (<groq reason>): +k new, T total`, `... : unparseable`, `[actionItems] local fallback skipped: interval|busy|timeout, next local call in >= N s|local model unavailable|error`. No transcript text.
 - [UNVERIFIED] Quality of local extraction on a real transcript and transcription lag with local whisper + fallback were not measured at implementation (AUG-168).
-- Log lines `[actionItems] cloud call #N (trigger|timeout, dedup=cloud|local|none): +k new, m op(s), T total` count calls per meeting; transcript text is never logged.
+- Log lines `[actionItems] cloud call #N (trigger|timeout, dedup=cloud|local|none): +k new, m op(s)[, r rejected by guard], T total` count calls per meeting; `[actionItems] local dedup: a/n op(s) applied, r rejected by guard, T total` reports guard refusals (deletes + dissimilar merges; lock skips are not counted); transcript and item text are never logged.
 - WebSocket frames: the client sends action-items-init (on open when liveKey is set), participants, action-item-edit and action-item-delete; the server sends the full action-items list after every change.
 - The action-items frame field enabled is true when Online text correction was active at connect time.
 - Editing after stop uses GET /api/sessions/:id/action-items (404 when none), PATCH /api/sessions/:id/action-items/:itemId and DELETE on the same path; PATCH locks edited fields.
@@ -149,6 +155,8 @@ Document the mechanics of the live transcription mode — how audio is captured 
 - liveActionItems (component): part of liveTranscription; depends on groqText; depends on llmServer (AUG-165); falls back to llmServer for extraction when Groq refuses (AUG-168).
 - ActionItemsPanel (component): part of LiveTranscriptPanel; used by TranscriptView (AUG-165).
 - transcriptActionItems (component): used by liveActionItems (AUG-166).
+- HoldToStopButton (component): shared 1.5 s hold-to-stop control (AUG-182).
+- LiveTranscriptPanel uses HoldToStopButton (AUG-182).
 
 ## Invariants
 
@@ -168,15 +176,17 @@ Document the mechanics of the live transcription mode — how audio is captured 
 - Pause/resume is bidirectional: the client stops feeding chunks to the accumulator AND sends a JSON control message so the server can skip any queued work.
 - LiveTranscriptionClient.stop() disconnects all Web Audio nodes, closes the AudioContext, sends a stop control message, and closes the WebSocket.
 - The live panel closes automatically when recording stops (stopRecording sets liveActive and liveHidden to false).
-- Closing the panel (×) hides it without stopping transcription — only the explicit Stop Live button or stopRecording (End Recording / circuit STOP) terminates the live client.
-- Clear All clears displayed lines without stopping transcription, audio capture, or the WebSocket connection.
-- Stop and Clear All both gate behind a shared confirmAction state ('stop' | 'clearAll' | null) — only one confirmation dialog can be active at a time.
+- Closing the panel (×) hides it without stopping transcription — only Stop Live Text (1.5 s hold) or stopRecording (End Meeting / circuit center node, both 1.5 s hold; global hotkey and tray instant) terminates the live client.
+- Clear and Copy & Clear remove only displayed lines; transcription, audio capture, the WebSocket, action items and participants are untouched.
+- confirmAction is 'clearAll' | null (AUG-182): only Clear can confirm; stop controls are protected by the 1.5 s hold, not a dialog.
+- Copy & Clear never removes a line before the clipboard write resolves.
 - The Vite dev proxy must have ws: true on the /api proxy config for WebSocket upgrade forwarding.
 - The binary WebSocket audio frame format is unchanged by AUG-113; attach-capture is a separate JSON text frame parsed by parseLiveControlFrame (malformed frames are ignored).
 - Detach/flush order on stop: stopCapture() ends the tee first (sink.onEnd('stop') flushes the accumulator's partial window into the transcription queue when ≥0.5 s of fresh audio arrived), then stops ffmpeg and finalizes the WAV, so the post-recording dual-track transcript is produced exactly as for a non-live capture.
 - Closing the WebSocket or sending stop only detaches the sink — the server capture keeps recording until POST /api/capture/stop; a WAV from a live-attached capture is format-identical (16 kHz mono pcm_s16le, 44-byte header) to a non-live one.
 - One sink per capture: a second attach-capture for the same captureId gets a warning and the first binding stays.
-- Live action items never change a field the user edited: model operations are only merge/delete by id and skip locked items (AUG-165).
+- Live action items never change a field the user edited: model operations are only merges by id and skip locked items (AUG-165).
+- A model never removes a distinct item: delete ops from any model are dropped, and a merge needs actionTextSimilarity >= ACTION_MERGE_MIN_SIMILARITY on the server (AUG-183). Do not trust the model's judgement of "same task" without this check.
 - Cloud action-item extraction is never called more often than once per 45 s per connection (at most 80 calls per hour) (AUG-165).
 
 ## Route-Specific Constraints
@@ -209,3 +219,4 @@ Document the mechanics of the live transcription mode — how audio is captured 
 - server/src/services/liveActionItems.ts — action items store/registry per liveKey, gate, Groq extraction, local fallback extraction and liveLocalSlot (AUG-168), local dedup, lock rules, session attach and REST helpers (AUG-165).
 - client/src/components/ActionItemsPanel.tsx — Action items panel shared by the live panel and TranscriptView (AUG-165).
 - server/src/services/transcriptActionItems.ts — transcript.md Action items section and Praxis card drafts (AUG-166).
+- client/src/components/HoldToStopButton.tsx — shared hold-to-stop button (AUG-182).

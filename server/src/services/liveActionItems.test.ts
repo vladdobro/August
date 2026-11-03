@@ -25,7 +25,7 @@ function setup(opts: { localReady?: boolean; liveEngine?: 'local' | 'groq'; clou
       store.file.items.push(...raw.map((r, i) => ({ id: 'x' + store.file.items.length + i, ...r })));
       return raw.length;
     }),
-    applyOps: () => 0,
+    applyOps: () => ({ applied: 0, rejected: 0 }),
   };
   const cloudChat = vi.fn(opts.cloud ?? (async () => { throw new Error('boom'); }));
   const localChat = vi.fn(async (_req: any): Promise<{ content: string }> => ({ content: OK_CONTENT }));

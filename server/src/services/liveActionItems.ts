@@ -71,29 +71,47 @@ export function isLocked(item: ActionItem): boolean {
   return !!(item.locked?.text || item.locked?.owner);
 }
 
-/// Applies model operations; locked items are never removed. In a merge the item with a manual edit always survives; both edited -> skipped.
-export function applyDedupOps(items: ActionItem[], ops: DedupOp[]): { items: ActionItem[]; applied: number } {
+/// AUG-183: minimum Jaccard word overlap for a model merge to be applied. Conservative on purpose: a missed merge leaves a visible duplicate, a wrong merge silently loses an agreed task.
+export const ACTION_MERGE_MIN_SIMILARITY = 0.6;
+
+/// Word stems for the merge guard: lowercase, ё -> е, letters/digits only, words shorter than 3 chars dropped, each word cut to 5 chars (a crude stem that absorbs Russian/English inflection).
+function textStems(text: string): Set<string> {
+  const words = text.toLowerCase().replace(/ё/g, 'е').split(/[^\p{L}\p{N}]+/u);
+  const stems = new Set<string>();
+  for (const w of words) if (w.length >= 3) stems.add(w.slice(0, 5));
+  return stems;
+}
+
+/// AUG-183: normalized word overlap (Jaccard over stems) of two item texts, 0..1. Texts equal after normalization score 1.
+export function actionTextSimilarity(a: string, b: string): number {
+  if (normalizeForCompare(a) === normalizeForCompare(b)) return 1;
+  const sa = textStems(a);
+  const sb = textStems(b);
+  if (sa.size === 0 || sb.size === 0) return 0;
+  let common = 0;
+  for (const s of sa) if (sb.has(s)) common++;
+  return common / (sa.size + sb.size - common);
+}
+
+/// Applies model operations (local dedup and cloud Groq dedup alike). AUG-183 guard: delete ops are dropped for every model — a model may only merge, so a distinct item always survives; a merge is applied only when the two texts pass actionTextSimilarity >= ACTION_MERGE_MIN_SIMILARITY. Lock rules (AUG-165): locked items are never removed; in a merge the item with a manual edit survives; both edited -> skipped. `rejected` counts ops refused by the guard (deletes + dissimilar merges), not lock skips.
+export function applyDedupOps(items: ActionItem[], ops: DedupOp[]): { items: ActionItem[]; applied: number; rejected: number } {
   let list = items.map((i) => ({ ...i }));
   let applied = 0;
+  let rejected = 0;
   for (const op of ops) {
-    if (op.op === 'merge') {
-      if (op.into === op.from) continue;
-      const into = list.find((i) => i.id === op.into);
-      const from = list.find((i) => i.id === op.from);
-      if (!into || !from) continue;
-      if (isLocked(from) && isLocked(into)) continue;
-      const [survivor, removed] = isLocked(from) && !isLocked(into) ? [from, into] : [into, from];
-      if (survivor.owner === '' && !survivor.locked?.owner) survivor.owner = removed.owner;
-      list = list.filter((i) => i !== removed);
-      applied++;
-    } else {
-      const item = list.find((i) => i.id === op.id);
-      if (!item || isLocked(item)) continue;
-      list = list.filter((i) => i !== item);
-      applied++;
-    }
+    if (op.op === 'delete') { rejected++; continue; }
+    if (op.into === op.from) continue;
+    const into = list.find((i) => i.id === op.into);
+    const from = list.find((i) => i.id === op.from);
+    if (!into || !from) continue;
+    if (isLocked(from) && isLocked(into)) continue;
+    if (actionTextSimilarity(into.text, from.text) < ACTION_MERGE_MIN_SIMILARITY) { rejected++; continue; }
+    const [survivor, removed] = isLocked(from) && !isLocked(into) ? [from, into] : [into, from];
+    if (survivor.owner === '' && !survivor.locked?.owner) survivor.owner = removed.owner;
+    list = list.filter((i) => i !== removed);
+    applied++;
   }
-  return { items: list, applied };
+  return { items: list, applied, rejected };
 }
 
 function sanitizeOps(raw: unknown, knownIds: Set<string>): DedupOp[] {
@@ -314,13 +332,13 @@ export class LiveActionItemsStore {
     return item;
   }
 
-  applyOps(ops: DedupOp[]): number {
-    const { items, applied } = applyDedupOps(this.file.items, ops);
+  applyOps(ops: DedupOp[]): { applied: number; rejected: number } {
+    const { items, applied, rejected } = applyDedupOps(this.file.items, ops);
     if (applied > 0) {
       this.file.items = items;
       this.changed();
     }
-    return applied;
+    return { applied, rejected };
   }
 
   editItem(id: string, patch: { text?: unknown; owner?: unknown }): boolean {
@@ -529,27 +547,43 @@ export async function mutateLiveActionItems(liveKey: string, mutate: (items: Act
 // ---------------------------------------------------------------------------
 // Extractor
 
+/// AUG-183: language of the speech by script, so items are written in the meeting's language — models (small local ones above all) answer in English to an English prompt. Cyrillic -> Russian (Ukrainian when its own letters show up); Latin or too little text -> null, no hint, behaviour as before.
+export function speechLanguage(texts: string[]): string | null {
+  let cyr = 0;
+  let lat = 0;
+  let uk = 0;
+  for (const t of texts) {
+    cyr += (t.match(/[Ѐ-ӿ]/g) ?? []).length;
+    lat += (t.match(/[A-Za-z]/g) ?? []).length;
+    uk += (t.match(/[іїєґІЇЄҐ]/g) ?? []).length;
+  }
+  if (cyr < 20 || cyr < lat) return null;
+  return uk >= 3 ? 'Ukrainian' : 'Russian';
+}
+
 export const EXTRACT_SYSTEM_PROMPT = `You track action items (agreements, tasks, promises) in a live meeting transcript.
 Speakers: "Me" is the app user (microphone), "Them" is the other side. Participant names, when known, are in "participants".
-Input JSON: {"participants":{"Me":string|null,"Them":string|null},"items":[{"id","text","owner"}],"context":[{"speaker","text"}],"transcript":[{"speaker","text"}],"dedup":boolean}.
+Input JSON: {"participants":{"Me":string|null,"Them":string|null},"items":[{"id","text","owner"}],"context":[{"speaker","text"}],"transcript":[{"speaker","text"}],"dedup":boolean,"language":string|null}.
 "items" are already known. "transcript" is only the new speech since the last call. "context" is the speech right before it, already processed: use it only to understand what "transcript" refers to (a commitment can start in "context" and be confirmed in "transcript").
 Return only NEW action items made or confirmed in "transcript" that are not already in "items". Each new item: {"text": a short task in the transcript's language with the deadline if one was said, e.g. "Подготовить отчёт к пятнице", "owner": who must do it — "Me", "Them", or a person's name said explicitly, "source": the speaker who said it, "Me" or "Them"}.
+If "language" is set, write every "text" in that language, even when the speech mixes in English words; keep names as said.
 Resolve pronouns by speaker: when Me says "you will do X", the owner is Them; when Me says "I will do X", the owner is Me; the other way round when Them speaks.
 Only concrete commitments or assignments; skip ideas, questions and small talk. If there is nothing new, return an empty list.
-If "dedup" is true, also return operations on "items" that describe the same task: {"op":"merge","into":"<id>","from":"<id>"} keeps "into" and removes "from"; {"op":"delete","id":"<id>"} removes an item that is not a task. Never invent ids.
+If "dedup" is true, also return merge operations for "items" that describe the same task: {"op":"merge","into":"<id>","from":"<id>"} keeps "into" and removes "from". Never merge different tasks, never delete items, never invent ids.
 Reply with only JSON: {"new":[...],"ops":[...]}.`;
 
 export const DEDUP_SYSTEM_PROMPT = `You clean up a list of meeting action items. Input: a JSON array of {"id","text","owner"}.
-Find items that describe the same task (same action and object, possibly in different words) and return operations: {"op":"merge","into":"<id>","from":"<id>"} keeps "into" and removes "from"; {"op":"delete","id":"<id>"} only for an item that is clearly not a task.
-Never invent ids and never rewrite text. If there is nothing to do, return [].
+Find pairs of items that describe the same task (same action and object, possibly in different words) and return merge operations: {"op":"merge","into":"<id>","from":"<id>"} keeps "into" and removes "from".
+Different tasks are never merged, even when they share a person or a deadline. Never delete items, never invent ids and never rewrite text. If there is nothing to do, return [].
 Reply with only a JSON array of operations.`;
 
 /// AUG-168: small local models invent content (AUG-161), so the local prompt allows explicit commitments only and never asks for dedup.
 export const LOCAL_EXTRACT_SYSTEM_PROMPT = `You find action items in a fragment of a live meeting transcript.
-Speakers: "Me" is the app user, "Them" is the other side. Input JSON: {"participants":{"Me":string|null,"Them":string|null},"items":[{"id","text","owner"}],"context":[{"speaker","text"}],"transcript":[{"speaker","text"}]}.
+Speakers: "Me" is the app user, "Them" is the other side. Input JSON: {"participants":{"Me":string|null,"Them":string|null},"items":[{"id","text","owner"}],"context":[{"speaker","text"}],"transcript":[{"speaker","text"}],"language":string|null}.
 "items" are already known; "context" is earlier speech for reference only.
 Add an item only when someone in "transcript" explicitly promises to do something or explicitly assigns a task. Never invent tasks, names or deadlines that were not said. Skip ideas, questions, small talk and anything already in "items". When in doubt, add nothing.
 Each item: {"text": a short task in the transcript's language with the deadline if one was said, "owner": "Me", "Them" or a name said explicitly, "source": the speaker who said it, "Me" or "Them"}. When Me says "I will", the owner is Me; when Me says "you will", the owner is Them; the other way round for Them.
+If "language" is set, write every "text" in that language, even when the speech mixes in English words; keep names as said.
 Reply with only JSON: {"new":[...]}.`;
 
 interface BufferEntry { id: string; speaker: ActionItemSource; text: string }
@@ -716,6 +750,7 @@ export class LiveActionItemsExtractor {
         context: this.context.map(({ speaker, text }) => ({ speaker, text })),
         transcript: snapshot.map(({ speaker, text }) => ({ speaker, text })),
         dedup,
+        language: speechLanguage([...this.context, ...snapshot].map((e) => e.text)),
       };
       const result = await this.deps.cloudChat({
         messages: [
@@ -737,8 +772,9 @@ export class LiveActionItemsExtractor {
         console.log(`[actionItems] cloud call #${this.cloudCalls} (${reason}): unparseable`);
       } else {
         const added = this.store.addItems(parsed.newItems);
-        const applied = dedup ? this.store.applyOps(parsed.ops) : 0;
-        console.log(`[actionItems] cloud call #${this.cloudCalls} (${reason}, dedup=${dedup ? 'cloud' : this.localReady ? 'local' : 'none'}): +${added} new, ${applied} op(s), ${this.store.file.items.length} total`);
+        const { applied, rejected } = dedup ? this.store.applyOps(parsed.ops) : { applied: 0, rejected: 0 };
+        const guard = rejected > 0 ? `, ${rejected} rejected by guard` : '';
+        console.log(`[actionItems] cloud call #${this.cloudCalls} (${reason}, dedup=${dedup ? 'cloud' : this.localReady ? 'local' : 'none'}): +${added} new, ${applied} op(s)${guard}, ${this.store.file.items.length} total`);
       }
     } catch (err) {
       if (this.stopped) return;
@@ -786,6 +822,7 @@ export class LiveActionItemsExtractor {
         items: sentItems,
         context: this.context.map(({ speaker, text }) => ({ speaker, text })),
         transcript,
+        language: speechLanguage([...this.context.map((e) => e.text), ...transcript.map((e) => e.text)]),
       };
       const content = (
         await this.deps.withLocal((client) =>
@@ -850,9 +887,9 @@ export class LiveActionItemsExtractor {
       ).content;
       if (this.stopped) return;
       const ops = parseDedupResponse(content, known) ?? [];
-      const applied = this.store.applyOps(ops);
+      const { applied, rejected } = this.store.applyOps(ops);
       this.lastDedupVersion = this.store.version;
-      if (applied > 0 || ops.length > 0) console.log(`[actionItems] local dedup: ${applied}/${ops.length} op(s) applied`);
+      if (ops.length > 0) console.log(`[actionItems] local dedup: ${applied}/${ops.length} op(s) applied, ${rejected} rejected by guard, ${this.store.file.items.length} total`);
     } catch (err) {
       if (err instanceof LlmUnavailableError) this.localReady = false;
       console.log(`[actionItems] local dedup skipped: ${(err as Error).message}`);

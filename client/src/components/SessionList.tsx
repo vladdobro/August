@@ -1,4 +1,5 @@
 import React, { useEffect, useLayoutEffect, useRef, useState } from 'react';
+import { createPortal } from 'react-dom';
 import type { HealthStatus, SessionMetadata, SessionStatus } from '../types';
 import AboutModal from './AboutModal';
 import ConfidenceBadge from './ConfidenceBadge';
@@ -491,7 +492,8 @@ const SessionList: React.FC<SessionListProps> = ({
           </div>
         );
       })()}
-      {contextMenu && desktop && (
+      {/* Portal: the sidebar lives in .overlay-panel (transform + overflow hidden), which would clip a position: fixed menu */}
+      {contextMenu && desktop && createPortal(
         <div
           ref={contextMenuRef}
           className="sidebar-menu-dropdown session-context-menu"
@@ -510,7 +512,8 @@ const SessionList: React.FC<SessionListProps> = ({
             </svg>
             {revealLabel}
           </button>
-        </div>
+        </div>,
+        document.body,
       )}
       {showAbout && <AboutModal onClose={() => setShowAbout(false)} />}
     </div>
