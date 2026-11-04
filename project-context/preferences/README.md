@@ -64,7 +64,8 @@ Eliminate repeated manual re-configuration every app session. Before this system
 - The list pins "Default settings" first (badge "custom" when praxisDefaultPrompt is set), then one item per project; "+ Add project" under the list opens new mode.
 - A project list item shows the name, Default / prompt / "!" (missing .praxis/) badges and the path.
 - Initial selection on the Projects tab is the default project, else "Default settings".
-- The "Default settings" editor has variable chips, a full-height textarea, Reset to built-in (sets praxisDefaultPrompt to null) and a Built-in/Custom status.
+- The "Default settings" editor has variable chips, a prompt textarea, Reset to built-in (sets praxisDefaultPrompt to null) and a Built-in/Custom status.
+- [CONFLICT — verify before use] This route used to say the Default textarea is full height; the code renders it about 2 rows tall: it is not wrapped in .praxis-md-field--grow (PraxisProjectsPage.tsx:407) and .praxis-md-textarea sets resize: none. Root cause and decision in AUG-172; AUG-191 fixes it (fill the pane + Expand to a full-window editor, no persisted height). Once AUG-191 lands, drop this note.
 - The project editor has Name, an editable Path with Browse, a "Use as default project" checkbox (disabled when already default), a Reachable/Missing badge and Remove project.
 - The project editor Prompt label carries a "custom · use default" link that drops the per-project prompt; the textarea is full height with variable chips.
 - The Missing badge appears when POST /api/praxis/validate finds no .praxis/ directory at the project path.

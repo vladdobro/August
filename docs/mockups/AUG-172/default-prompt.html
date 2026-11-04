@@ -1,0 +1,549 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Default Prompt Resize</title>
+<style>
+:root {
+  --bg:#f2efe8; --surface:rgba(250,248,244,.92); --line:rgba(45,58,51,.25); --fg:#1e2b24; --muted:#566b5e;
+  --accent:#0d8c5c; --accent-light:rgba(13,140,92,.12); --pause:#d49a00; --danger:#d44040; --them:#9a7a1a;
+  --on-accent:#f2efe8; --body-bg:#e6e2d8; --glow:rgba(13,140,92,.18); --warn:#d4a028;
+  --card-bg:rgba(250,248,244,.92); --card-border:rgba(45,58,51,.14); --border-color:rgba(45,58,51,.25);
+  --text-primary:#1e2b24; --text-secondary:#566b5e; --sidebar-bg:#c8dcd0; --main-bg:#f2efe8; --status-failed:#d44040;
+  --mono:'Cascadia Code','Fira Code',Consolas,monospace;
+}
+@media (prefers-color-scheme: dark) { :root:not([data-theme="light"]) {
+  --bg:#0a110d; --surface:rgba(12,20,16,.92); --line:rgba(0,200,118,.18); --fg:#c0cec4; --muted:#5e7d6a;
+  --accent:#00c876; --accent-light:rgba(0,200,118,.10); --pause:#d4a020; --danger:#e05555; --them:#d4a843;
+  --on-accent:#0a110d; --body-bg:#0f1914; --glow:rgba(0,200,118,.3); color-scheme:dark;
+  --card-bg:rgba(12,20,16,.92); --card-border:rgba(0,200,118,.15); --border-color:rgba(0,200,118,.18);
+  --text-primary:#c0cec4; --text-secondary:#5e7d6a; --sidebar-bg:#050908; --main-bg:#0a110d; --status-failed:#e05555; } }
+:root[data-theme="dark"] {
+  --bg:#0a110d; --surface:rgba(12,20,16,.92); --line:rgba(0,200,118,.18); --fg:#c0cec4; --muted:#5e7d6a;
+  --accent:#00c876; --accent-light:rgba(0,200,118,.10); --pause:#d4a020; --danger:#e05555; --them:#d4a843;
+  --on-accent:#0a110d; --body-bg:#0f1914; --glow:rgba(0,200,118,.3); color-scheme:dark;
+  --card-bg:rgba(12,20,16,.92); --card-border:rgba(0,200,118,.15); --border-color:rgba(0,200,118,.18);
+  --text-primary:#c0cec4; --text-secondary:#5e7d6a; --sidebar-bg:#050908; --main-bg:#0a110d; --status-failed:#e05555; }
+
+* { box-sizing:border-box; border-radius:0; }
+body { margin:0; background:var(--bg); color:var(--fg); font-family:var(--mono); font-size:13px; line-height:1.5;
+  padding:0 max(16px,env(safe-area-inset-left,0px)) 48px; overflow-x:hidden; }
+.wrap { max-width:1000px; margin:0 auto; display:grid; grid-template-columns:minmax(0,1fr); gap:24px; }
+.wrap > * { min-width:0; }
+header { padding-top:24px; }
+h1 { margin:0; font-size:20px; text-wrap:balance; }
+h2 { margin:0 0 10px; font-size:13px; letter-spacing:.08em; text-transform:uppercase; color:var(--accent); border-bottom:1px solid var(--line); padding-bottom:6px; }
+.lead { margin:4px 0 0; color:var(--muted); max-width:75ch; }
+.note { margin:8px 0 0; font-size:11px; color:var(--muted); }
+button { font-family:var(--mono); cursor:pointer; }
+button:disabled { opacity:.4; cursor:not-allowed; }
+button:focus-visible, select:focus-visible, input:focus-visible, [tabindex]:focus-visible { outline:2px solid var(--accent); outline-offset:2px; }
+
+.bar { position:sticky; top:0; z-index:20; background:var(--bg); border-bottom:1px solid var(--line); padding:10px 0; display:flex; flex-wrap:wrap; gap:10px 16px; align-items:center; }
+.grp { display:flex; align-items:center; gap:6px; flex-wrap:wrap; }
+.grp > span { font-size:10px; text-transform:uppercase; letter-spacing:.06em; color:var(--muted); }
+.seg { display:flex; border:1px solid var(--line); flex-wrap:wrap; }
+.seg button { border:0; background:transparent; color:var(--fg); font-size:11px; padding:6px 10px; }
+.seg button[aria-pressed="true"] { background:var(--accent); color:var(--on-accent); }
+
+.card { border:1px solid var(--line); background:var(--surface); padding:14px; }
+.btn { border:1px solid var(--line); background:transparent; color:var(--fg); font-size:11px; text-transform:uppercase; letter-spacing:.05em; padding:4px 10px; }
+.btn:hover:not(:disabled) { border-color:var(--accent); color:var(--accent); }
+.btn.primary { background:var(--accent); border-color:var(--accent); color:var(--on-accent); }
+.btn.primary:hover:not(:disabled) { color:var(--on-accent); opacity:.85; }
+.pc { display:grid; grid-template-columns:repeat(auto-fit,minmax(240px,1fr)); gap:12px; margin-top:12px; }
+.pc h4 { margin:0 0 4px; font-size:11px; text-transform:uppercase; letter-spacing:.08em; }
+.pc .pro h4 { color:var(--accent); } .pc .con h4 { color:var(--danger); }
+.pc ul { margin:0; padding-left:18px; font-size:12px; }
+
+#modal { position:fixed; inset:0; z-index:100; background:rgba(0,0,0,.45); -webkit-backdrop-filter:blur(8px); backdrop-filter:blur(8px); display:flex; align-items:center; justify-content:center; padding:16px; }
+#modal[hidden] { display:none; }
+
+/* ---- page-specific ---- */
+.pitch { margin:0 0 8px; color:var(--muted); }
+.cur ul { margin:6px 0 0; padding-left:18px; font-size:12px; }
+.cur li { margin-bottom:4px; }
+code { background:var(--accent-light); padding:0 4px; }
+section { scroll-margin-top:70px; }
+.tag { display:inline-block; font-size:10px; padding:1px 6px; letter-spacing:.06em; text-transform:uppercase; vertical-align:middle; margin-left:6px; }
+.tag.bug { background:var(--danger); color:#fff; }
+.cap { margin:8px 0 0; font-size:11px; color:var(--muted); }
+.stage { overflow-x:hidden; }
+.tblwrap { overflow-x:auto; border:1px solid var(--line); }
+table { border-collapse:collapse; width:100%; min-width:640px; font-size:12px; }
+th, td { text-align:left; vertical-align:top; padding:6px 10px; border-bottom:1px solid var(--line); border-right:1px solid var(--line); }
+th { color:var(--accent); font-size:11px; text-transform:uppercase; letter-spacing:.06em; }
+tr:last-child td { border-bottom:0; } th:last-child, td:last-child { border-right:0; }
+.reco { border-left:3px solid var(--accent); }
+.reco p { margin:0 0 8px; }
+
+/* ---- Settings replica ---- */
+.rep { width:min(600px,100%); height:560px; display:flex; flex-direction:column; border:1px solid var(--card-border); background:var(--card-bg); color:var(--text-primary); font-family:var(--mono); }
+.rep .hd { display:flex; justify-content:space-between; align-items:center; padding:10px 16px; border-bottom:1px solid var(--card-border); font-size:12px; letter-spacing:.12em; font-weight:700; }
+.rep .x { color:var(--text-secondary); }
+.rep .tabs { display:flex; overflow-x:auto; border-bottom:1px solid var(--card-border); flex:none; }
+.rep .tabs span { flex:none; padding:8px 14px; font-size:11px; text-transform:uppercase; letter-spacing:.06em; color:var(--text-secondary); border-bottom:2px solid transparent; white-space:nowrap; }
+.rep .tabs span.on { color:var(--accent); border-bottom-color:var(--accent); }
+.rep .body { flex:1; min-height:0; display:grid; grid-template-columns:210px minmax(0,1fr); }
+.rep .list { background:var(--sidebar-bg); border-right:1px solid var(--card-border); padding:8px 0; display:flex; flex-direction:column; overflow-y:auto; min-height:0; }
+.rep .li { padding:8px 12px; font-size:11px; color:var(--text-primary); border-left:2px solid transparent; }
+.rep .li small { display:block; color:var(--text-secondary); font-size:10px; overflow-wrap:anywhere; }
+.rep .li.on { background:var(--accent-light); border-left-color:var(--accent); }
+.rep .li .bdg { float:right; font-size:9px; text-transform:uppercase; color:var(--accent); border:1px solid var(--accent); padding:0 4px; }
+.rep .add { margin:8px 12px; border:1px dashed var(--border-color); background:transparent; color:var(--text-secondary); font-size:11px; padding:5px; }
+.rep .pane { min-width:0; min-height:0; display:flex; flex-direction:column; gap:12px; padding:14px 20px 16px; overflow-y:auto; }
+.rep .ph { display:flex; justify-content:space-between; align-items:center; font-size:12px; text-transform:uppercase; letter-spacing:.1em; font-weight:700; flex:none; }
+.rep .saved { font-size:10px; color:var(--accent); opacity:0; transition:opacity .3s; }
+.rep .saved.show { opacity:1; }
+.rep .hint { margin:0; font-size:11px; color:var(--text-secondary); flex:none; }
+.rep .chips { display:flex; flex-wrap:wrap; gap:6px; align-items:center; flex:none; }
+.rep .chip { font-size:10px; font-family:var(--mono); border:1px dashed var(--accent); background:transparent; color:var(--accent); padding:1px 6px; }
+.rep .chip:hover { background:var(--accent-light); }
+.rep .exp { margin-left:auto; }
+.rep .foot { margin-top:auto; display:flex; gap:10px; align-items:center; flex:none; font-size:10px; color:var(--text-secondary); }
+.rep .foot .btn, .rep .exp { color:var(--text-secondary); border-color:var(--border-color); font-size:10px; padding:2px 8px; }
+.rep .foot .btn:hover, .rep .exp:hover { color:var(--accent); border-color:var(--accent); }
+.rep .grow { flex:1; min-height:120px; display:flex; }
+.rep .fixed { flex:none; }
+.pt { width:100%; font-family:var(--mono); font-size:12px; line-height:1.45; padding:8px 10px; border:1px solid var(--border-color); background:var(--card-bg); color:var(--text-primary); resize:none; display:block; }
+.pt:focus { outline:none; border-color:var(--accent); box-shadow:0 0 0 2px var(--accent-light); }
+.rep .grow .pt { height:100%; }
+.handle { flex:none; height:6px; margin-top:-8px; cursor:ns-resize; position:relative; touch-action:none; }
+.handle::after { content:""; position:absolute; left:50%; top:2px; width:48px; height:2px; margin-left:-24px; background:var(--accent); opacity:0; transition:opacity .15s; }
+.handle:hover::after, .handle:focus-visible::after, .handle.drag::after { opacity:1; }
+.handle:focus-visible { outline:none; }
+
+.ov { width:min(1100px, 100% - 32px); height:calc(100vh - 48px); background:var(--card-bg); border:1px solid var(--card-border); padding:20px; display:flex; flex-direction:column; gap:12px; color:var(--text-primary); box-shadow:0 8px 32px rgba(0,0,0,.4); }
+.ov .ovh { display:flex; flex-wrap:wrap; gap:8px 12px; align-items:center; font-size:12px; text-transform:uppercase; letter-spacing:.1em; font-weight:700; }
+.ov .ovh .chips { display:flex; gap:6px; flex:1; flex-wrap:wrap; text-transform:none; letter-spacing:0; font-weight:400; }
+.ov .pt { flex:1; min-height:0; height:auto; font-size:13px; }
+.ov .chip { font-size:10px; font-family:var(--mono); border:1px dashed var(--accent); background:transparent; color:var(--accent); padding:1px 6px; }
+
+@media (max-width:599px) { .rep { height:520px; } }
+@media (max-width:559px) {
+  .rep .body { grid-template-columns:minmax(0,1fr); grid-template-rows:auto minmax(0,1fr); }
+  .rep .list { max-height:30%; border-right:0; border-bottom:1px solid var(--card-border); }
+  .rep .pane { padding:12px 14px; }
+}
+@media (prefers-reduced-motion: reduce) { *, *::before, *::after { transition:none !important; animation:none !important; scroll-behavior:auto !important; } }
+</style>
+</head>
+<body>
+<div class="wrap">
+<header>
+  <h1>AUG-172 · Resizable Default Prompt</h1>
+  <p class="lead">Feedback (Rodion): the Default Prompt field in Settings → Projects is too small to read the whole prompt.</p>
+</header>
+
+<div class="card cur">
+  <strong>Current state</strong>
+  <ul>
+    <li>Default editor textarea <code>PraxisProjectsPage.tsx:407</code> sits directly in <code>.praxis-md-detail</code>, not in <code>.praxis-md-field--grow</code> → no flex:1, no min-height → browser default 2 rows (~44px).</li>
+    <li><code>.praxis-md-textarea { resize: none }</code> (<code>App.css:7458</code>) overrides <code>.settings-textarea { resize: vertical }</code> (<code>App.css:7367</code>) → cannot drag.</li>
+    <li>Per-project prompt textarea (<code>PraxisProjectsPage.tsx:523</code>) is in <code>--grow</code> (<code>App.css:7456-7457</code>, flex:1, min-height 120px) → fills the pane, but also not resizable.</li>
+    <li>Settings card 600px wide, Projects tab 85vh tall (<code>App.css:6975, 7429</code>); list column 210px → editor pane ≈390px wide.</li>
+  </ul>
+</div>
+
+<div class="bar">
+  <div class="grp"><span>Theme</span>
+    <div class="seg" id="segTheme">
+      <button type="button" data-v="auto" aria-pressed="true">Auto</button>
+      <button type="button" data-v="light" aria-pressed="false">Light</button>
+      <button type="button" data-v="dark" aria-pressed="false">Dark</button>
+    </div></div>
+  <div class="grp"><span>Variant</span>
+    <div class="seg" id="segVar">
+      <button type="button" data-v="cur" aria-pressed="true">Current</button>
+      <button type="button" data-v="a" aria-pressed="false">A · Drag handle</button>
+      <button type="button" data-v="b" aria-pressed="false">B · Fill + auto-grow</button>
+      <button type="button" data-v="c" aria-pressed="false">C · Fill + Expand</button>
+    </div></div>
+  <div class="grp"><span>Prompt</span>
+    <div class="seg" id="segPrompt">
+      <button type="button" data-v="long" aria-pressed="true">Built-in long</button>
+      <button type="button" data-v="short" aria-pressed="false">Short</button>
+    </div></div>
+</div>
+
+<section id="s-cur">
+  <h2>Current <span class="tag bug">Bug</span></h2>
+  <p class="pitch">Reproduces the report: the Default editor renders as a 2-row field and cannot be resized.</p>
+  <div class="stage"><div class="rep" id="rep-cur"></div></div>
+  <p class="cap">Pros / cons: n/a (this is the bug).</p>
+</section>
+
+<section id="s-a">
+  <h2>A · Drag handle</h2>
+  <p class="pitch">Explicit-height textarea with a 6px handle under it that the user drags (or moves with arrow keys).</p>
+  <div class="stage"><div class="rep" id="rep-a"></div></div>
+  <p class="cap" id="cap-a">height persisted: yes</p>
+  <div class="pc">
+    <div class="pro"><h4>Pros</h4><ul><li>Familiar interaction, same pattern as the Ghost Caption resize handle</li><li>User controls the size</li><li>Persisted between sessions</li></ul></div>
+    <div class="con"><h4>Cons</h4><ul><li>Pane is capped at 85vh anyway, so the drag range is small (~120 to ~380px)</li><li>Extra state to persist (new preference or localStorage)</li><li>Needs keyboard support to be accessible</li><li>Still can't see a 48-line prompt at once</li></ul></div>
+  </div>
+  <p class="note"><strong>Implementation sketch:</strong> wrap the textarea in a fixed-height div, add a <code>role="separator"</code> handle with pointer capture, clamp 120px to available pane height, store height under one key. Double-click resets to 160px.</p>
+</section>
+
+<section id="s-b">
+  <h2>B · Fill + auto-grow</h2>
+  <p class="pitch">Wrap the Default textarea in <code>.praxis-md-field--grow</code> like the per-project editor, so it takes all remaining pane height.</p>
+  <div class="stage"><div class="rep" id="rep-b"></div></div>
+  <p class="cap" id="cap-b">showing ~0 of 0 lines</p>
+  <div class="pc">
+    <div class="pro"><h4>Pros</h4><ul><li>One CSS/JSX fix</li><li>Matches the per-project editor and the documented intent ("full-height textarea")</li><li>No persistence, zero new UI</li></ul></div>
+    <div class="con"><h4>Cons</h4><ul><li>Max height bounded by the 85vh modal</li><li>Very long prompts still scroll</li></ul></div>
+  </div>
+  <p class="note"><strong>Implementation sketch:</strong> in <code>PraxisProjectsPage.tsx</code> wrap the Default textarea in <code>&lt;div className="praxis-md-field praxis-md-field--grow"&gt;</code>; no new CSS beyond what <code>--grow</code> already provides.</p>
+</section>
+
+<section id="s-c">
+  <h2>C · Fill + Expand</h2>
+  <p class="pitch">Same as B, plus an EXPAND button that opens a full-window editor for long prompts.</p>
+  <div class="stage"><div class="rep" id="rep-c"></div></div>
+  <p class="cap">Try the EXPAND button, or press Ctrl/Cmd+Shift+E with the textarea focused. Esc or DONE closes.</p>
+  <div class="pc">
+    <div class="pro"><h4>Pros</h4><ul><li>Sees the whole prompt on big screens</li><li>Works for per-project prompts too</li><li>No persistence</li></ul></div>
+    <div class="con"><h4>Cons</h4><ul><li>One more component (overlay)</li><li>Focus/Esc handling must not close the Settings modal underneath (stopPropagation)</li><li>Extra click</li></ul></div>
+  </div>
+  <p class="note"><strong>Implementation sketch:</strong> B, plus a <code>PromptExpandOverlay</code> (portal, fixed inset, blur backdrop) taking <code>value/onChange</code>; open from a button in the chips row, focus the textarea on open, return focus on close.</p>
+</section>
+
+<section id="s-cmp">
+  <h2>Comparison</h2>
+  <div class="tblwrap"><table>
+    <thead><tr><th></th><th>A · Drag handle</th><th>B · Fill</th><th>C · Fill + Expand</th></tr></thead>
+    <tbody>
+      <tr><td>Fixes the bug (2-row field)</td><td>yes</td><td>yes</td><td>yes</td></tr>
+      <tr><td>Max visible height</td><td>~85vh pane minus chrome</td><td>pane height (~85vh − header/tabs/chips/foot)</td><td>full window</td></tr>
+      <tr><td>Persistence needed</td><td>yes (localStorage or preference)</td><td>no</td><td>no</td></tr>
+      <tr><td>Files touched</td><td>PraxisProjectsPage.tsx + App.css + new handle logic</td><td>PraxisProjectsPage.tsx (wrap in --grow) + App.css</td><td>B + new PromptExpandOverlay + App.css</td></tr>
+      <tr><td>Effort</td><td>M</td><td>S</td><td>S+M</td></tr>
+      <tr><td>Keyboard &amp; a11y</td><td>needs separator role + arrows</td><td>native</td><td>Esc, focus return</td></tr>
+      <tr><td>Cross-platform risk</td><td>none (pointer events)</td><td>none</td><td>none (Electron + browser same)</td></tr>
+    </tbody>
+  </table></div>
+</section>
+
+<section id="s-rec">
+  <h2>Recommendation</h2>
+  <div class="card reco">
+    <p><strong>B + C.</strong> B is the actual fix: the Default editor lost the grow wrapper the per-project editor has, so it renders 2 rows. C adds a one-click full-window editor for long prompts, in both Default and per-project editors. A (drag handle) is not recommended: the pane is already capped by the 85vh modal, so dragging buys little and needs a persisted height.</p>
+    <p style="margin:0;color:var(--muted)">Pick on this page, answer in the session.</p>
+  </div>
+</section>
+</div>
+
+<div id="modal" hidden>
+  <div class="ov" role="dialog" aria-modal="true" aria-label="Default prompt editor">
+    <div class="ovh"><span>Default prompt</span>
+      <div class="chips" id="ovChips"></div>
+      <button type="button" class="btn primary" id="ovDone">Done</button></div>
+    <textarea class="pt" id="ovTa" spellcheck="false" aria-label="Default prompt"></textarea>
+  </div>
+</div>
+
+<script>
+(function () {
+  var BUILT_IN = `Process this meeting transcript following these instructions:
+
+## Pre-processing (before any extraction)
+1. Read the full transcript before extracting anything.
+2. Identify participants: [Me] is the sender. Determine who [Them] is from the transcript context — fill in "Them is: {name/role}".
+3. Predict the most appropriate professional roles for each participant based on what they discuss, their domain language, and the decisions they make.
+4. Reason through: who attended, meeting purpose, which projects/routes are touched.
+5. Classify every extractable item as: decision / action item / context insight / blocker.
+4. Call search_project_context with domain keywords from the transcript BEFORE any route read or write.
+5. Scan active tasks (get_active_tasks) before creating new ones to prevent duplicates.
+
+## Deliverables
+1. Summary — structured by topics, saved to project-context/commitments/YYYY-MM-DD-{participants}-summary.md
+2. Action items — concrete tasks with owners. Only create a task if: (a) the sender personally committed to do it (assignee = "Me"), AND (b) it has a clear outcome, assignable owner, and defined scope. Vague discussion points go to context updates, not tasks.
+3. Commitments — agreements between participants (CMT-NNN, sequential numbering), added to the relevant commit-with-{name}/README.md child route.
+4. Route updates — distribute new information to all relevant project-context routes. Always merge into existing records — never replace them.
+
+## Quality rules
+- Every task must be self-contained: title (what), business justification (why), and behavioral acceptance criteria that a person who did not attend the meeting can act on alone, without additional context.
+- Every extracted item must be anchored to a specific statement in the source transcript. Nothing inferred or invented beyond what was explicitly stated.
+- Account for every decision, action item, deadline, and blocker. Nothing may be silently skipped — if an item is deferred, state why.
+- CMT IDs are sequential and global — check the highest existing one before assigning new ones.
+- Always update the commitments index table with the new meeting.
+- When something is ambiguous (unclear ownership, deadline, scope, or conflicting statements) — stop and list it in Open Questions instead of guessing.
+
+## Output format
+Recap Summary: 2–3 sentences — who met, what was decided, what moves forward.
+
+Extracted Items:
+- Decisions: one bullet per decision with the route it updates
+- Action Items: one bullet per task — assignee, scope, deadline if stated
+- Context Insights: key insights or business rules captured in routes
+- Blockers: with owner if identifiable
+
+Processing Log:
+- Context Updates: route path + one-line description of what changed
+- Tasks Created: task ID and title
+- Deferred or Skipped: item + reason
+- Open Questions: ambiguities requiring clarification
+
+Runs through the standard 7-step task lifecycle if it's a kanban task, or directly if pasted ad-hoc.`;
+  var SHORT = "Process this meeting transcript following these instructions:\n\nSummarize {sessionName} ({date}, {duration}) and list action items.";
+  var VARS = ['{sessionName}', '{date}', '{duration}'];
+  var H_KEY = 'aug172-prompt-h', H_DEF = 160, H_MIN = 120;
+  var mode = 'long';
+  var reps = {};
+
+  function lsGet(k) { try { return window.localStorage.getItem(k); } catch (e) { return null; } }
+  function lsSet(k, v) { try { window.localStorage.setItem(k, v); } catch (e) {} }
+  function cur() { return mode === 'long' ? BUILT_IN : SHORT; }
+
+  function insertAt(ta, text) {
+    var s = ta.selectionStart, e = ta.selectionEnd;
+    if (typeof s !== 'number') { s = e = ta.value.length; }
+    ta.setRangeText(text, s, e, 'end');
+    ta.focus();
+    ta.dispatchEvent(new Event('input', { bubbles: true }));
+  }
+
+  var TPL = '' +
+    '<div class="hd"><span>SETTINGS</span><span class="x" aria-hidden="true">\u2715</span></div>' +
+    '<div class="tabs"><span>General</span><span>Audio</span><span>Transcription</span><span class="on">Projects</span><span>Compact mode</span></div>' +
+    '<div class="body">' +
+      '<div class="list">' +
+        '<div class="li on">Default settings <span class="bdg">custom</span></div>' +
+        '<div class="li">August<small>D:\\claude\\August</small></div>' +
+        '<div class="li">SquareFi CRM<small>D:\\claude\\git\\squarefi-crm</small></div>' +
+        '<button type="button" class="add" tabindex="-1">+ Add project</button>' +
+      '</div>' +
+      '<div class="pane">' +
+        '<div class="ph"><span>Default settings</span><span class="saved">Saved</span></div>' +
+        '<p class="hint">Used for every project without its own prompt.</p>' +
+        '<div class="chips"></div>' +
+        '<div class="foot"><button type="button" class="btn reset">Reset to built-in</button><span>Custom</span></div>' +
+      '</div>' +
+    '</div>';
+
+  function build(id, variant) {
+    var root = document.getElementById('rep-' + id);
+    root.innerHTML = TPL;
+    var pane = root.querySelector('.pane');
+    var chips = root.querySelector('.chips');
+    var ta = document.createElement('textarea');
+    ta.className = 'pt';
+    ta.spellcheck = false;
+    ta.setAttribute('aria-label', 'Default prompt');
+    var slot, handle = null, wrap = null;
+    var r = { id: id, ta: ta, root: root, pane: pane };
+
+    if (variant === 'cur') {
+      ta.rows = 2;
+      slot = ta;
+    } else if (variant === 'a') {
+      wrap = document.createElement('div');
+      wrap.className = 'fixed';
+      var h = parseInt(lsGet(H_KEY), 10);
+      if (!(h >= H_MIN)) h = H_DEF;
+      wrap.style.height = h + 'px';
+      ta.style.height = '100%';
+      wrap.appendChild(ta);
+      slot = wrap;
+      handle = document.createElement('div');
+      handle.className = 'handle';
+      handle.tabIndex = 0;
+      handle.setAttribute('role', 'separator');
+      handle.setAttribute('aria-orientation', 'horizontal');
+      handle.setAttribute('aria-label', 'Resize prompt field');
+      r.h = h; r.wrap = wrap; r.handle = handle;
+    } else {
+      wrap = document.createElement('div');
+      wrap.className = 'grow';
+      wrap.appendChild(ta);
+      slot = wrap;
+    }
+
+    var foot = root.querySelector('.foot');
+    pane.insertBefore(slot, foot);
+    if (handle) pane.insertBefore(handle, foot);
+
+    VARS.forEach(function (v) {
+      var b = document.createElement('button');
+      b.type = 'button'; b.className = 'chip'; b.textContent = v;
+      b.addEventListener('mousedown', function (e) { e.preventDefault(); });
+      b.addEventListener('click', function () { insertAt(ta, v); });
+      chips.appendChild(b);
+    });
+
+    var timer = null, saved = root.querySelector('.saved');
+    ta.addEventListener('input', function () {
+      saved.classList.remove('show');
+      clearTimeout(timer);
+      timer = setTimeout(function () {
+        saved.classList.add('show');
+        timer = setTimeout(function () { saved.classList.remove('show'); }, 2000);
+      }, 1200);
+      if (r.onInput) r.onInput();
+    });
+    root.querySelector('.reset').addEventListener('click', function () {
+      ta.value = BUILT_IN;
+      ta.dispatchEvent(new Event('input', { bubbles: true }));
+    });
+
+    if (variant === 'a') setupHandle(r);
+    if (variant === 'b') setupLines(r);
+    if (variant === 'c') setupExpand(r, chips);
+
+    ta.value = cur();
+    reps[id] = r;
+  }
+
+  /* ---- A: drag handle ---- */
+  function maxH(r) {
+    var pane = r.pane, cs = getComputedStyle(pane);
+    var gap = parseFloat(cs.rowGap) || 0;
+    var used = parseFloat(cs.paddingTop) + parseFloat(cs.paddingBottom);
+    var n = 0;
+    Array.prototype.forEach.call(pane.children, function (c) {
+      if (c === r.wrap) { n++; return; }
+      used += c.offsetHeight + (parseFloat(getComputedStyle(c).marginTop) || 0);
+      n++;
+    });
+    used += gap * (n - 1);
+    return Math.max(H_MIN, Math.floor(pane.clientHeight - used));
+  }
+  function setupHandle(r) {
+    var hd = r.handle, startY = 0, startH = 0;
+    function apply(h, persist) {
+      var mx = maxH(r);
+      h = Math.max(H_MIN, Math.min(mx, Math.round(h)));
+      r.h = h; r.wrap.style.height = h + 'px';
+      hd.setAttribute('aria-valuemin', H_MIN);
+      hd.setAttribute('aria-valuemax', mx);
+      hd.setAttribute('aria-valuenow', h);
+      if (persist) lsSet(H_KEY, String(h));
+    }
+    r.applyH = apply;
+    hd.addEventListener('pointerdown', function (e) {
+      startY = e.clientY; startH = r.h;
+      hd.setPointerCapture(e.pointerId);
+      hd.classList.add('drag');
+      e.preventDefault();
+    });
+    hd.addEventListener('pointermove', function (e) {
+      if (!hd.hasPointerCapture(e.pointerId)) return;
+      apply(startH + (e.clientY - startY), false);
+    });
+    function end(e) {
+      if (!hd.classList.contains('drag')) return;
+      hd.classList.remove('drag');
+      try { hd.releasePointerCapture(e.pointerId); } catch (x) {}
+      apply(r.h, true);
+    }
+    hd.addEventListener('pointerup', end);
+    hd.addEventListener('pointercancel', end);
+    hd.addEventListener('keydown', function (e) {
+      if (e.key === 'ArrowUp') { apply(r.h - 16, true); e.preventDefault(); }
+      else if (e.key === 'ArrowDown') { apply(r.h + 16, true); e.preventDefault(); }
+    });
+    hd.addEventListener('dblclick', function () { apply(H_DEF, true); });
+    window.addEventListener('resize', function () { apply(r.h, false); });
+    requestAnimationFrame(function () { apply(r.h, false); });
+  }
+
+  /* ---- B: lines caption ---- */
+  function setupLines(r) {
+    var cap = document.getElementById('cap-b');
+    function upd() {
+      var lh = 12 * 1.45;
+      var vis = Math.max(1, Math.floor((r.ta.clientHeight - 16) / lh));
+      var total = r.ta.value.split('\n').length;
+      cap.textContent = 'showing ~' + Math.min(vis, total) + ' of ' + total + ' lines';
+    }
+    r.onInput = upd; r.updLines = upd;
+    if (window.ResizeObserver) new ResizeObserver(upd).observe(r.ta);
+    window.addEventListener('resize', upd);
+  }
+
+  /* ---- C: expand overlay ---- */
+  var modal = document.getElementById('modal'), ovTa = document.getElementById('ovTa'), ovChips = document.getElementById('ovChips');
+  var ovFor = null;
+  VARS.forEach(function (v) {
+    var b = document.createElement('button');
+    b.type = 'button'; b.className = 'chip'; b.textContent = v;
+    b.addEventListener('mousedown', function (e) { e.preventDefault(); });
+    b.addEventListener('click', function () { insertAt(ovTa, v); });
+    ovChips.appendChild(b);
+  });
+  function openOv(r) {
+    ovFor = r; ovTa.value = r.ta.value;
+    modal.hidden = false;
+    ovTa.focus();
+  }
+  function closeOv() {
+    if (!ovFor) return;
+    var r = ovFor; ovFor = null;
+    modal.hidden = true;
+    r.expBtn.focus();
+  }
+  ovTa.addEventListener('input', function () {
+    if (!ovFor) return;
+    ovFor.ta.value = ovTa.value;
+    ovFor.ta.dispatchEvent(new Event('input', { bubbles: true }));
+  });
+  document.getElementById('ovDone').addEventListener('click', closeOv);
+  modal.addEventListener('mousedown', function (e) { if (e.target === modal) closeOv(); });
+  document.addEventListener('keydown', function (e) {
+    if (e.key === 'Escape' && ovFor) { e.stopPropagation(); e.preventDefault(); closeOv(); }
+  }, true);
+  function setupExpand(r, chips) {
+    var b = document.createElement('button');
+    b.type = 'button'; b.className = 'btn exp';
+    b.textContent = '\u2922 EXPAND';
+    b.title = 'Expand (Ctrl/Cmd+Shift+E)';
+    b.addEventListener('click', function () { openOv(r); });
+    chips.appendChild(b);
+    r.expBtn = b;
+    r.ta.addEventListener('keydown', function (e) {
+      if ((e.ctrlKey || e.metaKey) && e.shiftKey && (e.key === 'E' || e.key === 'e')) { e.preventDefault(); openOv(r); }
+    });
+  }
+
+  build('cur', 'cur'); build('a', 'a'); build('b', 'b'); build('c', 'c');
+  if (reps.b.updLines) reps.b.updLines();
+
+  /* ---- controls ---- */
+  function seg(id, fn) {
+    var el = document.getElementById(id);
+    el.addEventListener('click', function (e) {
+      var b = e.target.closest('button'); if (!b) return;
+      Array.prototype.forEach.call(el.children, function (c) { c.setAttribute('aria-pressed', c === b ? 'true' : 'false'); });
+      fn(b.getAttribute('data-v'));
+    });
+  }
+  seg('segTheme', function (v) {
+    var root = document.documentElement;
+    if (v === 'auto') root.removeAttribute('data-theme'); else root.setAttribute('data-theme', v);
+    lsSet('aug172-theme', v);
+  });
+  seg('segPrompt', function (v) {
+    mode = v;
+    Object.keys(reps).forEach(function (k) {
+      reps[k].ta.value = cur();
+      reps[k].ta.scrollTop = 0;
+      if (reps[k].onInput) reps[k].onInput();
+    });
+  });
+  seg('segVar', function (v) {
+    var t = document.getElementById('s-' + v);
+    if (t) t.scrollIntoView({ behavior: window.matchMedia('(prefers-reduced-motion: reduce)').matches ? 'auto' : 'smooth', block: 'start' });
+  });
+  var saved = lsGet('aug172-theme');
+  if (saved === 'light' || saved === 'dark') {
+    document.documentElement.setAttribute('data-theme', saved);
+    Array.prototype.forEach.call(document.getElementById('segTheme').children, function (c) {
+      c.setAttribute('aria-pressed', c.getAttribute('data-v') === saved ? 'true' : 'false');
+    });
+  }
+})();
+</script>
+</body>
+</html>
