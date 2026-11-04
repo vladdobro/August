@@ -3513,6 +3513,54 @@ body {
   transition: color 2s ease;
 }
 
+/* --- AUG-189: post-zero processing (tick sweep, stage bar) --- */
+.chrono-processing .chrono-tick {
+  animation: chrono-sweep 2.4s linear infinite;
+  animation-delay: calc(var(--i) * 40ms);
+}
+
+@keyframes chrono-sweep {
+  0% { opacity: 0.18; stroke: var(--chrono-accent-muted); }
+  6% { opacity: 1; stroke: var(--chrono-accent-bright); }
+  30% { opacity: 0.18; stroke: var(--chrono-accent-muted); }
+  100% { opacity: 0.18; }
+}
+
+.chrono-info-bar--working {
+  flex-direction: column;
+  gap: 6px;
+  max-width: none;
+  width: max-content;
+  white-space: nowrap;
+  text-align: center;
+}
+
+.chrono-info-bar--working .chrono-info-text {
+  color: var(--chrono-text);
+}
+
+.chrono-blinkers {
+  display: flex;
+  gap: 4px;
+}
+
+.chrono-blinkers i {
+  width: 4px;
+  height: 4px;
+  border-radius: 0;
+  background: var(--chrono-accent);
+  opacity: 0.25;
+  animation: chrono-blink 1.2s steps(1) infinite;
+}
+
+.chrono-blinkers i:nth-child(2) { animation-delay: 0.4s; }
+.chrono-blinkers i:nth-child(3) { animation-delay: 0.8s; }
+
+@keyframes chrono-blink {
+  0% { opacity: 1; }
+  33%, 100% { opacity: 0.25; }
+}
+
 /* --- Red phase (< 1 minute) --- */
 .chrono-phase-red {
   --chrono-accent: #c03030;
@@ -3651,6 +3699,11 @@ body {
     font-size: 12px;
     letter-spacing: 0.25em;
   }
+  .chrono-info-bar--working {
+    white-space: normal;
+    width: auto;
+    max-width: 100%;
+  }
 }
 
 /* ========== Reduced Motion ========== */
@@ -3684,6 +3737,16 @@ body {
   .long-press-ring-outer,
   .long-press-ring-inner {
     animation: none;
+  }
+
+  /* AUG-189: static sweep and blinkers; the stage text and Elapsed still update */
+  .chrono-processing .chrono-tick,
+  .chrono-blinkers i {
+    animation: none;
+  }
+
+  .chrono-blinkers i {
+    opacity: 1;
   }
 
   .transcription-progress-fill {

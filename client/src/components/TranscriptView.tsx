@@ -190,6 +190,7 @@ function generateTicks(): React.ReactNode[] {
     ticks.push(
       <line
         key={i}
+        style={{ '--i': i } as React.CSSProperties}
         x1={110 + r1 * Math.cos(angle)}
         y1={110 + r1 * Math.sin(angle)}
         x2={110 + r2 * Math.cos(angle)}
@@ -210,6 +211,17 @@ function formatChronoFull(ms: number): string {
   const s = totalSec % 60;
   const cs = Math.floor((ms % 1000) / 10);
   return `${String(m).padStart(2, '0')}:${String(s).padStart(2, '0')}:${String(cs).padStart(2, '0')}`;
+}
+
+/// AUG-189: user words for the server's post-whisper stage; unknown or missing -> "finishing".
+const STAGE_LABELS: Record<string, string> = {
+  cleaning: 'cleaning up',
+  checking: 'checking the text',
+  correcting: 'suggesting fixes',
+  saving: 'saving',
+};
+function stageLabel(stage: string | undefined): string {
+  return (stage && STAGE_LABELS[stage]) || 'finishing';
 }
 
 const ChronoRing: React.FC<{ session: SessionMetadata }> = ({ session }) => {
@@ -244,9 +256,13 @@ const ChronoRing: React.FC<{ session: SessionMetadata }> = ({ session }) => {
     };
   }, [startedAtMs, estimatedTotalMs]);
 
-  const offset = CHRONO_CIRC * (1 - progress);
-  const isLastMinute = remainMs < 60000 && remainMs > 0;
-  const isZeroed = remainMs <= 0 && progress >= 1;
+  // AUG-189: a set processingStage means whisper is done, so the ring is zeroed even if the ETA guess has not run out.
+  const forcedZero = !!session.processingStage;
+  const isZeroed = (remainMs <= 0 && progress >= 1) || forcedZero;
+  const shownProgress = isZeroed ? 1 : progress;
+  const offset = CHRONO_CIRC * (1 - shownProgress);
+  const isLastMinute = !isZeroed && remainMs < 60000 && remainMs > 0;
+  const isProcessing = isZeroed && session.status === 'transcribing';
 
   const phaseClass = isZeroed
     ? 'chrono-phase-zeroed'
@@ -263,13 +279,13 @@ const ChronoRing: React.FC<{ session: SessionMetadata }> = ({ session }) => {
         <div className="transcription-progress-bar">
           <div className="transcription-progress-fill" />
         </div>
-        <p className="transcription-status-text">Transcribing audio...</p>
+        <p className="transcription-status-text">{session.processingStage ? `Still working — ${stageLabel(session.processingStage)}` : 'Transcribing audio...'}</p>
       </div>
     );
   }
 
   return (
-    <div className={`chrono-container ${phaseClass}`}>
+    <div className={`chrono-container ${phaseClass}${isProcessing ? ' chrono-processing' : ''}`}>
       {isZeroed && (
         <div className="chrono-exterminatus">
           <span className="chrono-ext-line" />
@@ -301,7 +317,7 @@ const ChronoRing: React.FC<{ session: SessionMetadata }> = ({ session }) => {
         <div className="chrono-center">
           <div className="chrono-label">remaining</div>
           <div className="chrono-digits">{isZeroed ? '00:00:00' : formatChronoFull(remainMs)}</div>
-          <div className="chrono-pct">{Math.round(progress * 100)}%</div>
+          <div className="chrono-pct">{Math.round(shownProgress * 100)}%</div>
         </div>
       </div>
 
@@ -323,6 +339,15 @@ const ChronoRing: React.FC<{ session: SessionMetadata }> = ({ session }) => {
           <span className="chrono-info-text">
             Завершение в <span className="chrono-info-time">{finishStr}</span>
           </span>
+        </div>
+      )}
+
+      {isProcessing && (
+        <div className="chrono-info-bar chrono-info-bar--working" aria-live="polite">
+          <span className="chrono-info-text">
+            Still working — {stageLabel(session.processingStage)} · you can leave this page
+          </span>
+          <span className="chrono-blinkers" aria-hidden="true"><i /><i /><i /></span>
         </div>
       )}
     </div>

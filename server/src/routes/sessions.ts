@@ -17,7 +17,7 @@ import { downloadFromUrl, UrlDownloadError } from '../services/urlDownloader.js'
 import { isPlatformUrl, probePlatformVideo, downloadPlatformAudio, YtDlpError, YTDLP_MISSING_MESSAGE, INFO_JSON_NAME } from '../services/ytDlp.js';
 import { attachLiveActionItemsToSession, readSessionActionItems, mutateSessionActionItems, applyUserEdit, createManualItem, isValidLiveKey } from '../services/liveActionItems.js';
 import { writeTranscriptWithActionItems } from '../services/transcriptActionItems.js';
-import type { CorrectionStatus, SessionMetadata, SessionStatus, TranscriptionLanguage } from '../types.js';
+import type { CorrectionStatus, ProcessingStage, SessionMetadata, SessionStatus, TranscriptionLanguage } from '../types.js';
 
 const router = Router();
 
@@ -100,11 +100,20 @@ async function prepareDualTracks(sessionId: string, micPath: string, systemPath:
   return { micSec, systemSec, duration, estimatedDuration, trackWarning };
 }
 
+/// AUG-189: writes the post-whisper stage the ring screen shows; skipped once the job is cancelled or replaced.
+function stageWriter(sessionId: string, isCancelled: () => boolean) {
+  return async (stage: ProcessingStage): Promise<void> => {
+    if (isCancelled()) return;
+    await sessionManager.updateSession(sessionId, { processingStage: stage }).catch(() => {});
+  };
+}
+
 /// Runs the whisper transcription + merge/render pipeline for a session in
 /// the background. Never awaited by the caller so the upload endpoint can
 /// respond immediately with status "transcribing".
 async function runTranscription(sessionId: string, audioPath: string, language: TranscriptionLanguage, boost = false) {
   const isCancelled = beginTranscriptionJob(sessionId);
+  const setStage = stageWriter(sessionId, isCancelled);
   let boostedPath: string | null = null;
   try {
     let inputPath: string;
@@ -117,6 +126,7 @@ async function runTranscription(sessionId: string, audioPath: string, language: 
     }
 
     const segments = await transcribe(inputPath, language, sessionId, isCancelled);
+    await setStage('cleaning');
     const session = await sessionManager.getSession(sessionId);
     const mutes = session?.muteIntervals ?? []; // AUG-181
     const kept = dropMutedSegments(segments, mutes);
@@ -127,10 +137,11 @@ async function runTranscription(sessionId: string, audioPath: string, language: 
     const duration = utterances.length > 0 ? utterances[utterances.length - 1].end : 0;
     const audioSec = session?.duration && session.duration > 0 ? session.duration : duration;
     const { confidence, corrections, model: semanticModel } = await runSemanticPass({
-      sessionId, tracks: [kept], utterances, dropped: merged.dropped, audioDurationSec: audioSec, language, isCancelled,
+      sessionId, tracks: [kept], utterances, dropped: merged.dropped, audioDurationSec: audioSec, language, isCancelled, onStage: setStage,
     });
     if (isCancelled()) return;
     console.log(`[session ${sessionId}] confidence ${confidence.score}% (${confidence.detail.source}, coverage ${confidence.detail.coverage}, lowLogProb ${confidence.detail.lowLogProbShare}, dropped ${confidence.detail.dropped}/${confidence.detail.segments})`);
+    await setStage('saving');
 
     const transcript = renderTranscript(utterances, startedAt, duration, mutes.map((m) => ({ startSec: m.startMs / 1000, endSec: m.endMs / 1000 })));
     await clearCorrections(sessionId);
@@ -141,6 +152,7 @@ async function runTranscription(sessionId: string, audioPath: string, language: 
 
     await sessionManager.updateSession(sessionId, {
       status: 'completed',
+      processingStage: undefined,
       duration,
       confidenceScore: confidence.score,
       confidenceDetail: confidence.detail,
@@ -160,7 +172,7 @@ async function runTranscription(sessionId: string, audioPath: string, language: 
     const current = await sessionManager.getSession(sessionId);
     if (current?.status === 'failed') return;
     const message = err instanceof WhisperError ? err.message : (err as Error)?.message || 'Transcription failed';
-    await sessionManager.updateSession(sessionId, { status: 'failed', error: message });
+    await sessionManager.updateSession(sessionId, { status: 'failed', error: message, processingStage: undefined });
   }
 }
 
@@ -173,6 +185,7 @@ async function runDualTranscription(
   systemOffsetMs = 0,
 ) {
   const isCancelled = beginTranscriptionJob(sessionId);
+  const setStage = stageWriter(sessionId, isCancelled);
   let boostedMicPath: string | null = null;
   let boostedSystemPath: string | null = null;
   try {
@@ -190,6 +203,7 @@ async function runDualTranscription(
     // processes at once.
     const micSegments = await transcribe(micInput, language, sessionId, isCancelled);
     const systemSegments = await transcribe(systemInput, language, sessionId, isCancelled);
+    await setStage('cleaning');
 
     const session = await sessionManager.getSession(sessionId);
     const aligned = alignDualSegments(micSegments, systemSegments, systemOffsetMs);
@@ -205,10 +219,11 @@ async function runDualTranscription(
     const lastEnd = utterances.length > 0 ? Math.max(...utterances.map((u) => u.end)) : 0;
     const duration = Math.max(audioDuration, lastEnd);
     const { confidence, corrections, model: semanticModel } = await runSemanticPass({
-      sessionId, tracks: [micKept, aligned.system], utterances, dropped: merged.dropped, audioDurationSec: duration, language, isCancelled,
+      sessionId, tracks: [micKept, aligned.system], utterances, dropped: merged.dropped, audioDurationSec: duration, language, isCancelled, onStage: setStage,
     });
     if (isCancelled()) return;
     console.log(`[session ${sessionId}] confidence ${confidence.score}% (${confidence.detail.source}, coverage ${confidence.detail.coverage}, lowLogProb ${confidence.detail.lowLogProbShare}, dropped ${confidence.detail.dropped}/${confidence.detail.segments})`);
+    await setStage('saving');
 
     const transcript = renderTranscript(utterances, startedAt, duration, mutes.map((m) => ({ startSec: m.startMs / 1000 + shift, endSec: m.endMs / 1000 + shift })));
     await clearCorrections(sessionId);
@@ -219,6 +234,7 @@ async function runDualTranscription(
 
     await sessionManager.updateSession(sessionId, {
       status: 'completed',
+      processingStage: undefined,
       duration,
       confidenceScore: confidence.score,
       confidenceDetail: confidence.detail,
@@ -240,7 +256,7 @@ async function runDualTranscription(
     const current = await sessionManager.getSession(sessionId);
     if (current?.status === 'failed') return;
     const message = err instanceof WhisperError ? err.message : (err as Error)?.message || 'Transcription failed';
-    await sessionManager.updateSession(sessionId, { status: 'failed', error: message });
+    await sessionManager.updateSession(sessionId, { status: 'failed', error: message, processingStage: undefined });
   }
 }
 
@@ -1041,8 +1057,8 @@ router.post('/:id/cancel', async (req, res) => {
   const updated = await sessionManager.updateSession(
     req.params.id,
     keepsTranscript
-      ? { status: 'completed', downloadProgress: undefined, error: undefined }
-      : { status: 'failed', error: 'Transcription cancelled by user' },
+      ? { status: 'completed', downloadProgress: undefined, error: undefined, processingStage: undefined }
+      : { status: 'failed', error: 'Transcription cancelled by user', processingStage: undefined },
   );
   res.json(updated ?? session);
 });
@@ -1101,6 +1117,7 @@ router.post('/:id/retranscribe', async (req, res) => {
     const prep = await prepareDualTracks(req.params.id, audioFiles.mic, audioFiles.system, systemOffsetMs);
     const updated = await sessionManager.updateSession(req.params.id, {
       status: 'transcribing',
+      processingStage: undefined,
       error: undefined,
       confidenceScore: undefined,
       confidenceDetail: undefined,
@@ -1118,6 +1135,7 @@ router.post('/:id/retranscribe', async (req, res) => {
     if (needsConversion) {
       const updated = await sessionManager.updateSession(req.params.id, {
         status: 'preparing',
+        processingStage: undefined,
         error: undefined,
         confidenceScore: undefined,
         confidenceDetail: undefined,
@@ -1129,6 +1147,7 @@ router.post('/:id/retranscribe', async (req, res) => {
       const estDur = audioDur > 0 ? await getEstimatedDuration(audioDur, false) : 0;
       const updated = await sessionManager.updateSession(req.params.id, {
         status: 'transcribing',
+        processingStage: undefined,
         error: undefined,
         confidenceScore: undefined,
         confidenceDetail: undefined,
@@ -1172,8 +1191,8 @@ export async function recoverOrphanedSessions() {
         await sessionManager.updateSession(
           session.id,
           keepsTranscript
-            ? { status: 'completed', downloadProgress: undefined }
-            : { status: 'failed', error: 'Transcription interrupted (server restart or process crash)' },
+            ? { status: 'completed', downloadProgress: undefined, processingStage: undefined }
+            : { status: 'failed', error: 'Transcription interrupted (server restart or process crash)', processingStage: undefined },
         );
         console.log(`Recovered orphaned session: ${session.id} (${session.title})`);
       }

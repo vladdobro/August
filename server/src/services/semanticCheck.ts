@@ -1,4 +1,4 @@
-import type { CorrectionItem, MergedUtterance, PerplexitySummary, TranscriptSegment, TranscriptionLanguage } from '../types.js';
+import type { CorrectionItem, MergedUtterance, PerplexitySummary, ProcessingStage, TranscriptSegment, TranscriptionLanguage } from '../types.js';
 import { computeConfidence, type ConfidenceInput, type ConfidenceResult } from './confidenceScore.js';
 import type { LlmClient } from './llmClient.js';
 import { llmInstallState, readLlmSettings } from './llmInstaller.js';
@@ -286,6 +286,8 @@ export interface SemanticPassInput {
   audioDurationSec: number;
   language: TranscriptionLanguage;
   isCancelled?: () => boolean;
+  /// AUG-189: reports the user-facing stage; must not throw.
+  onStage?: (stage: ProcessingStage) => Promise<void>;
 }
 
 export interface SemanticPassResult {
@@ -315,8 +317,10 @@ export async function runSemanticPass(input: SemanticPassInput): Promise<Semanti
   const localReady = await localModelReady();
   const engine = resolveCorrectionEngine(await readPreferences(), localReady);
   if (!localReady) {
+    await input.onStage?.('checking');
     const confidence = computeConfidence(base);
     if (engine !== 'groq' || input.isCancelled?.()) return { confidence, corrections: null, model: null };
+    await input.onStage?.('correcting');
     const corrections = await suggestGroqCorrections(input, confidence);
     console.log(`[session ${input.sessionId}] semantic: groq corrections ${corrections.length}`);
     return { confidence, corrections, model: GROQ_CORRECTION_MODEL };
@@ -327,15 +331,18 @@ export async function runSemanticPass(input: SemanticPassInput): Promise<Semanti
   try {
     const confidence = await withBatchSlot(() => withLocalLlm(async (client, modelId) => {
       model = modelId;
+      await input.onStage?.('checking');
       const ppl = await scorePerplexity(client, input.tracks, modelId, input.isCancelled);
       const result = computeConfidence({ ...base, perplexity: ppl });
       if (engine === 'local' && !input.isCancelled?.()) {
         const targets = buildCorrectionTargets(input.tracks, input.utterances, result.detail.semantic?.segments ?? []);
+        if (targets.length > 0) await input.onStage?.('correcting');
         corrections = targets.length > 0 ? await suggestCorrections(client, targets, input.isCancelled) : [];
       }
       return result;
     }));
     if (engine === 'groq' && !input.isCancelled?.()) {
+      await input.onStage?.('correcting');
       corrections = await suggestGroqCorrections(input, confidence);
       model = GROQ_CORRECTION_MODEL;
     }
@@ -355,6 +362,7 @@ export async function runSemanticPass(input: SemanticPassInput): Promise<Semanti
     console.warn(`[session ${input.sessionId}] semantic check skipped: ${message}`);
     const fallback = computeConfidence({ ...base, perplexity: { perTrack: [], flagged: [], error: message } });
     if (engine === 'groq' && !input.isCancelled?.()) {
+      await input.onStage?.('correcting');
       const groqItems = await suggestGroqCorrections(input, fallback);
       return { confidence: fallback, corrections: groqItems, model: GROQ_CORRECTION_MODEL };
     }

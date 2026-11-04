@@ -5,6 +5,9 @@ export type SessionStatus = 'uploading' | 'preparing' | 'transcribing' | 'comple
 /// AUG-181: a mic-muted range, ms relative to the mic MediaRecorder start.
 export interface MuteInterval { startMs: number; endMs: number }
 
+/// AUG-189: post-whisper work shown under the ring as user words; cleared when the job completes, fails or is cancelled.
+export type ProcessingStage = 'cleaning' | 'checking' | 'correcting' | 'saving';
+
 export interface SessionMetadata {
   id: string;
   title: string;
@@ -31,6 +34,7 @@ export interface SessionMetadata {
   confidenceScore?: number; // AUG-152: 0–100 transcription confidence
   wavAutoDeletedAt?: string; // AUG-152: converted WAV removed automatically; source audio kept
   participants?: { me: string; them: string }; // AUG-165: names for Me / Them entered at live recording start
+  processingStage?: ProcessingStage; // AUG-189
 }
 
 export type SessionSource = 'recording' | 'upload' | 'link' | 'platform';

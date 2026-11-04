@@ -2,6 +2,9 @@ export type TranscriptionLanguage = 'auto' | 'en' | 'ru';
 
 export type SessionStatus = 'uploading' | 'preparing' | 'transcribing' | 'completed' | 'failed';
 
+/// AUG-189: post-whisper work shown under the ring as user words; cleared when the job completes, fails or is cancelled.
+export type ProcessingStage = 'cleaning' | 'checking' | 'correcting' | 'saving';
+
 export interface SessionMetadata {
   id: string;
   title: string;
@@ -37,6 +40,7 @@ export interface SessionMetadata {
   participants?: { me: string; them: string }; // AUG-165: names for Me / Them entered at live recording start
   // AUG-181: mic mute ranges, ms relative to the mic recorder start. Stored for the batch merge; never shown in the UI.
   muteIntervals?: MuteInterval[];
+  processingStage?: ProcessingStage; // AUG-189
 }
 
 /// AUG-152: how confidenceScore was derived. 'no-speech-prob' when the binary exported no_speech_prob, 'token-logprob'
