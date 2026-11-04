@@ -1,0 +1,330 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Transcription Settings Split</title>
+<style>
+:root {
+  --bg:#f2efe8; --surface:rgba(250,248,244,.92); --line:rgba(45,58,51,.25); --fg:#1e2b24; --muted:#566b5e;
+  --accent:#0d8c5c; --accent-light:rgba(13,140,92,.12); --pause:#d49a00; --danger:#d44040; --them:#9a7a1a;
+  --on-accent:#f2efe8; --body-bg:#e6e2d8; --glow:rgba(13,140,92,.18); --warn:#d4a028;
+  --mono:'Cascadia Code','Fira Code',Consolas,monospace;
+}
+@media (prefers-color-scheme: dark) { :root:not([data-theme="light"]) {
+  --bg:#0a110d; --surface:rgba(12,20,16,.92); --line:rgba(0,200,118,.18); --fg:#c0cec4; --muted:#5e7d6a;
+  --accent:#00c876; --accent-light:rgba(0,200,118,.10); --pause:#d4a020; --danger:#e05555; --them:#d4a843;
+  --on-accent:#0a110d; --body-bg:#0f1914; --glow:rgba(0,200,118,.3); color-scheme:dark; } }
+:root[data-theme="dark"] {
+  --bg:#0a110d; --surface:rgba(12,20,16,.92); --line:rgba(0,200,118,.18); --fg:#c0cec4; --muted:#5e7d6a;
+  --accent:#00c876; --accent-light:rgba(0,200,118,.10); --pause:#d4a020; --danger:#e05555; --them:#d4a843;
+  --on-accent:#0a110d; --body-bg:#0f1914; --glow:rgba(0,200,118,.3); color-scheme:dark; }
+
+* { box-sizing:border-box; border-radius:0; }
+body { margin:0; background:var(--bg); color:var(--fg); font-family:var(--mono); font-size:13px; line-height:1.5;
+  padding:0 max(16px,env(safe-area-inset-left,0px)) 48px; overflow-x:hidden; }
+.wrap { max-width:1000px; margin:0 auto; display:grid; grid-template-columns:minmax(0,1fr); gap:24px; }
+.wrap > * { min-width:0; }
+header { padding-top:24px; }
+h1 { margin:0; font-size:20px; text-wrap:balance; }
+h2 { margin:0 0 10px; font-size:13px; letter-spacing:.08em; text-transform:uppercase; color:var(--accent); border-bottom:1px solid var(--line); padding-bottom:6px; }
+.lead { margin:4px 0 0; color:var(--muted); max-width:75ch; }
+.note { margin:8px 0 0; font-size:11px; color:var(--muted); }
+button { font-family:var(--mono); cursor:pointer; }
+button:disabled { opacity:.4; cursor:not-allowed; }
+button:focus-visible, select:focus-visible, input:focus-visible { outline:2px solid var(--accent); outline-offset:2px; }
+
+.bar { position:sticky; top:0; z-index:20; background:var(--bg); border-bottom:1px solid var(--line); padding:10px 0; display:flex; flex-wrap:wrap; gap:10px 16px; align-items:center; }
+.grp { display:flex; align-items:center; gap:6px; flex-wrap:wrap; }
+.grp > span { font-size:10px; text-transform:uppercase; letter-spacing:.06em; color:var(--muted); }
+.seg { display:flex; border:1px solid var(--line); flex-wrap:wrap; }
+.seg button { border:0; background:transparent; color:var(--fg); font-size:11px; padding:6px 10px; }
+.seg button[aria-pressed="true"] { background:var(--accent); color:var(--on-accent); }
+
+.card { border:1px solid var(--line); background:var(--surface); padding:14px; }
+.card h3 { margin:0; font-size:15px; display:flex; flex-wrap:wrap; gap:8px; align-items:center; }
+.badge { font-size:10px; letter-spacing:.06em; padding:1px 6px; background:var(--accent); color:var(--on-accent); }
+.pitch { margin:4px 0 12px; color:var(--muted); }
+.lab { font-size:10px; color:var(--muted); margin:0 0 6px; text-transform:uppercase; letter-spacing:.06em; }
+
+.panel { border:1px solid var(--line); background:var(--body-bg); padding:12px 14px; }
+.sec-title { font-size:11px; font-weight:700; text-transform:uppercase; letter-spacing:.12em; color:var(--muted); margin-bottom:10px; padding-bottom:6px; border-bottom:1px solid var(--line); }
+.row { display:flex; align-items:center; justify-content:space-between; padding:8px 0; gap:12px; }
+.row > .lbl { font-size:13px; flex:1 1 auto; min-width:0; }
+.hint { font-size:11px; line-height:1.4; color:var(--muted); margin:-4px 0 8px; }
+.hint.warn { color:var(--warn); }
+.tog { display:flex; align-items:center; gap:8px; cursor:pointer; flex:none; }
+.tog input { width:16px; height:16px; margin:0; accent-color:var(--accent); cursor:pointer; }
+.tog .st { font-size:12px; color:var(--muted); text-transform:uppercase; letter-spacing:.05em; min-width:24px; }
+.tog.ro, .tog.ro input { cursor:default; }
+.child { margin-left:4px; border-left:2px solid var(--accent); padding-left:14px; }
+.child.off { opacity:.45; }
+.child.off .tog, .child.off .tog input { cursor:not-allowed; }
+select { font-family:var(--mono); font-size:12px; background:var(--bg); color:var(--fg); border:1px solid var(--line); padding:4px 6px; max-width:100%; }
+.status { display:flex; flex-wrap:wrap; gap:8px; align-items:center; font-size:12px; padding:6px 0; }
+.btn { border:1px solid var(--line); background:transparent; color:var(--fg); font-size:11px; text-transform:uppercase; letter-spacing:.05em; padding:4px 10px; }
+.btn:hover:not(:disabled) { border-color:var(--accent); color:var(--accent); }
+.btn.primary { background:var(--accent); border-color:var(--accent); color:var(--on-accent); }
+.btn.primary:hover:not(:disabled) { color:var(--on-accent); opacity:.85; }
+.btn.red { color:var(--danger); border-color:var(--danger); }
+
+.runs { display:grid; grid-template-columns:repeat(auto-fit,minmax(200px,1fr)); border:1px solid var(--line); }
+.runs > div { padding:8px 10px; border-right:1px solid var(--line); border-bottom:1px solid var(--line); margin:0 -1px -1px 0; }
+.runs .k { font-size:10px; text-transform:uppercase; letter-spacing:.06em; color:var(--muted); }
+.runs .v { font-weight:700; color:var(--accent); }
+.runs .v.offv { color:var(--muted); }
+.pc { display:grid; grid-template-columns:repeat(auto-fit,minmax(240px,1fr)); gap:12px; margin-top:12px; }
+.pc h4 { margin:0 0 4px; font-size:11px; text-transform:uppercase; letter-spacing:.08em; }
+.pc .pro h4 { color:var(--accent); } .pc .con h4 { color:var(--danger); }
+.pc ul { margin:0; padding-left:18px; font-size:12px; }
+
+.warnbox { border:1px solid var(--danger); color:var(--danger); padding:8px 10px; margin-top:8px; font-size:12px; }
+.ro-panel { pointer-events:none; }
+
+#modal { position:fixed; inset:0; z-index:100; background:rgba(0,0,0,.6); display:flex; align-items:center; justify-content:center; padding:16px; }
+#modal[hidden] { display:none; }
+.groq-card { width:min(440px,100%); max-height:100%; overflow:auto; background:var(--bg); border:1px solid var(--line); box-shadow:0 8px 32px rgba(0,0,0,.4); padding:24px; color:var(--fg); }
+.groq-h { display:flex; gap:8px; align-items:center; font-weight:700; font-size:14px; margin-bottom:12px; }
+.groq-card ol { margin:0 0 12px; padding-left:0; list-style:none; font-size:12px; }
+.groq-card ol li { margin-bottom:8px; }
+.groq-card p { font-size:11px; color:var(--muted); margin:0 0 16px; }
+.groq-act { display:flex; justify-content:flex-end; gap:8px; flex-wrap:wrap; }
+.groq-act .btn { padding:8px 14px; }
+</style>
+</head>
+<body>
+<div class="wrap">
+<header>
+  <h1>AUG-173 &mdash; Split Online text correction (Groq)</h1>
+  <p class="lead">Today one toggle turns on live line fixes AND live action items. Three ways to split it. Click checkboxes to see dependent states and the consent notice.</p>
+</header>
+
+<div class="bar">
+  <div class="grp"><span>Theme</span>
+    <div class="seg"><button id="th-light" aria-pressed="false">Light</button><button id="th-dark" aria-pressed="false">Dark</button></div></div>
+  <div class="grp"><span>Groq key</span>
+    <div class="seg"><button id="key-set" aria-pressed="true">set</button><button id="key-not" aria-pressed="false">not set</button></div></div>
+  <div class="grp"><span>Local model</span>
+    <div class="seg"><button id="lm-on" aria-pressed="true">on</button><button id="lm-off" aria-pressed="false">off</button></div></div>
+</div>
+
+<section>
+  <h2>Today (read-only)</h2>
+  <div class="card">
+    <div class="panel ro-panel">
+      <div class="sec-title">Settings &rarr; Transcription</div>
+      <div class="row"><span class="lbl">Online text correction (Groq)</span>
+        <label class="tog"><input type="checkbox" checked disabled><span class="st">ON</span></label></div>
+      <div class="hint">Fixes live transcript lines a few seconds after they appear and collects live action items. After a recording, doubtful lines get a suggested fix to accept or reject; the original transcript is never changed.</div>
+    </div>
+    <div class="warnbox">No setting gives fixes without action items.</div>
+  </div>
+</section>
+
+<section><h2>Option A</h2><div class="card" id="cardA"></div></section>
+<section><h2>Option B</h2><div class="card" id="cardB"></div></section>
+<section><h2>Option C</h2><div class="card" id="cardC"></div></section>
+
+<section>
+  <h2>Decision</h2>
+  <p class="lead">Pick A, B or C in the session.</p>
+</section>
+</div>
+
+<div id="modal" hidden>
+  <div class="groq-card" role="dialog" aria-modal="true" aria-labelledby="mt">
+    <div class="groq-h"><span>&#9889;</span><span id="mt">Online text correction (Groq)</span></div>
+    <ol>
+      <li>A) Transcript text &mdash; and, during live recordings, the participant names you enter and the collected action items &mdash; is sent to Groq and may be used by Groq under its own terms.</li>
+      <li>B) It needs your own Groq API key (GROQ_API_KEY).<span id="nokey"> No key is set yet.</span></li>
+    </ol>
+    <p>Only Groq's free tier is used. When the free limit runs out, checks are skipped silently. Live lines are fixed in place. During live recordings it also collects action items (tasks and agreements) next to the transcript; they are saved with the session. After a recording, doubtful lines are sent too and come back as suggestions you accept or reject; the original transcript is never changed.</p>
+    <div class="groq-act"><button class="btn" id="m-cancel">Cancel</button><button class="btn primary" id="m-ok">Agree and enable</button></div>
+  </div>
+</div>
+
+<script>
+var G = { keySet:true, localOn:true };
+var DATE = '2026-11-04';
+var S = {
+  A: { master:false, consent:false, live:true, items:true, meaning:false, dd:'local' },
+  B: { live:false, items:false, after:false, consent:false, meaning:false, dd:'local' },
+  C: { on:false, consent:false, engine:'off', meaning:false, dd:'local' }
+};
+var pending = null;
+
+function tog(act, checked, opts) {
+  opts = opts || {};
+  return '<label class="tog' + (opts.ro ? ' ro' : '') + '"><input type="checkbox" data-act="' + act + '"' +
+    (checked ? ' checked' : '') + (opts.disabled || opts.ro ? ' disabled' : '') + '><span class="st">' + (checked ? 'ON' : 'OFF') + '</span></label>';
+}
+function row(label, ctl) { return '<div class="row"><span class="lbl">' + label + '</span>' + ctl + '</div>'; }
+function hint(t, warn) { return '<div class="hint' + (warn ? ' warn' : '') + '">' + t + '</div>'; }
+
+function commonRows(o, st, consent) {
+  var h = row('Local language model', tog('x', G.localOn, { ro:true }));
+  if (G.localOn) {
+    h += row('Allow the model to correct text by meaning', tog(o + ':meaning', st.meaning));
+    if (st.meaning && consent) {
+      h += row('Fixes after recording by', '<select data-act="' + o + ':dd"><option value="local"' + (st.dd === 'local' ? ' selected' : '') +
+        '>Local model</option><option value="groq"' + (st.dd === 'groq' ? ' selected' : '') + '>Groq</option></select>');
+    }
+  }
+  return h;
+}
+function after(st, groqAfter) {
+  var local = G.localOn && st.meaning;
+  if (local && groqAfter) return st.dd === 'groq' ? 'Groq' : 'Local model';
+  if (local) return 'Local model';
+  if (groqAfter) return 'Groq';
+  return 'off';
+}
+function strip(live, items, aft) {
+  function c(k, v, on) { return '<div><div class="k">' + k + '</div><div class="v' + (on ? '' : ' offv') + '">' + v + '</div></div>'; }
+  return '<div class="lab" style="margin-top:12px">What runs</div><div class="runs">' +
+    c('Live lines', live ? 'fixed by Groq' : 'not fixed', live) +
+    c('Live action items', items.t, items.on) +
+    c('After recording', aft, aft !== 'off') + '</div>';
+}
+function itemsGroq() { return { on:true, t:'Groq' + (G.localOn ? ' + local fallback' : '') }; }
+var OFFI = { on:false, t:'off &mdash; manual items only' };
+
+function pc(pros, cons) {
+  function li(a) { return a.map(function (x) { return '<li>' + x + '</li>'; }).join(''); }
+  return '<div class="pc"><div class="pro"><h4>Pros</h4><ul>' + li(pros) + '</ul></div><div class="con"><h4>Cons</h4><ul>' + li(cons) + '</ul></div></div>';
+}
+function head(title, pitch, badge) {
+  return '<h3>' + title + (badge ? '<span class="badge">' + badge + '</span>' : '') + '</h3><p class="pitch">' + pitch + '</p><div class="lab">Settings &rarr; Transcription</div>';
+}
+
+function renderA() {
+  var s = S.A, off = !s.master;
+  var h = head('Option A &mdash; Sub-checkboxes under one consent', 'Keep the one Groq switch (consent); add two child checkboxes.', 'RECOMMENDED');
+  h += '<div class="panel"><div class="sec-title">Transcription</div>' + commonRows('A', s, s.master);
+  h += row('Online text (Groq)', tog('A:master', s.master));
+  h += hint("Sends transcript text to Groq's free tier. Choose what it does:");
+  h += '<div class="child' + (off ? ' off' : '') + '">' +
+    row('Fix live lines', tog('A:live', s.live, { disabled:off })) + hint('Lines are fixed in place a few seconds after they appear.') +
+    row('Collect live action items', tog('A:items', s.items, { disabled:off })) +
+    hint('Tasks and agreements next to the live transcript. When Groq is busy, the local model takes over (if it is on).') + '</div>';
+  if (s.master && !s.live && !s.items) h += hint('Live features off. Only fixes after recording use Groq.', true);
+  h += '</div>';
+  h += strip(s.master && s.live, s.master && s.items ? itemsGroq() : OFFI, after(s, s.master));
+  h += '<p class="note">Prefs: groqLiveCorrection, groqLiveActionItems (default true). Existing users: no change in behavior.</p>';
+  h += pc(['Smallest change', 'One consent, one revoke point', 'Existing users unaffected'],
+          ['Master name is abstract', 'Batch Groq fixes still follow the master']);
+  document.getElementById('cardA').innerHTML = h;
+}
+
+function renderB() {
+  var s = S.B;
+  var h = head('Option B &mdash; Feature-first, one shared consent', 'Each feature is its own checkbox; the first one you turn on asks for Groq consent.');
+  h += '<div class="panel"><div class="sec-title">Transcription</div>' + commonRows('B', s, s.consent);
+  h += row('Fix live lines (Groq)', tog('B:live', s.live)) + hint('Lines are fixed in place a few seconds after they appear.');
+  h += row('Collect live action items (Groq)', tog('B:items', s.items)) +
+    hint('Tasks and agreements next to the live transcript. When Groq is busy, the local model takes over (if it is on).');
+  h += row('Suggest fixes after recording (Groq)', tog('B:after', s.after)) + hint('Doubtful lines come back as suggestions you accept or reject.');
+  h += '<div class="status">' + (s.consent ? 'Groq consent: given ' + DATE + ' &middot; <button class="btn red" data-act="B:revoke">Revoke</button>' : 'Groq consent: not given') + '</div>';
+  h += '</div>';
+  h += strip(s.live, s.items ? itemsGroq() : OFFI, after(s, s.after));
+  h += '<p class="note">Migration: groqTextEnabled=true &rarr; all three on.</p>';
+  h += pc(['Names match what the user wants', 'Batch Groq becomes explicit too', 'No abstract master'],
+          ['More rows', 'Revoke is a separate control', 'Larger UI + server change']);
+  document.getElementById('cardB').innerHTML = h;
+}
+
+function renderC() {
+  var s = S.C;
+  var h = head('Option C &mdash; Action-items engine dropdown', 'Keep the Groq toggle for text fixes; give action items their own engine.');
+  h += '<div class="panel"><div class="sec-title">Transcription</div>' + commonRows('C', s, s.consent);
+  h += row('Online text correction (Groq)', tog('C:on', s.on));
+  h += hint('Fixes live lines a few seconds after they appear; after a recording, doubtful lines get a suggested fix.');
+  function o(v, l, d) { return '<option value="' + v + '"' + (s.engine === v ? ' selected' : '') + (d ? ' disabled' : '') + '>' + l + '</option>'; }
+  h += row('Live action items', '<select data-act="C:engine">' + o('off', 'Off') + o('groq', 'Groq (local fallback)') + o('local', 'Local model only', !G.localOn) + '</select>');
+  if (!G.localOn) h += hint('Turn on Local language model first.', true);
+  if (s.engine === 'local' && G.localOn) h += hint('Nothing leaves the computer. Small models catch explicit commitments only.');
+  h += '</div>';
+  var it = OFFI;
+  if (s.engine === 'groq' && s.consent) it = itemsGroq();
+  else if (s.engine === 'local' && G.localOn) it = { on:true, t:'Local model' };
+  h += strip(s.on, it, after(s, s.on));
+  h += '<p class="note">Pref: liveActionItemsEngine (\'groq\' default when consent exists, else \'off\'). Local-only extraction is new server work.</p>';
+  h += pc(['Action items possible without any cloud', 'One clear place for items'],
+          ['Biggest scope (new local-only extractor path)', 'Live fixes and batch Groq still coupled']);
+  document.getElementById('cardC').innerHTML = h;
+}
+
+function renderAll() { renderA(); renderB(); renderC(); }
+
+function ask(apply) {
+  document.getElementById('nokey').hidden = G.keySet;
+  document.getElementById('m-ok').textContent = G.keySet ? 'Agree and enable' : 'Add Groq key';
+  pending = apply;
+  document.getElementById('modal').hidden = false;
+  document.getElementById('m-ok').focus();
+}
+function closeModal() { document.getElementById('modal').hidden = true; pending = null; renderAll(); }
+document.getElementById('m-cancel').onclick = closeModal;
+document.getElementById('m-ok').onclick = function () {
+  if (!G.keySet) { closeModal(); return; }
+  var p = pending; document.getElementById('modal').hidden = true; pending = null;
+  if (p) p();
+  renderAll();
+};
+document.getElementById('modal').addEventListener('click', function (e) { if (e.target === this) closeModal(); });
+document.addEventListener('keydown', function (e) { if (e.key === 'Escape' && !document.getElementById('modal').hidden) closeModal(); });
+
+function handle(act, el) {
+  var p = act.split(':'), o = p[0], k = p[1], v = el.type === 'checkbox' ? el.checked : el.value;
+  var s = S[o];
+  if (k === 'meaning' || k === 'dd') { s[k] = v; return; }
+  if (o === 'A') {
+    if (k === 'master') {
+      if (v && !s.consent) { ask(function () { s.consent = true; s.master = true; }); return; }
+      s.master = v; if (!v) s.consent = false;
+    } else if (!s.master) { return; } else { s[k] = v; }
+  } else if (o === 'B') {
+    if (k === 'revoke') { s.consent = false; s.live = s.items = s.after = false; return; }
+    if (v && !s.consent) { ask(function () { s.consent = true; s[k] = true; }); return; }
+    s[k] = v;
+  } else if (o === 'C') {
+    if (k === 'on') {
+      if (v && !s.consent) { ask(function () { s.consent = true; s.on = true; if (s.engine === 'off') s.engine = 'groq'; }); return; }
+      s.on = v;
+      if (!v) { s.consent = false; if (s.engine === 'groq') s.engine = 'off'; }
+      else if (s.engine === 'off') s.engine = 'groq';
+    } else if (k === 'engine') {
+      if (v === 'groq' && !s.consent) { ask(function () { s.consent = true; s.on = true; s.engine = 'groq'; }); return; }
+      s.engine = v;
+    }
+  }
+}
+document.addEventListener('change', function (e) {
+  var a = e.target.getAttribute && e.target.getAttribute('data-act');
+  if (!a || a === 'x') return;
+  handle(a, e.target); renderAll();
+});
+document.addEventListener('click', function (e) {
+  var a = e.target.getAttribute && e.target.getAttribute('data-act');
+  if (a === 'B:revoke') { handle(a, e.target); renderAll(); }
+});
+
+function setPressed(ids, on) { ids.forEach(function (id, i) { document.getElementById(id).setAttribute('aria-pressed', String(i === on)); }); }
+function theme(t) {
+  document.documentElement.setAttribute('data-theme', t);
+  setPressed(['th-light', 'th-dark'], t === 'light' ? 0 : 1);
+}
+document.getElementById('th-light').onclick = function () { theme('light'); };
+document.getElementById('th-dark').onclick = function () { theme('dark'); };
+document.getElementById('key-set').onclick = function () { G.keySet = true; setPressed(['key-set', 'key-not'], 0); renderAll(); };
+document.getElementById('key-not').onclick = function () { G.keySet = false; setPressed(['key-set', 'key-not'], 1); renderAll(); };
+document.getElementById('lm-on').onclick = function () { G.localOn = true; setPressed(['lm-on', 'lm-off'], 0); renderAll(); };
+document.getElementById('lm-off').onclick = function () { G.localOn = false; setPressed(['lm-on', 'lm-off'], 1); renderAll(); };
+(function () {
+  var d = window.matchMedia && matchMedia('(prefers-color-scheme: dark)').matches;
+  setPressed(['th-light', 'th-dark'], d ? 1 : 0);
+})();
+renderAll();
+</script>
+</body>
+</html>
