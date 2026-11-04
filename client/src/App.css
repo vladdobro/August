@@ -7464,6 +7464,17 @@ button:hover:not(:disabled):not(.sidebar-menu-item):not(.export-menu-item):not(.
 .praxis-vars { display: flex; gap: 5px; flex-wrap: wrap; }
 .praxis-var-chip { font-family: var(--font-terminal); font-size: 10px; padding: 2px 6px; border: 1px dashed var(--accent); border-radius: 0; background: transparent; color: var(--accent); cursor: pointer; }
 .praxis-var-chip:hover { background: var(--accent-light); }
+/* AUG-191: Expand prompt editor */
+.praxis-vars { align-items: center; }
+.praxis-expand-btn { margin-left: auto; padding: 2px 8px; font-size: 10px; color: var(--text-secondary); }
+.praxis-expand-backdrop { position: fixed; inset: 0; z-index: 300; display: flex; align-items: center; justify-content: center; padding: 24px; background: rgba(0, 0, 0, 0.45); -webkit-backdrop-filter: blur(8px); backdrop-filter: blur(8px); }
+.praxis-expand { width: 100%; height: 100%; max-width: none; display: flex; flex-direction: column; gap: 12px; padding: 20px; box-sizing: border-box; background: var(--card-bg); border: 1px solid var(--card-border, var(--border-color)); border-radius: 0; color: var(--text-primary); box-shadow: 0 8px 32px rgba(0, 0, 0, 0.4); }
+.praxis-expand-head { display: flex; flex-wrap: wrap; align-items: center; gap: 8px 12px; }
+.praxis-expand-title { font-family: var(--font-terminal); font-size: 12px; font-weight: 700; text-transform: uppercase; letter-spacing: 0.1em; }
+.praxis-expand-head .praxis-vars { flex: 1; }
+.praxis-expand-done { background: var(--accent); border-color: var(--accent); color: var(--main-bg, #0a110d); }
+.praxis-expand-done:hover { background: var(--accent); border-color: var(--accent); color: var(--main-bg, #0a110d); opacity: 0.85; }
+.praxis-expand-textarea { flex: 1; min-height: 0; resize: none; font-size: 13px; }
 
 /* AUG-142: project chips in the export modal */
 .praxis-chips { display: flex; flex-wrap: wrap; gap: 6px; margin-top: 6px; }

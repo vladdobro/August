@@ -1,4 +1,5 @@
 import React, { useEffect, useRef, useState } from 'react';
+import { createPortal } from 'react-dom';
 import type { PraxisProject, UserPreferences } from '../services/preferences';
 import { browsePraxisFolder, fetchPraxisDefaultPrompt, validatePraxisProject } from '../api';
 
@@ -10,6 +11,11 @@ interface PraxisProjectsPageProps {
 type Selection = { kind: 'default' } | { kind: 'new' } | { kind: 'project'; path: string };
 
 const VARIABLES = ['{sessionName}', '{date}', '{duration}'];
+
+// Ctrl+Shift+E on Windows/Linux, Cmd+Shift+E on macOS (AUG-191)
+const IS_MAC = typeof navigator !== 'undefined' && /Mac/i.test(navigator.platform);
+const isExpandShortcut = (e: React.KeyboardEvent): boolean =>
+  e.shiftKey && !e.altKey && e.code === 'KeyE' && (IS_MAC ? e.metaKey && !e.ctrlKey : e.ctrlKey && !e.metaKey);
 
 const baseName = (p: string): string => p.replace(/[\\/]+$/, '').split(/[\\/]/).pop() || p;
 const normKey = (p: string): string => p.trim().replace(/[\\/]+$/, '').toLowerCase();
@@ -42,6 +48,10 @@ const PraxisProjectsPage: React.FC<PraxisProjectsPageProps> = ({ preferences, on
   const savedTimer = useRef<number | null>(null);
   const listRef = useRef<HTMLDivElement>(null);
   const promptRef = useRef<HTMLTextAreaElement>(null);
+  const [expanded, setExpanded] = useState(false);
+  const overlayRef = useRef<HTMLTextAreaElement>(null);
+  const expandBtnRef = useRef<HTMLButtonElement>(null);
+  const closeExpandRef = useRef<() => void>(() => {});
 
   const project = selection.kind === 'project'
     ? projects.find((p) => p.path === selection.path) ?? null
@@ -63,6 +73,7 @@ const PraxisProjectsPage: React.FC<PraxisProjectsPageProps> = ({ preferences, on
     setPathDraft(null);
     setPromptDraft(null);
     setPathError(null);
+    setExpanded(false);
   }, [selectionKey]);
 
   useEffect(() => {
@@ -269,8 +280,13 @@ const PraxisProjectsPage: React.FC<PraxisProjectsPageProps> = ({ preferences, on
     }
   };
 
-  const insertVariable = (token: string, value: string, setValue: (v: string) => void) => {
-    const el = promptRef.current;
+  const insertVariable = (
+    token: string,
+    value: string,
+    setValue: (v: string) => void,
+    target: React.RefObject<HTMLTextAreaElement> = promptRef,
+  ) => {
+    const el = target.current;
     if (!el) {
       setValue(value + token);
       return;
@@ -286,7 +302,12 @@ const PraxisProjectsPage: React.FC<PraxisProjectsPageProps> = ({ preferences, on
     });
   };
 
-  const renderChips = (value: string, setValue: (v: string) => void) => (
+  const renderChips = (
+    value: string,
+    setValue: (v: string) => void,
+    target: React.RefObject<HTMLTextAreaElement> = promptRef,
+    expandable = false,
+  ) => (
     <div className="praxis-vars">
       {VARIABLES.map((token) => (
         <button
@@ -294,13 +315,29 @@ const PraxisProjectsPage: React.FC<PraxisProjectsPageProps> = ({ preferences, on
           type="button"
           className="praxis-var-chip"
           onMouseDown={(e) => e.preventDefault()}
-          onClick={() => insertVariable(token, value, setValue)}
+          onClick={() => insertVariable(token, value, setValue, target)}
         >
           {token}
         </button>
       ))}
+      {expandable && (
+        <button
+          ref={expandBtnRef}
+          type="button"
+          className="settings-btn-inline praxis-expand-btn"
+          title={IS_MAC ? 'Expand (⌘⇧E)' : 'Expand (Ctrl+Shift+E)'}
+          onClick={() => setExpanded(true)}
+        >
+          ⤢ Expand
+        </button>
+      )}
     </div>
   );
+
+  const promptKey = (e: React.KeyboardEvent<HTMLTextAreaElement>) => {
+    if (isExpandShortcut(e)) { e.preventDefault(); setExpanded(true); return; }
+    escToList(e);
+  };
 
   const handleListKey = (e: React.KeyboardEvent) => {
     if (e.key !== 'ArrowDown' && e.key !== 'ArrowUp') return;
@@ -323,6 +360,35 @@ const PraxisProjectsPage: React.FC<PraxisProjectsPageProps> = ({ preferences, on
       listRef.current?.focus();
     }
   };
+
+  const closeExpand = () => {
+    setExpanded(false);
+    if (selection.kind === 'default') commitDefault();
+    else if (selection.kind === 'project' && project) commitPrompt(project);
+    requestAnimationFrame(() => expandBtnRef.current?.focus());
+  };
+  closeExpandRef.current = closeExpand;
+
+  useEffect(() => {
+    if (!expanded) return;
+    requestAnimationFrame(() => overlayRef.current?.focus());
+    // Capture phase on window runs before SettingsModal's window Esc listener; stopping it keeps Settings open.
+    const onKey = (e: KeyboardEvent) => {
+      if (e.key !== 'Escape') return;
+      e.stopPropagation();
+      e.preventDefault();
+      closeExpandRef.current();
+    };
+    window.addEventListener('keydown', onKey, true);
+    return () => window.removeEventListener('keydown', onKey, true);
+  }, [expanded]);
+
+  const overlayValue = selection.kind === 'default' ? defaultDraft : (promptDraft ?? project?.prompt ?? '');
+  const setOverlayValue = (v: string) => {
+    if (selection.kind === 'default') { setDefaultDraft(v); setDefaultDirty(true); } else setPromptDraft(v);
+  };
+  const overlayTitle = selection.kind === 'default' ? 'Default prompt' : `${project?.name ?? ''} prompt`;
+  const showOverlay = expanded && (selection.kind === 'default' || (selection.kind === 'project' && !!project));
 
   const isDefaultSel = selection.kind === 'default';
   const title = selection.kind === 'default'
@@ -403,15 +469,17 @@ const PraxisProjectsPage: React.FC<PraxisProjectsPageProps> = ({ preferences, on
         {selection.kind === 'default' && (
           <>
             <div className="settings-hint">Used for every project without its own prompt.</div>
-            {renderChips(defaultDraft, (v) => { setDefaultDraft(v); setDefaultDirty(true); })}
-            <textarea
-              ref={promptRef}
-              className="settings-textarea praxis-md-textarea"
-              value={defaultDraft}
-              onChange={(e) => { setDefaultDraft(e.target.value); setDefaultDirty(true); }}
-              onBlur={commitDefault}
-              onKeyDown={escToList}
-            />
+            <div className="praxis-md-field praxis-md-field--grow">
+              {renderChips(defaultDraft, (v) => { setDefaultDraft(v); setDefaultDirty(true); }, promptRef, true)}
+              <textarea
+                ref={promptRef}
+                className="settings-textarea praxis-md-textarea"
+                value={defaultDraft}
+                onChange={(e) => { setDefaultDraft(e.target.value); setDefaultDirty(true); }}
+                onBlur={commitDefault}
+                onKeyDown={promptKey}
+              />
+            </div>
             <div className="praxis-md-foot">
               <button type="button" className="settings-btn-inline" onClick={resetDefault} disabled={!storedDefault}>
                 Reset to built-in
@@ -519,7 +587,7 @@ const PraxisProjectsPage: React.FC<PraxisProjectsPageProps> = ({ preferences, on
                     : 'default'}
                 </span>
               </label>
-              {renderChips(promptDraft ?? project.prompt ?? '', setPromptDraft)}
+              {renderChips(promptDraft ?? project.prompt ?? '', setPromptDraft, promptRef, true)}
               <textarea
                 ref={promptRef}
                 className="settings-textarea praxis-md-textarea"
@@ -527,7 +595,7 @@ const PraxisProjectsPage: React.FC<PraxisProjectsPageProps> = ({ preferences, on
                 value={promptDraft ?? project.prompt ?? ''}
                 onChange={(e) => setPromptDraft(e.target.value)}
                 onBlur={() => commitPrompt(project)}
-                onKeyDown={escToList}
+                onKeyDown={promptKey}
               />
             </div>
             <div className="praxis-md-foot">
@@ -539,6 +607,30 @@ const PraxisProjectsPage: React.FC<PraxisProjectsPageProps> = ({ preferences, on
           </>
         )}
       </div>
+      {showOverlay && createPortal(
+        <div
+          className="praxis-expand-backdrop"
+          onClick={(e) => { if (e.target === e.currentTarget) closeExpand(); }}
+        >
+          <div className="praxis-expand" role="dialog" aria-modal="true" aria-label={`${overlayTitle} editor`}>
+            <div className="praxis-expand-head">
+              <span className="praxis-expand-title">{overlayTitle}</span>
+              {renderChips(overlayValue, setOverlayValue, overlayRef)}
+              <button type="button" className="settings-btn-inline praxis-expand-done" onClick={closeExpand}>Done</button>
+            </div>
+            <textarea
+              ref={overlayRef}
+              className="settings-textarea praxis-expand-textarea"
+              spellCheck={false}
+              aria-label={overlayTitle}
+              placeholder={selection.kind === 'project' ? 'Leave empty to use the default prompt' : undefined}
+              value={overlayValue}
+              onChange={(e) => setOverlayValue(e.target.value)}
+            />
+          </div>
+        </div>,
+        document.body,
+      )}
     </div>
   );
 };
