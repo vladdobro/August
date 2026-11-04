@@ -264,6 +264,14 @@ const ChronoRing: React.FC<{ session: SessionMetadata }> = ({ session }) => {
   const isLastMinute = !isZeroed && remainMs < 60000 && remainMs > 0;
   const isProcessing = isZeroed && session.status === 'transcribing';
 
+  // AUG-189: 00:00:00 holds for 2 s after zero, then fades out and the server stage fades in inside the ring.
+  const [showStage, setShowStage] = useState(false);
+  useEffect(() => {
+    if (!isProcessing) { setShowStage(false); return; }
+    const t = setTimeout(() => setShowStage(true), 2000);
+    return () => clearTimeout(t);
+  }, [isProcessing]);
+
   const phaseClass = isZeroed
     ? 'chrono-phase-zeroed'
     : isLastMinute
@@ -289,7 +297,7 @@ const ChronoRing: React.FC<{ session: SessionMetadata }> = ({ session }) => {
       {isZeroed && (
         <div className="chrono-exterminatus">
           <span className="chrono-ext-line" />
-          <span className="chrono-ext-text">Exterminatus Initiated</span>
+          <span className="chrono-ext-text">Almost done! Just a second more...</span>
           <span className="chrono-ext-line chrono-ext-line--bottom" />
         </div>
       )}
@@ -315,9 +323,19 @@ const ChronoRing: React.FC<{ session: SessionMetadata }> = ({ session }) => {
           <circle cx="110" cy="110" r="88" className="chrono-pulse-ring--3 chrono-pulse-ring" />
         </svg>
         <div className="chrono-center">
-          <div className="chrono-label">remaining</div>
-          <div className="chrono-digits">{isZeroed ? '00:00:00' : formatChronoFull(remainMs)}</div>
-          <div className="chrono-pct">{Math.round(shownProgress * 100)}%</div>
+          <div className={`chrono-center-layer${showStage ? ' is-hidden' : ''}`}>
+            <div className="chrono-label">remaining</div>
+            <div className="chrono-digits">{isZeroed ? '00:00:00' : formatChronoFull(remainMs)}</div>
+            <div className="chrono-pct">{Math.round(shownProgress * 100)}%</div>
+          </div>
+          {isProcessing && (
+            <div className={`chrono-center-layer chrono-center-stage${showStage ? ' is-visible' : ''}`} aria-live="polite">
+              <div className="chrono-label">status</div>
+              <div className="chrono-stage-text">{stageLabel(session.processingStage)}</div>
+              <span className="chrono-blinkers" aria-hidden="true"><i /><i /><i /></span>
+              <div className="chrono-pct">100%</div>
+            </div>
+          )}
         </div>
       </div>
 
@@ -339,15 +357,6 @@ const ChronoRing: React.FC<{ session: SessionMetadata }> = ({ session }) => {
           <span className="chrono-info-text">
             Завершение в <span className="chrono-info-time">{finishStr}</span>
           </span>
-        </div>
-      )}
-
-      {isProcessing && (
-        <div className="chrono-info-bar chrono-info-bar--working" aria-live="polite">
-          <span className="chrono-info-text">
-            Still working — {stageLabel(session.processingStage)} · you can leave this page
-          </span>
-          <span className="chrono-blinkers" aria-hidden="true"><i /><i /><i /></span>
         </div>
       )}
     </div>

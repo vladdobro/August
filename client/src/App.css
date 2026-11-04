@@ -3513,7 +3513,7 @@ body {
   transition: color 2s ease;
 }
 
-/* --- AUG-189: post-zero processing (tick sweep, stage bar) --- */
+/* --- AUG-189: post-zero processing (tick sweep, stage in the ring) --- */
 .chrono-processing .chrono-tick {
   animation: chrono-sweep 2.4s linear infinite;
   animation-delay: calc(var(--i) * 40ms);
@@ -3526,22 +3526,42 @@ body {
   100% { opacity: 0.18; }
 }
 
-.chrono-info-bar--working {
+.chrono-center-layer {
+  position: absolute;
+  inset: 0;
+  display: flex;
   flex-direction: column;
-  gap: 6px;
-  max-width: none;
-  width: max-content;
-  white-space: nowrap;
-  text-align: center;
+  align-items: center;
+  justify-content: center;
+  transition: opacity 0.6s ease;
 }
 
-.chrono-info-bar--working .chrono-info-text {
-  color: var(--chrono-text);
+.chrono-center-layer.is-hidden { opacity: 0; }
+
+.chrono-center-stage { opacity: 0; }
+.chrono-center-stage.is-visible { opacity: 1; }
+
+.chrono-stage-text {
+  font-family: 'JetBrains Mono', monospace;
+  font-size: 13px;
+  font-weight: 600;
+  line-height: 1.3;
+  letter-spacing: 0.12em;
+  text-transform: uppercase;
+  text-align: center;
+  max-width: 130px;
+  min-height: 34px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  color: var(--chrono-accent-bright);
+  text-shadow: 0 0 14px var(--chrono-accent-glow);
 }
 
 .chrono-blinkers {
   display: flex;
   gap: 4px;
+  margin: 4px 0 2px;
 }
 
 .chrono-blinkers i {
@@ -3650,6 +3670,8 @@ body {
 }
 
 .chrono-ext-text {
+  max-width: 100%;
+  text-align: center;
   font-size: 14px;
   font-weight: 700;
   letter-spacing: 0.35em;
@@ -3699,10 +3721,9 @@ body {
     font-size: 12px;
     letter-spacing: 0.25em;
   }
-  .chrono-info-bar--working {
-    white-space: normal;
-    width: auto;
-    max-width: 100%;
+  .chrono-stage-text {
+    font-size: 11px;
+    max-width: 112px;
   }
 }
 
@@ -3739,7 +3760,7 @@ body {
     animation: none;
   }
 
-  /* AUG-189: static sweep and blinkers; the stage text and Elapsed still update */
+  /* AUG-189: static sweep, blinkers and stage swap; the stage text and Elapsed still update */
   .chrono-processing .chrono-tick,
   .chrono-blinkers i {
     animation: none;
@@ -3747,6 +3768,10 @@ body {
 
   .chrono-blinkers i {
     opacity: 1;
+  }
+
+  .chrono-center-layer {
+    transition: none;
   }
 
   .transcription-progress-fill {

@@ -69,7 +69,7 @@ Turn the 1–2 Nov 2026 user feedback (@docs/feedback/2026-11-rodion-feedback.md
 - [x] Mic mute/unmute during a meeting — keep office noise out of the transcript without stopping recording; research AUG-174 → impl AUG-181 (macOS check pending in a release build).
 - [x] Live mode Copy & Clear / Clear + clear confirmation + Stop Live protection — manage the live window without accidental loss; research AUG-175 → impl AUG-182 (one stop mechanic: every Stop Live Text / End Meeting control is a 1.5 s hold, incl. Ghost; wired Skip Clear Confirmation; Windows check passed, macOS pending).
 - [x] Ghost Mode free X/Y drag + Stop Meeting protection — place the overlay anywhere, no accidental stop; research AUG-176 → impl AUG-187 (A magnetic edges, caption width resize, position in window-state.json; stop protection done in AUG-182: hold-to-stop END MEETING in Ghost Caption and Ghost Coin); Windows verified 2026-11-04, macOS pending in a release build.
-- [x] Post-100% processing spinner — show the job is still running after the progress bar ends; research AUG-177 → impl AUG-189 (Variant B tick sweep + server stage label under the ring; mockup docs/mockups/AUG-177/processing-spinner.html; manual Windows run and macOS check pending in a release build).
+- [x] Post-100% processing spinner — show the job is still running after the progress bar ends; research AUG-177 → impl AUG-189 (Variant B tick sweep + server stage label inside the ring after a 2 s 00:00:00 hold, «Almost done! Just a second more...» banner; mockup docs/mockups/AUG-177/processing-spinner.html; manual Windows run and macOS check pending in a release build).
 
 ### M3 Compact Mode
 
