@@ -1,0 +1,292 @@
+<!doctype html>
+<html lang="en" data-theme="dark" data-variant="A">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Processing Spinner Mockup</title>
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=JetBrains+Mono:wght@400;500;600;700&display=swap">
+<style>
+* { box-sizing: border-box; border-radius: 0; }
+:root {
+  --page-bg:#c4cec8; --main-bg:#d0d8d3; --text-primary:#141e18; --text-secondary:#3e5548;
+  --accent:#0a7b50; --accent-light:rgba(10,123,80,.12); --accent-glow:rgba(10,123,80,.20);
+  --border-color:rgba(10,123,80,.22); --status-failed:#d44040; --card-bg:rgba(195,206,200,.88);
+  --mono:'JetBrains Mono','Cascadia Code','Fira Code',Consolas,monospace;
+}
+@media (prefers-color-scheme: dark) {
+  :root:not([data-theme="light"]) {
+    --page-bg:#060b08; --main-bg:#0a110d; --text-primary:#c0cec4; --text-secondary:#5e7d6a;
+    --accent:#00c876; --accent-light:rgba(0,200,118,.10); --accent-glow:rgba(0,200,118,.30);
+    --border-color:rgba(0,200,118,.18); --status-failed:#e05555; --card-bg:rgba(12,20,16,.92); color-scheme:dark;
+  }
+}
+:root[data-theme="dark"] {
+  --page-bg:#060b08; --main-bg:#0a110d; --text-primary:#c0cec4; --text-secondary:#5e7d6a;
+  --accent:#00c876; --accent-light:rgba(0,200,118,.10); --accent-glow:rgba(0,200,118,.30);
+  --border-color:rgba(0,200,118,.18); --status-failed:#e05555; --card-bg:rgba(12,20,16,.92); color-scheme:dark;
+}
+html { background: var(--page-bg); }
+body { margin:0; padding:0 16px; background:var(--page-bg); color:var(--text-primary); font-family:var(--mono); font-size:13px; line-height:1.5; }
+.wrap { max-width:960px; margin:0 auto; padding-bottom:64px; }
+h1 { font-size:20px; margin:24px 0 8px; letter-spacing:-.02em; }
+h2 { font-size:15px; margin:40px 0 12px; text-transform:uppercase; letter-spacing:.08em; }
+p.lead { max-width:75ch; color:var(--text-secondary); margin:0; }
+.note { color:var(--text-secondary); font-size:12px; max-width:75ch; margin:10px 0 0; }
+
+/* control bar */
+.bar { position:sticky; top:0; z-index:10; margin:0 -16px; padding:8px 16px; background:var(--page-bg); border-bottom:1px solid var(--border-color); display:flex; flex-wrap:wrap; gap:8px 16px; align-items:center; }
+.grp { display:flex; align-items:center; gap:6px; flex-wrap:wrap; }
+.grp > span { font-size:11px; color:var(--text-secondary); text-transform:uppercase; letter-spacing:.08em; }
+.seg { display:flex; }
+.seg button + button { border-left:0; }
+.bar button { font:11px var(--mono); color:var(--text-primary); background:transparent; border:1px solid var(--border-color); padding:4px 10px; cursor:pointer; }
+.bar button[aria-pressed="true"] { background:var(--accent); color:var(--page-bg); }
+button:focus-visible { outline:2px solid var(--accent); outline-offset:1px; }
+
+.frame { border:1px solid var(--border-color); background:var(--main-bg); padding:24px; }
+.transcript-status-panel { display:flex; flex-direction:column; align-items:center; justify-content:center; gap:16px; padding:64px 24px; color:var(--text-secondary); text-align:center; }
+.session-title { font-size:20px; font-weight:800; letter-spacing:-.02em; color:var(--text-primary); margin:0 0 8px; text-align:center; }
+
+/* chrono tokens */
+.chrono-container { --chrono-accent:#b08820; --chrono-accent-dim:#8a6a18; --chrono-accent-bright:#9a7a18; --chrono-accent-glow:rgba(160,120,24,.25); --chrono-accent-faint:rgba(160,120,24,.08); --chrono-accent-muted:#8a7a50; --chrono-text:#6a5820; --chrono-text-dim:#7a6a38; }
+@media (prefers-color-scheme: dark) {
+  :root:not([data-theme="light"]) .chrono-container { --chrono-accent:#d4a028; --chrono-accent-dim:#a07820; --chrono-accent-bright:#f0c040; --chrono-accent-glow:rgba(212,160,40,.35); --chrono-accent-faint:rgba(212,160,40,.08); --chrono-accent-muted:#5a4a1a; --chrono-text:#e8d098; --chrono-text-dim:#9a8450; }
+}
+:root[data-theme="dark"] .chrono-container { --chrono-accent:#d4a028; --chrono-accent-dim:#a07820; --chrono-accent-bright:#f0c040; --chrono-accent-glow:rgba(212,160,40,.35); --chrono-accent-faint:rgba(212,160,40,.08); --chrono-accent-muted:#5a4a1a; --chrono-text:#e8d098; --chrono-text-dim:#9a8450; }
+.chrono-phase-zeroed { --chrono-accent:#c03030; --chrono-accent-dim:#a02828; --chrono-accent-bright:#b83030; --chrono-accent-glow:rgba(192,48,48,.3); --chrono-accent-faint:rgba(192,48,48,.06); --chrono-accent-muted:#8a4040; --chrono-text:#8a2020; --chrono-text-dim:#7a3030; }
+@media (prefers-color-scheme: dark) {
+  :root:not([data-theme="light"]) .chrono-phase-zeroed { --chrono-accent:#e05555; --chrono-accent-dim:#c04040; --chrono-accent-bright:#e05555; --chrono-accent-glow:rgba(224,85,85,.4); --chrono-accent-faint:rgba(224,85,85,.06); --chrono-accent-muted:#5a2020; --chrono-text:#e8a0a0; --chrono-text-dim:#9a5050; }
+}
+:root[data-theme="dark"] .chrono-phase-zeroed { --chrono-accent:#e05555; --chrono-accent-dim:#c04040; --chrono-accent-bright:#e05555; --chrono-accent-glow:rgba(224,85,85,.4); --chrono-accent-faint:rgba(224,85,85,.06); --chrono-accent-muted:#5a2020; --chrono-text:#e8a0a0; --chrono-text-dim:#9a5050; }
+
+.chrono-container { display:flex; flex-direction:column; align-items:center; gap:16px; }
+.chrono-exterminatus { display:flex; flex-direction:column; align-items:center; }
+.chrono-ext-line { width:220px; max-width:100%; height:1px; background:linear-gradient(90deg,transparent,#e05555,transparent); margin-bottom:10px; animation:chrono-ext-flicker 3s infinite; }
+.chrono-ext-line.second { margin:10px 0 0; }
+.chrono-ext-text { font-size:14px; font-weight:700; letter-spacing:.35em; text-transform:uppercase; color:#e05555; text-shadow:0 0 20px rgba(224,85,85,.5),0 0 40px rgba(224,85,85,.2); animation:chrono-ext-glow 2.5s ease-in-out infinite; }
+.chrono-wrap { position:relative; width:200px; height:200px; }
+.chrono-wrap svg { width:200px; height:200px; transform:rotate(-90deg); overflow:visible; }
+.chrono-tick { stroke:var(--chrono-accent-muted); opacity:.18; }
+.chrono-track { fill:none; stroke:var(--chrono-accent-muted); stroke-width:3; opacity:.25; }
+.chrono-glow { fill:none; stroke:var(--chrono-accent); stroke-width:9; opacity:.1; stroke-linecap:round; }
+.chrono-fill { fill:none; stroke:var(--chrono-accent); stroke-width:3.5; stroke-linecap:round; stroke-dasharray:552.9; stroke-dashoffset:0; filter:drop-shadow(0 0 10px rgba(224,85,85,.5)); }
+.chrono-pulse { fill:none; stroke:var(--chrono-accent); stroke-width:1; opacity:0; animation:chrono-expand 3s ease-out infinite; }
+.spin-arc { fill:none; stroke:var(--chrono-accent-bright); stroke-width:3.5; stroke-linecap:round; stroke-dasharray:40 513; transform-origin:110px 110px; animation:orbit 1.6s linear infinite; filter:drop-shadow(0 0 6px var(--chrono-accent-glow)); display:none; }
+.chrono-center { position:absolute; inset:0; display:flex; flex-direction:column; align-items:center; justify-content:center; gap:2px; }
+.chrono-label { font:600 10px var(--mono); letter-spacing:.22em; text-transform:uppercase; color:var(--chrono-accent-muted); }
+.chrono-digits { font:600 32px var(--mono); color:var(--chrono-accent-bright); font-variant-numeric:tabular-nums; text-shadow:0 0 18px var(--chrono-accent-glow); animation:chrono-zero-pulse 2s infinite; }
+.stage-text { font:600 13px/1.3 var(--mono); text-transform:uppercase; letter-spacing:.12em; color:var(--chrono-accent-bright); min-height:34px; display:flex; align-items:center; justify-content:center; text-shadow:0 0 14px var(--chrono-accent-glow); }
+.chrono-pct { font:500 12px var(--mono); color:var(--chrono-accent-dim); }
+.sqs { display:none; gap:4px; margin:2px 0; }
+.sqs i { width:4px; height:4px; background:var(--chrono-accent); opacity:.25; animation:blink 1.2s steps(1) infinite; }
+.sqs i:nth-child(2) { animation-delay:.4s; } .sqs i:nth-child(3) { animation-delay:.8s; }
+.chrono-meta { display:flex; gap:24px; font-size:12px; flex-wrap:wrap; justify-content:center; }
+.chrono-meta .it { display:flex; align-items:center; gap:6px; }
+.chrono-meta .lab { color:var(--chrono-accent-muted); }
+.chrono-meta .val { font-weight:500; color:var(--chrono-text); font-family:var(--mono); }
+.dot { width:6px; height:6px; border-radius:50%; background:var(--chrono-accent); box-shadow:0 0 6px var(--chrono-accent-glow); animation:chrono-dot-pulse 2s infinite; }
+.chrono-info-bar { display:none; padding:10px 16px; background:var(--chrono-accent-faint); border:1px solid rgba(160,120,24,.18); font-size:12px; width:max-content; max-width:none; color:var(--chrono-text); text-align:center; white-space:nowrap; }
+@media (max-width: 600px) { .chrono-info-bar { white-space:normal; width:auto; max-width:100%; } }
+.databar { display:none; position:relative; width:300px; max-width:100%; height:6px; background:var(--chrono-accent-faint); border:1px solid rgba(160,120,24,.18); overflow:hidden; }
+.databar b { position:absolute; left:0; top:0; bottom:0; width:60px; background:var(--chrono-accent); transform:translateX(-60px); animation:slide 1.4s ease-in-out infinite; }
+.transcription-controls { display:flex; gap:12px; }
+.transcription-controls button { font:700 13px var(--mono); background:transparent; padding:8px 20px; cursor:pointer; transition:background .15s,color .15s; }
+.btn-cancel { color:var(--status-failed); border:1px solid var(--status-failed); }
+.btn-cancel:hover { background:var(--status-failed); color:var(--main-bg); }
+.btn-restart { color:var(--accent); border:1px solid var(--accent); }
+.btn-restart:hover { background:var(--accent); color:var(--main-bg); }
+
+/* proposed-only visibility */
+#proposed .chrono-fill { opacity:1; }
+#proposed .shared-info { display:none; }
+html[data-variant="A"] #proposed .spin-arc { display:inline; }
+html[data-variant="A"] #proposed .chrono-fill { opacity:.35; }
+html[data-variant="A"] #proposed .chrono-info-bar,
+html[data-variant="B"] #proposed .chrono-info-bar { display:block; }
+html[data-variant="B"] #proposed .sqs { display:flex; }
+html[data-variant="B"] #proposed .chrono-tick { animation:sweep 2.4s linear infinite; animation-delay:calc(var(--i) * 40ms); }
+html[data-variant="C"] #proposed .databar { display:block; }
+html[data-variant="C"] #proposed .chrono-info-bar { display:block; }
+#proposed .chrono-info-bar.c-only { display:none; }
+html[data-variant="C"] #proposed .chrono-info-bar.c-only { display:block; }
+html[data-variant="C"] #proposed .chrono-info-bar.ab-only { display:none; }
+
+@keyframes chrono-expand { 0% { opacity:.25; r:88px; } 100% { opacity:0; r:108px; } }
+@keyframes chrono-zero-pulse { 0%,100% { opacity:1; } 50% { opacity:.45; } }
+@keyframes chrono-dot-pulse { 0%,100% { opacity:1; } 50% { opacity:.3; } }
+@keyframes chrono-ext-flicker { 0%,100% { opacity:.6; } 50% { opacity:1; } }
+@keyframes chrono-ext-glow { 0%,100% { opacity:.8; } 50% { opacity:1; text-shadow:0 0 30px rgba(224,85,85,.7),0 0 60px rgba(224,85,85,.3); } }
+@keyframes orbit { from { transform:rotate(0); } to { transform:rotate(360deg); } }
+@keyframes sweep { 0% { opacity:.18; stroke:var(--chrono-accent-muted); } 6% { opacity:1; stroke:var(--chrono-accent-bright); } 30% { opacity:.18; stroke:var(--chrono-accent-muted); } 100% { opacity:.18; } }
+@keyframes blink { 0% { opacity:1; } 33%,100% { opacity:.25; } }
+@keyframes slide { from { transform:translateX(-60px); } to { transform:translateX(300px); } }
+
+/* reduced motion: media query copy */
+@media (prefers-reduced-motion: reduce) {
+  *, *::before, *::after { animation:none !important; transition:none !important; }
+  .spin-arc, .chrono-pulse { display:none !important; }
+  .chrono-tick { opacity:.18 !important; }
+  .sqs i { opacity:1 !important; }
+  .databar b { left:0 !important; width:100% !important; opacity:.5 !important; transform:none !important; }
+  .chrono-digits, .chrono-ext-line, .chrono-ext-text, .dot { opacity:1 !important; }
+  #proposed .chrono-fill { opacity:1 !important; }
+}
+/* reduced motion: manual toggle copy (keep identical to the block above) */
+html.rm *, html.rm *::before, html.rm *::after { animation:none !important; transition:none !important; }
+html.rm .spin-arc, html.rm .chrono-pulse { display:none !important; }
+html.rm .chrono-tick { opacity:.18 !important; }
+html.rm .sqs i { opacity:1 !important; }
+html.rm .databar b { left:0 !important; width:100% !important; opacity:.5 !important; transform:none !important; }
+html.rm .chrono-digits, html.rm .chrono-ext-line, html.rm .chrono-ext-text, html.rm .dot { opacity:1 !important; }
+html.rm #proposed .chrono-fill { opacity:1 !important; }
+
+/* tables */
+.tw { overflow:auto; border:1px solid var(--border-color); }
+table { border-collapse:collapse; width:100%; min-width:720px; font-size:12px; }
+th, td { border:1px solid var(--border-color); padding:6px 8px; text-align:left; vertical-align:top; }
+th { background:var(--accent-light); font-size:11px; text-transform:uppercase; letter-spacing:.06em; }
+ul, ol { padding-left:22px; max-width:80ch; } li { margin:4px 0; }
+code { color:var(--accent); }
+@media (max-width:600px) { .frame { padding:12px; } .transcript-status-panel { padding:32px 8px; } .chrono-ext-text { letter-spacing:.2em; font-size:12px; } }
+</style>
+</head>
+<body>
+<div class="bar" role="toolbar" aria-label="Mockup controls">
+  <div class="grp"><span>Theme</span><div class="seg" data-g="theme"><button data-v="light" aria-pressed="false">Light</button><button data-v="dark" aria-pressed="true">Dark</button></div></div>
+  <div class="grp"><span>Variant</span><div class="seg" data-g="variant"><button data-v="A" aria-pressed="true">A</button><button data-v="B" aria-pressed="false">B</button><button data-v="C" aria-pressed="false">C</button></div></div>
+  <div class="grp"><button id="rmBtn" aria-pressed="false">Reduced motion</button></div>
+  <div class="grp"><span>Stage</span><div class="seg" data-g="stage"><button data-v="0" aria-pressed="true">Cleaning up</button><button data-v="1" aria-pressed="false">Checking the text</button><button data-v="2" aria-pressed="false">Suggesting fixes</button><button data-v="3" aria-pressed="false">Saving</button></div></div>
+  <div class="grp"><button id="autoBtn" aria-pressed="true">Auto-cycle stages</button></div>
+</div>
+<div class="wrap">
+<h1>AUG-177 — Post-100% processing indicator</h1>
+<p class="lead">After the countdown hits 00:00:00 the server still cleans up the transcript, checks the text, suggests corrections and saves. Measured on this machine: 30 s to 4 min, up to ~8 min worst case. Nothing on screen says the job is alive. Below: the current screen and three indicator variants.</p>
+
+<h2>Current screen (as shipped)</h2>
+<div class="frame">
+  <h2 class="session-title" style="text-transform:none;letter-spacing:-.02em;margin:0">Sync with Rodion — 2026-11-03</h2>
+  <div class="transcript-status-panel">
+    <div class="chrono-container chrono-phase-zeroed">
+      <div class="chrono-exterminatus"><div class="chrono-ext-line"></div><div class="chrono-ext-text">Exterminatus Initiated</div><div class="chrono-ext-line second"></div></div>
+      <div class="chrono-wrap">
+        <svg viewBox="0 0 220 220" aria-hidden="true"><g class="ticks"></g>
+          <circle class="chrono-track" cx="110" cy="110" r="88"/><circle class="chrono-glow" cx="110" cy="110" r="88"/>
+          <circle class="chrono-fill" cx="110" cy="110" r="88"/>
+          <circle class="chrono-pulse" cx="110" cy="110" r="88" style="animation-delay:0s"/><circle class="chrono-pulse" cx="110" cy="110" r="88" style="animation-delay:1s"/><circle class="chrono-pulse" cx="110" cy="110" r="88" style="animation-delay:2s"/>
+        </svg>
+        <div class="chrono-center"><div class="chrono-label">remaining</div><div class="chrono-digits">00:00:00</div><div class="chrono-pct">100%</div></div>
+      </div>
+      <div class="chrono-meta"><div class="it"><span class="dot"></span><span class="lab">Elapsed</span><span class="val el">0:34</span></div><div class="it"><span class="lab">Audio</span><span class="val">4:15</span></div></div>
+      <div class="transcription-controls"><button class="btn-cancel">Cancel</button><button class="btn-restart">Restart</button></div>
+    </div>
+  </div>
+</div>
+<p class="note">Digits lock at 00:00:00 / 100%, the «Завершение в HH:MM» bar disappears, only Elapsed moves. Red reads as «done / alarm», not «working».</p>
+
+<h2>Proposed screen</h2>
+<div class="frame" id="proposed">
+  <h2 class="session-title" style="text-transform:none;letter-spacing:-.02em;margin:0">Sync with Rodion — 2026-11-03</h2>
+  <div class="transcript-status-panel">
+    <div class="chrono-container chrono-phase-zeroed">
+      <div class="chrono-exterminatus"><div class="chrono-ext-line"></div><div class="chrono-ext-text">Exterminatus Initiated</div><div class="chrono-ext-line second"></div></div>
+      <div class="chrono-wrap">
+        <svg viewBox="0 0 220 220" aria-hidden="true"><g class="ticks" data-sweep="1"></g>
+          <circle class="chrono-track" cx="110" cy="110" r="88"/><circle class="chrono-glow" cx="110" cy="110" r="88"/>
+          <circle class="chrono-fill" cx="110" cy="110" r="88"/>
+          <circle class="chrono-pulse" cx="110" cy="110" r="88" style="animation-delay:0s"/><circle class="chrono-pulse" cx="110" cy="110" r="88" style="animation-delay:1s"/><circle class="chrono-pulse" cx="110" cy="110" r="88" style="animation-delay:2s"/>
+          <circle class="spin-arc" cx="110" cy="110" r="88"/>
+        </svg>
+        <div class="chrono-center"><div class="chrono-label">FINISHING</div><div class="stage-text" aria-live="polite"></div><div class="sqs"><i></i><i></i><i></i></div><div class="chrono-pct">100%</div></div>
+      </div>
+      <div class="chrono-meta"><div class="it"><span class="dot"></span><span class="lab">Elapsed</span><span class="val el">0:34</span></div><div class="it"><span class="lab">Audio</span><span class="val">4:15</span></div></div>
+      <div class="databar" aria-hidden="true"><b></b></div>
+      <div class="chrono-info-bar">Still working — <span class="stg-low"></span> · you can leave this page</div>
+      <div class="transcription-controls"><button class="btn-cancel">Cancel</button><button class="btn-restart">Restart</button></div>
+    </div>
+  </div>
+</div>
+<p class="note">Reduced motion: no animation anywhere; the stage label and the Elapsed counter are the only moving parts (text, not motion).</p>
+
+<h2>What runs after 100% (file:line)</h2>
+<div class="tw"><table>
+<thead><tr><th>Stage</th><th>Where</th><th>Typical duration (this machine)</th><th>Hard cap</th></tr></thead>
+<tbody>
+<tr><td>Whisper finishes</td><td>server/src/routes/sessions.ts:119 (single) / :184-185 (dual, mic then system)</td><td>0.02–0.05 × audio seconds on CUDA</td><td>—</td></tr>
+<tr><td>Mute drop + merge (hallucination filter, dedup, join)</td><td>sessions.ts:122-124 / :188-193 → server/src/services/transcriptMerger.ts</td><td>&lt; 1 s</td><td>—</td></tr>
+<tr><td>Semantic pass: text statistics + perplexity scoring on the local model</td><td>sessions.ts:130-132 / :200-202 → server/src/services/semanticCheck.ts:308 runSemanticPass, :327 scorePerplexity</td><td>0.8 s (13 s clip) · 60 s (255 s call) · 240 s budget hit (3454 s call, 388 scored / 665 skipped)</td><td>PERPLEXITY.timeBudgetMs 240 000 (semanticCheck.ts:18), request timeout 30 s</td></tr>
+<tr><td>Meaning corrections (local model or Groq)</td><td>semanticCheck.ts:330-336 suggestCorrections / :300-304 suggestGroqCorrections</td><td>seconds to minutes, 40 items max</td><td>CORRECTIONS.timeBudgetMs 180 000, request timeout 60 s (semanticCheck.ts:22-28); Groq waitForBudgetMs 60 000</td></tr>
+<tr><td>Render + write transcript.md, action items, transcript.corrected.json</td><td>sessions.ts:136-141 / :206-211</td><td>&lt; 1 s</td><td>—</td></tr>
+<tr><td>status → completed, confidence stored</td><td>sessions.ts:143-148 / :213-218 → client sees it on the next poll (client/src/App.tsx:20 POLL_INTERVAL_MS = 5000)</td><td>≤ 5 s latency</td><td>—</td></tr>
+<tr><td>Perf ratio recorded, boosted WAV removed, auto-delete WAV</td><td>sessions.ts:150-158 / :228-237</td><td>&lt; 1 s</td><td>—</td></tr>
+</tbody></table></div>
+<p class="note">The countdown is client-side only (client/src/components/TranscriptView.tsx:215 ChronoRing, :238-243): estimatedDuration × elapsed time. estimatedDuration = audio seconds × median ratio of the last 10 runs (server/src/services/performanceTracker.ts getEstimatedRatio). The ratio measures start → completed, so it includes the semantic pass, which is not proportional to audio length and depends on settings; recorded ratios on this machine range 0.019–0.38. Real cases: 255 s call → ring at zero after 34 s, work done at 69 s; 370 s call → zero at 33 s, done at ~62 s. SessionStatus (server/src/types.ts:3) has no post-processing stage.</p>
+
+<h2>Options</h2>
+<div class="tw"><table>
+<thead><tr><th>Option</th><th>What the user sees</th><th>Server change</th><th>Pros</th><th>Cons</th></tr></thead>
+<tbody>
+<tr><td>1 Generic spinner only (client)</td><td>an animated indicator + fixed "Finishing…"</td><td>none</td><td>1 file, ships in an hour; reduced-motion = static text</td><td>can sit 7 min on one word; tells nothing</td></tr>
+<tr><td>2 Named stage text only</td><td>"Cleaning up → Checking the text → Suggesting fixes → Saving", no animation</td><td>session.processingStage written by runTranscription / runSemanticPass, read by the 5 s poll</td><td>honest, works under reduced motion by design</td><td>a stage can last 4 min with no motion; 5 s latency</td></tr>
+<tr><td>3 Both (recommended)</td><td>indicator + stage label + Elapsed ticking; reduced motion drops the indicator, keeps the label</td><td>as option 2</td><td>always alive, always honest, no diagnostics needed</td><td>two touch points (server field + client)</td></tr>
+</tbody></table></div>
+<p class="note" style="margin-top:16px">Rules for the stage label:</p>
+<ul>
+<li>User words only (no method names, no timings, no model names — project rule «no diagnostics in user UI»).</li>
+<li>Label changes at most every poll.</li>
+<li>Unknown stage falls back to "Finishing".</li>
+</ul>
+
+<h2>Decisions to agree</h2>
+<ol>
+<li><b>D1</b> Variant: A Gauss orbit / B Tick sweep / C Data bar.</li>
+<li><b>D2</b> Stage text: option 3 (indicator + named stage) vs option 1 (indicator only).</li>
+<li><b>D3</b> Center digits at zero: replace 00:00:00 with the stage word (proposed) vs keep 00:00:00 and put the stage under the ring.</li>
+<li><b>D4</b> Keep the red EXTERMINATUS banner during post-processing (proposed: keep, it is the brand moment) vs switch back to amber while finishing.</li>
+<li><b>D5</b> Separate follow-up: make the ETA honest — record whisper-only time in performanceTracker so the ring ends when whisper ends and the finishing phase is explicit (not part of this task).</li>
+</ol>
+</div>
+<script>
+(function () {
+  var H = document.documentElement, $ = function (s, r) { return (r || document).querySelectorAll(s); };
+  var NS = 'http://www.w3.org/2000/svg';
+  $('.ticks').forEach(function (g) {
+    for (var i = 0; i < 60; i++) {
+      var a = i / 60 * Math.PI * 2, major = i % 5 === 0, r1 = major ? 96 : 98, r2 = 104;
+      var l = document.createElementNS(NS, 'line');
+      l.setAttribute('class', 'chrono-tick');
+      l.setAttribute('x1', 110 + r1 * Math.cos(a)); l.setAttribute('y1', 110 + r1 * Math.sin(a));
+      l.setAttribute('x2', 110 + r2 * Math.cos(a)); l.setAttribute('y2', 110 + r2 * Math.sin(a));
+      l.setAttribute('stroke-width', major ? 1.5 : 1);
+      if (g.dataset.sweep) l.style.setProperty('--i', i);
+      g.appendChild(l);
+    }
+  });
+  var STAGES = [['CLEANING<br>UP', 'cleaning up'], ['CHECKING<br>THE TEXT', 'checking the text'], ['SUGGESTING<br>FIXES', 'suggesting fixes'], ['SAVING', 'saving']];
+  var stage = 0, auto = true;
+  function setPressed(sel, v) { $(sel + ' button').forEach(function (b) { b.setAttribute('aria-pressed', String(b.dataset.v === String(v))); }); }
+  function setStage(n) {
+    stage = n; setPressed('[data-g="stage"]', n);
+    $('.stage-text').forEach(function (e) { e.innerHTML = STAGES[n][0]; });
+    $('.stg-low').forEach(function (e) { e.textContent = STAGES[n][1]; });
+  }
+  $('[data-g] button').forEach(function (b) {
+    b.addEventListener('click', function () {
+      var g = b.parentNode.dataset.g, v = b.dataset.v;
+      if (g === 'theme') H.dataset.theme = v;
+      if (g === 'variant') H.dataset.variant = v;
+      if (g === 'stage') setStage(+v);
+      setPressed('[data-g="' + g + '"]', v);
+    });
+  });
+  var rm = document.getElementById('rmBtn'), ab = document.getElementById('autoBtn');
+  rm.addEventListener('click', function () { var on = !H.classList.contains('rm'); H.classList.toggle('rm', on); rm.setAttribute('aria-pressed', String(on)); });
+  ab.addEventListener('click', function () { auto = !auto; ab.setAttribute('aria-pressed', String(auto)); });
+  if (window.matchMedia && matchMedia('(prefers-reduced-motion: reduce)').matches) rm.setAttribute('aria-pressed', 'true');
+  setInterval(function () { if (auto) setStage((stage + 1) % STAGES.length); }, 4000);
+  var sec = 34;
+  setInterval(function () { sec++; var t = Math.floor(sec / 60) + ':' + ('0' + sec % 60).slice(-2); $('.el').forEach(function (e) { e.textContent = t; }); }, 1000);
+  setStage(0);
+})();
+</script>
+</body>
+</html>
