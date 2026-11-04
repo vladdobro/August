@@ -35,7 +35,7 @@ import { FILLER_ONLY_TEXTS, isHallucination, normalize, stripCreditHallucination
 import { transcribeWithGroq, GroqRateLimitError, GroqApiError } from './groqTranscription.js';
 import { attachLiveSink, CaptureError, type LiveSinkHandle } from './systemCapture.js';
 import { LivePcmFeeder, parseLiveControlFrame, SAMPLE_RATE } from './liveChunking.js';
-import { isGroqTextActive } from './groqText.js';
+import { liveGroqTextFeatures } from './groqText.js';
 import { LiveTextCorrector } from './liveTextCorrection.js';
 import { openLiveActionItems, releaseLiveActionItems, LiveActionItemsExtractor, type LiveActionItemsStore } from './liveActionItems.js';
 import type { ActionItemsFile } from '../types.js';
@@ -170,13 +170,14 @@ export function setupLiveTranscription(server: HttpServer): void {
 
     // AUG-165: action items of this recording (shared store per liveKey) and their extractor.
     let groqTextActive: boolean | null = null;
+    let liveItemsOn = false;
     let actionKey: string | null = null;
     let actionStore: LiveActionItemsStore | null = null;
     let actionExtractor: LiveActionItemsExtractor | null = null;
     let unsubscribeActions: (() => void) | null = null;
-    const sendActionItems = (file: ActionItemsFile) => send({ type: 'action-items', enabled: groqTextActive === true, participants: file.participants, items: file.items });
+    const sendActionItems = (file: ActionItemsFile) => send({ type: 'action-items', enabled: liveItemsOn, groqText: groqTextActive === true, participants: file.participants, items: file.items });
     const maybeStartExtractor = () => {
-      if (stopped || !actionStore || groqTextActive !== true || actionExtractor) return;
+      if (stopped || !actionStore || !liveItemsOn || actionExtractor) return;
       actionExtractor = new LiveActionItemsExtractor(actionStore, undefined, { liveEngine: () => engine });
       actionExtractor.start();
     };
@@ -187,9 +188,11 @@ export function setupLiveTranscription(server: HttpServer): void {
     };
 
     let corrector: LiveTextCorrector | null = null;
-    void isGroqTextActive().then((active) => {
-      groqTextActive = active;
-      if (active && !stopped) {
+    void liveGroqTextFeatures().then((features) => {
+      groqTextActive = features.active;
+      liveItemsOn = features.actionItems;
+      if (features.active) console.log(`[live] Groq text: line fixes ${features.correction ? 'on' : 'off'}, action items ${features.actionItems ? 'on' : 'off'}`);
+      if (features.correction && !stopped) {
         corrector = new LiveTextCorrector((id, text) => { send({ type: 'correction', id, text }); actionExtractor?.noteCorrection(id, text); }, undefined, undefined, () => actionExtractor?.cloudCallPending === true);
         corrector.start();
       }
@@ -197,6 +200,7 @@ export function setupLiveTranscription(server: HttpServer): void {
       if (actionStore) sendActionItems(actionStore.file);
     }).catch(() => {
       groqTextActive = false;
+      liveItemsOn = false;
       if (actionStore) sendActionItems(actionStore.file);
     });
     const stopCorrector = () => {

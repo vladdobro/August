@@ -106,6 +106,7 @@ const FileUpload: React.FC<FileUploadProps> = ({ onUploaded, onRecordingChange, 
   // AUG-165: action items + participants of the current live recording (persisted server-side by liveKey).
   const [liveActionItems, setLiveActionItems] = useState<ActionItem[]>([]);
   const [liveActionEnabled, setLiveActionEnabled] = useState<boolean | null>(null);
+  const [liveActionOffReason, setLiveActionOffReason] = useState<'groq' | 'items' | null>(null);
   const [liveParticipants, setLiveParticipants] = useState<Participants>({ me: '', them: '' });
   const liveParticipantsRef = useRef<Participants>({ me: '', them: '' });
   const liveKeyRef = useRef<string | null>(null);
@@ -296,7 +297,7 @@ const FileUpload: React.FC<FileUploadProps> = ({ onUploaded, onRecordingChange, 
 
   const startLiveTranscription = useCallback(
     (micStream: MediaStream | null, systemStream: MediaStream | null, engine: LiveEngine = 'local', captureId: string | null = null, keepLines = false) => {
-      if (!keepLines) { setLiveLines([]); setLiveActionItems([]); setLiveActionEnabled(null); }
+      if (!keepLines) { setLiveLines([]); setLiveActionItems([]); setLiveActionEnabled(null); setLiveActionOffReason(null); }
       setLiveError(null);
       setLiveWarning(null);
       setLiveMicUnavailable(false);
@@ -330,6 +331,7 @@ const FileUpload: React.FC<FileUploadProps> = ({ onUploaded, onRecordingChange, 
         onActionItems: (st) => {
           setLiveActionItems(st.items);
           setLiveActionEnabled(st.enabled);
+          setLiveActionOffReason(st.enabled ? null : st.groqText ? 'items' : 'groq');
           setLiveParticipants(st.participants);
           liveParticipantsRef.current = st.participants;
         },
@@ -962,10 +964,11 @@ const FileUpload: React.FC<FileUploadProps> = ({ onUploaded, onRecordingChange, 
       actionItems: liveActionItems,
       participants: liveParticipants,
       actionEnabled: liveActionEnabled,
+      actionOffReason: liveActionOffReason,
       micMuted,
       mutedHint: mutedSpeechHint,
     });
-  }, [isRecording, liveActive, liveLines, liveStatus, liveError, captureLost, elapsedSeconds, audioLevels, captureSystemAudio, preferences?.skipClearConfirmation, liveActionItems, liveParticipants, liveActionEnabled, micMuted, mutedSpeechHint]);
+  }, [isRecording, liveActive, liveLines, liveStatus, liveError, captureLost, elapsedSeconds, audioLevels, captureSystemAudio, preferences?.skipClearConfirmation, liveActionItems, liveParticipants, liveActionEnabled, liveActionOffReason, micMuted, mutedSpeechHint]);
 
   const compactActionsRef = useRef({ stopRecording, handleLivePause, handleLiveResume, handleLiveStop, handleLiveRetry, handleLiveRestart, handleLiveCopyAll, handleLiveCopyAndClear, handleLiveClearAll, handleActionAdd, handleActionEdit, handleActionDelete, setMicMute });
   compactActionsRef.current = { stopRecording, handleLivePause, handleLiveResume, handleLiveStop, handleLiveRetry, handleLiveRestart, handleLiveCopyAll, handleLiveCopyAndClear, handleLiveClearAll, handleActionAdd, handleActionEdit, handleActionDelete, setMicMute };
@@ -1347,6 +1350,7 @@ const FileUpload: React.FC<FileUploadProps> = ({ onUploaded, onRecordingChange, 
               items={liveActionItems}
               participants={liveParticipants}
               enabled={liveActionEnabled}
+              offReason={liveActionOffReason}
               onParticipantsChange={handleActionParticipants}
               onAdd={handleActionAdd}
               onEdit={handleActionEdit}

@@ -136,6 +136,7 @@ export const DockStrip: React.FC<StripProps> = ({ snap, actions, onExpand, onSwi
             items={snap.actionItems}
             participants={snap.participants}
             enabled={snap.actionEnabled}
+            offReason={snap.actionOffReason}
             onAdd={(t, o) => actions?.addActionItem(t, o)}
             onEdit={(id, p) => actions?.editActionItem(id, p)}
             onDelete={(id) => actions?.deleteActionItem(id)}

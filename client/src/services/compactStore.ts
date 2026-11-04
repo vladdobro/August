@@ -15,6 +15,7 @@ export interface CompactSnapshot {
   actionItems: ActionItem[]; // AUG-165
   participants: Participants;
   actionEnabled: boolean | null;
+  actionOffReason: 'groq' | 'items' | null;
   micMuted: boolean; // AUG-181
   mutedHint: boolean; // AUG-181: speaking while muted
 }
@@ -57,6 +58,7 @@ let snapshot: CompactSnapshot = {
   actionItems: [],
   participants: { me: '', them: '' },
   actionEnabled: null,
+  actionOffReason: null,
   micMuted: false,
   mutedHint: false,
 };

@@ -33,6 +33,8 @@ const ALLOWED_KEYS = new Set([
   'autoDeleteWavThreshold',
   'llmCorrections',
   'batchCorrectionEngine',
+  'groqLiveCorrection',
+  'groqLiveActionItems',
   'compactEnabled',
   'compactMode',
   'compactIndicatorWidget',
@@ -80,6 +82,9 @@ router.patch('/', async (req, res) => {
   if ('llmCorrections' in patch) {
     patch.llmCorrections = patch.llmCorrections === true;
   }
+  // AUG-190: default on; only an explicit false turns it off.
+  if ('groqLiveCorrection' in patch) patch.groqLiveCorrection = patch.groqLiveCorrection !== false;
+  if ('groqLiveActionItems' in patch) patch.groqLiveActionItems = patch.groqLiveActionItems !== false;
   if ('batchCorrectionEngine' in patch) {
     if (patch.batchCorrectionEngine !== 'local' && patch.batchCorrectionEngine !== 'groq') delete patch.batchCorrectionEngine;
   }

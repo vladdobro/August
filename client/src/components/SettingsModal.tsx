@@ -243,6 +243,8 @@ const SettingsModal: React.FC<SettingsModalProps> = ({
   const autoDeleteWavThreshold = preferences.autoDeleteWavThreshold ?? DEFAULT_PREFERENCES.autoDeleteWavThreshold;
   const llmCorrections = preferences.llmCorrections ?? DEFAULT_PREFERENCES.llmCorrections;
   const batchCorrectionEngine = preferences.batchCorrectionEngine ?? DEFAULT_PREFERENCES.batchCorrectionEngine;
+  const groqLiveCorrection = preferences.groqLiveCorrection ?? DEFAULT_PREFERENCES.groqLiveCorrection;
+  const groqLiveActionItems = preferences.groqLiveActionItems ?? DEFAULT_PREFERENCES.groqLiveActionItems;
   const [thresholdDraft, setThresholdDraft] = useState<number>(autoDeleteWavThreshold);
   useEffect(() => { setThresholdDraft(autoDeleteWavThreshold); }, [autoDeleteWavThreshold]);
   const commitThreshold = () => { if (thresholdDraft !== autoDeleteWavThreshold) onPreferenceChange({ autoDeleteWavThreshold: thresholdDraft }); };
@@ -717,7 +719,7 @@ const SettingsModal: React.FC<SettingsModalProps> = ({
             {groqText && (
               <>
                 <div className="settings-row">
-                  <span className="settings-label">Online text correction (Groq)</span>
+                  <span className="settings-label">Online text (Groq)</span>
                   <label className="settings-toggle">
                     <input
                       type="checkbox"
@@ -733,7 +735,28 @@ const SettingsModal: React.FC<SettingsModalProps> = ({
                     <span className="settings-toggle-label">{groqText.enabled ? 'On' : 'Off'}</span>
                   </label>
                 </div>
-                <div className="settings-hint">Fixes live transcript lines a few seconds after they appear and collects live action items. After a recording, doubtful lines get a suggested fix to accept or reject; the original transcript is never changed.</div>
+                <div className="settings-hint">Sends transcript text to Groq's free tier. Choose what it does:</div>
+                <div className={`settings-child${groqText.enabled ? '' : ' settings-child--off'}`}>
+                  <div className="settings-row">
+                    <span className="settings-label">Fix live lines</span>
+                    <label className="settings-toggle">
+                      <input type="checkbox" checked={groqLiveCorrection} disabled={!groqText.enabled} onChange={(e) => onPreferenceChange({ groqLiveCorrection: e.target.checked })} />
+                      <span className="settings-toggle-label">{groqLiveCorrection ? 'On' : 'Off'}</span>
+                    </label>
+                  </div>
+                  <div className="settings-hint">Lines are fixed in place a few seconds after they appear.</div>
+                  <div className="settings-row">
+                    <span className="settings-label">Collect live action items</span>
+                    <label className="settings-toggle">
+                      <input type="checkbox" checked={groqLiveActionItems} disabled={!groqText.enabled} onChange={(e) => onPreferenceChange({ groqLiveActionItems: e.target.checked })} />
+                      <span className="settings-toggle-label">{groqLiveActionItems ? 'On' : 'Off'}</span>
+                    </label>
+                  </div>
+                  <div className="settings-hint">Tasks and agreements next to the live transcript. When Groq is busy, the local model takes over (if it is on).</div>
+                </div>
+                {groqText.enabled && !groqLiveCorrection && !groqLiveActionItems && (
+                  <div className="settings-hint settings-hint--warn">Live features off. Only fixes after recording use Groq.</div>
+                )}
                 {groqText.enabled && llmStatus?.enabled && llmCorrections && (
                   <div className="settings-row">
                     <label className="settings-label">Fixes after recording by</label>

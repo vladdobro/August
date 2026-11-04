@@ -30,6 +30,7 @@ const PROCESSOR_BUFFER_SIZE = 4096;
 
 export interface LiveActionItemsState {
   enabled: boolean;
+  groqText: boolean; // AUG-190: Online text (Groq) consent gate is active
   participants: Participants;
   items: ActionItem[];
 }
@@ -207,6 +208,7 @@ export class LiveTranscriptionClient {
         } else if (msg.type === 'action-items' && Array.isArray(msg.items)) {
           this.callbacks.onActionItems?.({
             enabled: msg.enabled === true,
+            groqText: msg.groqText === true,
             participants: { me: String(msg.participants?.me ?? ''), them: String(msg.participants?.them ?? '') },
             items: msg.items,
           });

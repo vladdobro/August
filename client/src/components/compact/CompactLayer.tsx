@@ -267,6 +267,7 @@ const CompactLayer: React.FC<CompactLayerProps> = (props) => {
       actionItems: s.actionItems,
       participants: s.participants,
       actionEnabled: s.actionEnabled,
+      actionOffReason: s.actionOffReason,
       micMuted: s.micMuted,
       mutedHint: s.mutedHint,
       skipClearConfirmation: s.skipClearConfirmation,

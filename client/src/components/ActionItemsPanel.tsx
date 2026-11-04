@@ -5,8 +5,10 @@ interface ActionItemsPanelProps {
   items: ActionItem[];
   participants: Participants;
   variant: 'live' | 'session' | 'compact';
-  /// Live only: false -> Online text correction (Groq) is off, show the hint instead of an empty list; null -> not known yet.
+  /// Live only: false -> Online text (Groq) or Collect live action items is off, show the hint instead of an empty list; null -> not known yet.
   enabled?: boolean | null;
+  /// AUG-190: why live items are off; 'items' = Groq on but Collect live action items off.
+  offReason?: 'groq' | 'items' | null;
   /// Live only: renders the editable Participants fields.
   onParticipantsChange?: (p: Participants) => void;
   /// AUG-165: when set, the panel offers `+ Add an item` (hand-written item).
@@ -147,7 +149,7 @@ const AddItemForm: React.FC<AddItemFormProps> = ({ onAdd, onCancel }) => {
   );
 };
 
-const ActionItemsPanel: React.FC<ActionItemsPanelProps> = ({ items, participants, variant, enabled, onParticipantsChange, onAdd, onEdit, onDelete, onSendToPraxis }) => {
+const ActionItemsPanel: React.FC<ActionItemsPanelProps> = ({ items, participants, variant, enabled, offReason, onParticipantsChange, onAdd, onEdit, onDelete, onSendToPraxis }) => {
   const [adding, setAdding] = useState(false);
   const compact = variant === 'compact';
   const exportEnabled = Boolean(onSendToPraxis) && !compact;
@@ -165,9 +167,12 @@ const ActionItemsPanel: React.FC<ActionItemsPanelProps> = ({ items, participants
     return next;
   });
   const addForm = onAdd && adding ? <AddItemForm onAdd={onAdd} onCancel={() => setAdding(false)} /> : null;
+  const itemsOff = offReason === 'items';
   const disabledHint = compact
-    ? 'Groq off — only manual items'
-    : `Turn on Online text correction (Groq) in Settings → Transcription to collect action items during live recording.${onAdd ? ' You can still add items by hand.' : ''}`;
+    ? (itemsOff ? 'Live items off — only manual items' : 'Groq off — only manual items')
+    : itemsOff
+      ? `Turn on Collect live action items in Settings → Transcription to collect action items during live recording.${onAdd ? ' You can still add items by hand.' : ''}`
+      : `Turn on Online text (Groq) in Settings → Transcription to collect action items during live recording.${onAdd ? ' You can still add items by hand.' : ''}`;
   const emptyText = compact ? 'No items yet' : variant === 'live' ? 'Agreements and tasks will appear here' : 'No action items';
 
   return (

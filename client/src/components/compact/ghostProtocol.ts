@@ -24,6 +24,7 @@ export interface GhostState {
   actionItems: ActionItem[]; // AUG-165
   participants: Participants;
   actionEnabled: boolean | null;
+  actionOffReason: 'groq' | 'items' | null;
   micMuted: boolean; // AUG-181
   mutedHint: boolean; // AUG-181
   skipClearConfirmation: boolean;

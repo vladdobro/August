@@ -35,6 +35,9 @@ export interface UserPreferences {
   llmCorrections?: boolean;
   // AUG-164: who fixes flagged lines when both the local model and Online text correction (Groq) are on
   batchCorrectionEngine?: 'local' | 'groq';
+  // AUG-190: children of Online text (Groq); default on, only used while its consent is active
+  groqLiveCorrection?: boolean;
+  groqLiveActionItems?: boolean;
   // Compact Mode (AUG-156)
   compactEnabled?: boolean;
   compactMode?: CompactModePreference;
@@ -77,6 +80,8 @@ export const DEFAULT_PREFERENCES: Required<UserPreferences> = {
   autoDeleteWavThreshold: 70,
   llmCorrections: false,
   batchCorrectionEngine: 'local',
+  groqLiveCorrection: true,
+  groqLiveActionItems: true,
   compactEnabled: true,
   compactMode: 'follow',
   compactIndicatorWidget: 'dock-square',

@@ -117,6 +117,14 @@ export async function isGroqTextActive(): Promise<boolean> {
   return groqTextState(await readPreferences()).enabled;
 }
 
+/// AUG-190: which live Groq text features run on a live connection. Both need the consent gate; each child pref defaults to on (absent = true).
+export interface LiveGroqTextFeatures { active: boolean; correction: boolean; actionItems: boolean }
+export async function liveGroqTextFeatures(): Promise<LiveGroqTextFeatures> {
+  const prefs = await readPreferences();
+  const active = groqTextState(prefs).enabled;
+  return { active, correction: active && prefs.groqLiveCorrection !== false, actionItems: active && prefs.groqLiveActionItems !== false };
+}
+
 export interface TextSegment {
   id: string;
   text: string;

@@ -62,7 +62,7 @@ Turn the 1–2 Nov 2026 user feedback (@docs/feedback/2026-11-rodion-feedback.md
 - [x] z-index overlap on Recording completed screen — Copy/Export menus are covered; research AUG-170 → impl AUG-180.
 - [ ] Remember Praxis projects picked by folder — no re-picking the path in Send to Praxis; research AUG-171.
 - [ ] Resizable Default Prompt field — see the whole prompt while editing; research AUG-172.
-- [ ] Split Online text correction toggle — live line correction and live action items on separate checkboxes; research AUG-173 → impl AUG-190 (Option A: two child checkboxes under the Groq consent toggle).
+- [x] Split Online text correction toggle — live line correction and live action items on separate checkboxes; research AUG-173 → impl AUG-190 (Option A: two child checkboxes under the Groq consent toggle; implemented, manual live check passed 2026-11-04).
 
 ### M2 Live session control
 

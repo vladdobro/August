@@ -23,7 +23,7 @@ const GroqTextConsentModal: React.FC<GroqTextConsentModalProps> = ({ groqAvailab
       <div className="groq-setup-card" onClick={(e) => e.stopPropagation()}>
         <div className="groq-setup-header">
           <span className="groq-setup-icon">&#9889;</span>
-          <span>Online text correction (Groq)</span>
+          <span>Online text (Groq)</span>
         </div>
         <ol className="groq-setup-steps">
           <li>A) Transcript text — and, during live recordings, the participant names you enter and the collected action items — is sent to Groq and may be used by Groq under its own terms.</li>

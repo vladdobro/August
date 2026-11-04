@@ -328,6 +328,7 @@ const GhostCaption: React.FC<GhostCaptionProps> = ({ state, send, sendAction }) 
             items={state.actionItems}
             participants={state.participants}
             enabled={state.actionEnabled}
+            offReason={state.actionOffReason}
             onAdd={(text, owner) => sendAction({ kind: 'add', text, owner })}
             onEdit={(id, patch) => sendAction({ kind: 'edit', id, patch })}
             onDelete={(id) => sendAction({ kind: 'delete', id })}
@@ -493,6 +494,7 @@ const PLACEHOLDER = (widget: GhostWidget): GhostState => ({
   actionItems: [],
   participants: { me: '', them: '' },
   actionEnabled: null,
+  actionOffReason: null,
   micMuted: false,
   mutedHint: false,
   skipClearConfirmation: false,
