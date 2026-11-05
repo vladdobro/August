@@ -1,0 +1,496 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Copilot Hints</title>
+<style>
+:root {
+  --bg:#f2efe8; --surface:rgba(250,248,244,.92); --line:rgba(45,58,51,.25); --fg:#1e2b24; --muted:#566b5e;
+  --accent:#0d8c5c; --accent-light:rgba(13,140,92,.12); --pause:#d49a00; --danger:#d44040; --them:#9a7a1a;
+  --on-accent:#f2efe8; --body-bg:#e6e2d8; --glow:rgba(13,140,92,.18); --warn:#d4a028; --glass:rgba(250,248,244,.86);
+  --scan:rgba(13,140,92,.04);
+  --mono:'Cascadia Code','Fira Code',Consolas,monospace;
+}
+@media (prefers-color-scheme: dark) { :root:not([data-theme="light"]) {
+  --bg:#0a110d; --surface:rgba(12,20,16,.92); --line:rgba(0,200,118,.18); --fg:#c0cec4; --muted:#5e7d6a;
+  --accent:#00c876; --accent-light:rgba(0,200,118,.10); --pause:#d4a020; --danger:#e05555; --them:#d4a843;
+  --on-accent:#0a110d; --body-bg:#0f1914; --glow:rgba(0,200,118,.3); --glass:rgba(12,20,16,.88); --scan:rgba(0,200,118,.025); color-scheme:dark; } }
+:root[data-theme="dark"] {
+  --bg:#0a110d; --surface:rgba(12,20,16,.92); --line:rgba(0,200,118,.18); --fg:#c0cec4; --muted:#5e7d6a;
+  --accent:#00c876; --accent-light:rgba(0,200,118,.10); --pause:#d4a020; --danger:#e05555; --them:#d4a843;
+  --on-accent:#0a110d; --body-bg:#0f1914; --glow:rgba(0,200,118,.3); --glass:rgba(12,20,16,.88); --scan:rgba(0,200,118,.025); color-scheme:dark; }
+
+* { box-sizing:border-box; border-radius:0; }
+html { scroll-behavior:smooth; }
+body { margin:0; background:var(--bg); color:var(--fg); font-family:var(--mono); font-size:13px; line-height:1.5;
+  padding:0 max(16px,env(safe-area-inset-left,0px)) 48px; overflow-x:hidden; }
+.wrap { max-width:1180px; margin:0 auto; display:grid; grid-template-columns:minmax(0,1fr); gap:24px; }
+.wrap > * { min-width:0; }
+header { padding-top:24px; }
+h1 { margin:0; font-size:20px; text-wrap:balance; }
+h2 { margin:0 0 10px; font-size:13px; letter-spacing:.08em; text-transform:uppercase; color:var(--accent); border-bottom:1px solid var(--line); padding-bottom:6px; display:flex; flex-wrap:wrap; gap:8px; align-items:center; }
+.lead { margin:4px 0 0; color:var(--muted); max-width:75ch; }
+.note { margin:8px 0 0; font-size:11px; color:var(--muted); max-width:110ch; }
+button { font-family:var(--mono); cursor:pointer; }
+button:disabled, input:disabled { opacity:.4; cursor:not-allowed; }
+button:focus-visible, input:focus-visible, select:focus-visible, [role="radio"]:focus-visible, a:focus-visible { outline:2px solid var(--accent); outline-offset:2px; }
+
+.bar { position:sticky; top:0; z-index:50; background:var(--bg); border-bottom:1px solid var(--line); padding:10px 0; display:flex; flex-wrap:wrap; gap:10px 16px; align-items:center; }
+.grp { display:flex; align-items:center; gap:6px; flex-wrap:wrap; }
+.grp > span { font-size:10px; text-transform:uppercase; letter-spacing:.06em; color:var(--muted); }
+.seg { display:flex; border:1px solid var(--line); flex-wrap:wrap; }
+.seg button { border:0; background:transparent; color:var(--fg); font-size:11px; padding:6px 10px; }
+.seg button[aria-pressed="true"] { background:var(--accent); color:var(--on-accent); }
+
+.hscroll { overflow-x:auto; }
+.frame { position:relative; height:640px; min-width:960px; border:1px solid var(--line); background:var(--bg); display:flex; flex-direction:column; overflow:hidden; }
+.topbar { flex:none; display:flex; align-items:center; gap:12px; padding:6px 16px; border-bottom:1px solid var(--line); background:var(--body-bg); min-height:48px; }
+.rec { display:inline-flex; align-items:center; gap:8px; font-weight:700; font-size:14px; color:var(--danger); font-variant-numeric:tabular-nums; white-space:nowrap; }
+.rec .dot { width:9px; height:9px; background:var(--danger); display:inline-block; }
+.rec .st { color:var(--muted); font-weight:400; font-size:12px; }
+.spacer { flex:1; }
+.tb { display:flex; gap:6px; flex-wrap:nowrap; }
+.pb { font-size:11px; letter-spacing:.06em; padding:5px 10px; background:transparent; white-space:nowrap; border:1px solid var(--accent); color:var(--accent); }
+.pb.y { border-color:var(--pause); color:var(--pause); }
+.pb.r { border-color:var(--danger); color:var(--danger); }
+.pb.rf { border-color:var(--danger); background:var(--danger); color:#fff; }
+.pb.g { border-color:var(--accent); color:var(--accent); }
+.cbadge { border:1px solid var(--accent); color:var(--accent); background:transparent; font-size:10px; letter-spacing:.06em; padding:1px 6px; white-space:nowrap; }
+.cbadge:hover { background:var(--accent-light); }
+
+.main { flex:1; min-height:0; display:flex; position:relative; }
+.canvas { position:relative; flex:1; min-width:0; overflow:hidden; background:var(--bg); }
+.canvas::before { content:''; position:absolute; inset:0; pointer-events:none; background:repeating-linear-gradient(to bottom,transparent 0,transparent 2px,var(--scan) 2px,var(--scan) 4px); }
+.lines { position:relative; padding:14px 18px; font-size:15px; display:flex; flex-direction:column; gap:8px; }
+.ln { padding-left:10px; border-left:2px solid transparent; }
+.ln.last { border-left-color:var(--accent); }
+.ln .who { font-weight:700; margin-right:6px; }
+.ln.me .who { color:var(--accent); } .ln.them .who { color:var(--them); }
+.ln .ts { font-size:10px; color:var(--muted); margin-right:6px; }
+.trig { text-decoration:underline; text-decoration-color:var(--pause); text-decoration-thickness:2px; text-underline-offset:3px; }
+.trigtag { font-size:9px; letter-spacing:.06em; text-transform:uppercase; color:var(--pause); border:1px solid var(--pause); padding:0 4px; margin-left:4px; vertical-align:middle; }
+
+.ai-col { width:340px; flex:none; border-left:1px solid var(--line); background:var(--body-bg); padding:12px; display:flex; flex-direction:column; gap:8px; overflow:hidden; font-size:12px; }
+.ai-h { text-transform:uppercase; letter-spacing:.08em; font-size:12px; font-weight:700; color:var(--accent); }
+.ai-it { border:1px solid var(--line); background:var(--surface); padding:8px; }
+.ai-it .own { color:var(--muted); font-size:11px; margin-top:2px; display:flex; flex-wrap:wrap; gap:6px; align-items:center; }
+.tag { font-size:9px; letter-spacing:.06em; padding:0 4px; border:1px solid var(--accent); color:var(--accent); white-space:nowrap; }
+.tag.px { background:var(--accent); color:var(--on-accent); }
+.tag.rd { border-color:var(--danger); color:var(--danger); }
+.btn { border:1px solid var(--line); background:transparent; color:var(--fg); font-size:11px; text-transform:uppercase; letter-spacing:.05em; padding:4px 10px; }
+.btn:hover:not(:disabled) { border-color:var(--accent); color:var(--accent); }
+.btn.primary { background:var(--accent); border-color:var(--accent); color:var(--on-accent); }
+.btn.go { border-color:var(--accent); color:var(--accent); }
+.btn.ask { border-color:var(--pause); color:var(--pause); }
+.btn.plain { border-color:transparent; color:var(--muted); }
+.btn.red { color:var(--danger); border-color:var(--danger); }
+.expo { display:flex; gap:6px; margin-top:auto; }
+.expo .btn { flex:1; padding:6px 4px; }
+
+.pin { flex:none; display:flex; gap:8px; justify-content:center; padding:6px; border-top:1px solid var(--line); background:var(--body-bg); }
+.pin .btn { letter-spacing:.1em; }
+.pin .btn.open { background:var(--accent); color:var(--on-accent); border-color:var(--accent); }
+
+/* assistant panel */
+.ap { display:flex; flex-direction:column; min-height:0; background:var(--glass); border:1px solid var(--line); font-size:12px; }
+.ap.ovl { position:absolute; right:0; top:0; bottom:42px; width:420px; z-index:5; box-shadow:-6px 0 24px rgba(0,0,0,.25); }
+.ap-h { display:flex; justify-content:space-between; align-items:center; padding:8px 12px; border-bottom:1px solid var(--line); }
+.ap-h b { letter-spacing:.12em; color:var(--accent); }
+.x { border:1px solid transparent; background:transparent; color:var(--muted); font-size:16px; width:26px; height:26px; }
+.x:hover { color:var(--fg); border-color:var(--line); }
+.chips { display:flex; flex-wrap:wrap; gap:6px; align-items:center; padding:8px 12px; border-bottom:1px solid var(--line); }
+.chip { border:1px solid var(--line); background:transparent; color:var(--fg); font-size:11px; padding:3px 8px; }
+.chip.sel { border-color:var(--accent); color:var(--accent); background:var(--accent-light); }
+.chip .d { color:var(--accent); }
+.mstrip { display:flex; justify-content:space-between; align-items:center; gap:8px; padding:5px 12px; border-bottom:1px solid var(--line); font-size:11px; color:var(--muted); letter-spacing:.04em; }
+.mstrip b { color:var(--fg); font-weight:700; }
+select.sm { font-size:11px; padding:2px 4px; letter-spacing:0; }
+.mctl { display:flex; gap:6px; align-items:center; margin-left:auto; }
+a.lnk { color:var(--accent); text-decoration:underline; text-underline-offset:2px; font-size:11px; }
+.ap-body { flex:1; min-height:0; overflow:auto; padding:10px 12px; display:flex; flex-direction:column; gap:10px; scrollbar-width:thin; }
+.blk-t { font-size:10px; letter-spacing:.1em; color:var(--muted); text-transform:uppercase; margin-bottom:4px; }
+.hh { display:flex; justify-content:space-between; align-items:baseline; gap:8px; margin-bottom:6px; }
+.hh .blk-t { margin:0; }
+.hh .cnt { font-size:11px; color:var(--muted); text-align:right; }
+.empty { border:1px dashed var(--line); padding:14px; color:var(--muted); text-align:center; }
+.stack { display:flex; flex-direction:column; gap:8px; }
+.hintcard { border:1px solid var(--line); border-left:3px solid var(--pause); background:var(--surface); padding:8px 10px; }
+.hintcard.search { border-left-style:dashed; }
+.hintcard .meta { display:flex; flex-wrap:wrap; gap:4px 8px; align-items:baseline; font-size:11px; color:var(--muted); margin-bottom:4px; }
+.hintcard .meta b { color:var(--fg); word-break:break-all; }
+.hintcard .sn { font-size:11px; margin:2px 0; }
+.hintcard .big { font-size:13px; color:var(--fg); margin:4px 0; }
+.hintcard .src { font-size:11px; color:var(--muted); margin:2px 0; word-break:break-word; }
+.hintcard .foot1 { font-size:11px; color:var(--muted); margin-top:6px; }
+.hintcard .acts { display:flex; flex-wrap:wrap; gap:6px; margin-top:8px; align-items:center; }
+.dismrow { display:flex; justify-content:space-between; align-items:center; gap:8px; flex-wrap:wrap; border:1px dashed var(--line); padding:6px 10px; font-size:11px; color:var(--muted); }
+.warnline { border:1px solid var(--warn); color:var(--warn); padding:6px 8px; font-size:11px; }
+.caret { display:inline-block; width:7px; height:13px; background:var(--accent); vertical-align:text-bottom; animation:bl 1s steps(1) infinite; }
+@keyframes bl { 50% { opacity:0; } }
+
+.dock { width:360px; max-width:100%; height:112px; border:1px solid var(--line); background:var(--body-bg); padding:8px 10px; display:flex; flex-direction:column; justify-content:space-between; }
+.dock .dh { font-weight:700; font-size:12px; color:var(--accent); letter-spacing:.04em; display:flex; gap:8px; align-items:center; flex-wrap:wrap; }
+.dock .dc { font-size:12px; color:var(--muted); }
+.dock .db { display:flex; gap:6px; }
+.dock .db span { border:1px solid var(--line); font-size:10px; padding:1px 8px; color:var(--muted); }
+.ghost { width:480px; max-width:100%; background:rgba(10,17,13,.78); color:#e6ede8; border:1px solid var(--line); padding:10px 12px; display:flex; gap:10px; align-items:center; justify-content:space-between; font-size:14px; }
+.ghost .cbadge { border-color:#00c876; color:#00c876; flex:none; }
+.card { border:1px solid var(--line); background:var(--surface); padding:14px; }
+.card.hl { border-color:var(--accent); }
+.widgets { display:flex; flex-wrap:wrap; gap:16px; align-items:flex-start; }
+.wlab { font-size:10px; color:var(--muted); text-transform:uppercase; letter-spacing:.06em; margin:0 0 6px; }
+
+/* settings */
+.panel { border:1px solid var(--line); background:var(--body-bg); padding:12px 14px; }
+.tabs { display:flex; flex-wrap:wrap; border-bottom:1px solid var(--line); margin:-4px 0 12px; }
+.tabs span { font-size:11px; letter-spacing:.1em; padding:6px 10px; color:var(--muted); border-bottom:2px solid transparent; }
+.tabs span.on { color:var(--accent); border-bottom-color:var(--accent); font-weight:700; }
+.sec-title { font-size:11px; font-weight:700; text-transform:uppercase; letter-spacing:.12em; color:var(--muted); margin:0 0 10px; padding-bottom:6px; border-bottom:1px solid var(--line); }
+.row { display:flex; align-items:center; justify-content:space-between; padding:8px 0; gap:12px; flex-wrap:wrap; }
+.row > .lbl { font-size:13px; flex:1 1 auto; min-width:0; }
+.hint { font-size:11px; line-height:1.4; color:var(--muted); margin:-4px 0 8px; }
+.hint.warn { color:var(--warn); }
+.child { margin:0 0 8px 4px; border-left:2px solid var(--accent); padding-left:14px; }
+select { font-family:var(--mono); font-size:12px; background:var(--bg); color:var(--fg); border:1px solid var(--line); padding:4px 6px; max-width:100%; }
+.opts { display:flex; flex-direction:column; gap:8px; margin-bottom:8px; }
+.opt { display:grid; grid-template-columns:auto minmax(0,1fr) minmax(0,260px); gap:4px 12px; align-items:start; border:1px solid var(--line); background:var(--surface); padding:10px 12px; cursor:pointer; }
+.opt.sel { border-color:var(--accent); background:var(--accent-light); }
+.opt .mk { width:14px; height:14px; border:1px solid var(--fg); margin-top:3px; display:flex; align-items:center; justify-content:center; }
+.opt.sel .mk { border-color:var(--accent); }
+.opt.sel .mk::after { content:''; width:8px; height:8px; background:var(--accent); }
+.opt .nm { font-weight:700; display:flex; gap:8px; align-items:center; flex-wrap:wrap; }
+.opt .ds { font-size:12px; color:var(--fg); margin-top:2px; }
+.opt .pr { font-size:11px; color:var(--muted); text-align:right; }
+.pc { display:grid; grid-template-columns:1fr 1fr; gap:12px; margin-top:12px; }
+.pc h3 { margin:0 0 6px; font-size:12px; text-transform:uppercase; letter-spacing:.08em; }
+.pc h4 { margin:8px 0 2px; font-size:11px; text-transform:uppercase; letter-spacing:.08em; }
+.pc .pro h4 { color:var(--accent); } .pc .con h4 { color:var(--danger); }
+.pc ul { margin:0; padding-left:18px; font-size:12px; }
+@media (max-width:700px) {
+  .pc { grid-template-columns:1fr; }
+  .opt { grid-template-columns:auto minmax(0,1fr); }
+  .opt .pr { grid-column:2; text-align:left; }
+}
+
+#modal { position:fixed; inset:0; z-index:100; background:rgba(0,0,0,.6); display:flex; align-items:center; justify-content:center; padding:16px; }
+#modal[hidden] { display:none; }
+.mcard { width:min(460px,100%); max-height:100%; overflow:auto; background:var(--bg); border:1px solid var(--danger); box-shadow:0 8px 32px rgba(0,0,0,.4); padding:24px; color:var(--fg); }
+.mh { font-weight:700; font-size:14px; margin-bottom:12px; color:var(--danger); }
+.mcard p { font-size:12px; margin:0 0 14px; }
+.chk { display:flex; gap:8px; align-items:flex-start; font-size:12px; margin-bottom:16px; cursor:pointer; }
+.chk input { width:16px; height:16px; margin:1px 0 0; accent-color:var(--danger); flex:none; }
+.mact { display:flex; justify-content:flex-end; gap:8px; flex-wrap:wrap; }
+.mact .btn, .mact .pb { padding:8px 14px; }
+</style>
+</head>
+<body>
+<div class="wrap">
+<header>
+  <h1>AUG-196 &mdash; Meeting Copilot: hint states and modes</h1>
+  <p class="lead">Shows how a copilot hint looks in the live ASSISTANT panel in every state, in Compact Mode, and how the four modes are chosen in Settings. Recommended mode: Claude explains; default: Off (the page starts in Off &mdash; pick another mode in the bar to see hints).</p>
+</header>
+
+<div class="bar">
+  <div class="grp"><span>Theme</span>
+    <div class="seg"><button data-act="theme:light" aria-pressed="false">Light</button><button data-act="theme:dark" aria-pressed="false">Dark</button></div></div>
+  <div class="grp"><span>Mode</span>
+    <div class="seg"><button data-act="mode:off" aria-pressed="true">Off</button><button data-act="mode:local" aria-pressed="false">Local hints</button><button data-act="mode:claude" aria-pressed="false">Claude explains</button><button data-act="mode:always" aria-pressed="false">Always-on Claude</button></div></div>
+  <div class="grp"><span>Hint state</span>
+    <div class="seg"><button data-act="hint:searching" aria-pressed="false">Searching</button><button data-act="hint:found" aria-pressed="false">Found</button><button data-act="hint:explained" aria-pressed="true">Explained</button><button data-act="hint:none" aria-pressed="false">Nothing found</button><button data-act="hint:praxis" aria-pressed="false">PraxisOS off</button><button data-act="hint:unavail" aria-pressed="false">Explanation unavailable</button><button data-act="hint:dismissed" aria-pressed="false">Dismissed</button></div></div>
+  <div class="grp"><span>Layout</span>
+    <div class="seg"><button data-act="layout:full" aria-pressed="true">Full window</button><button data-act="layout:compact" aria-pressed="false">Compact Mode</button></div></div>
+</div>
+
+<section id="live">
+  <h2>Live recording</h2>
+  <div class="hscroll"><div class="frame" id="frame"></div></div>
+  <p class="note">In the product the transcript is never marked; the hint just appears. The underline and the trigger tag above exist only in this mockup, to show which phrase fired the hint.</p>
+  <p class="note">&ldquo;Searching&rdquo; appears only when a hint goes to Claude; in Local hints the same state is shown as Found at once (local search takes under 0.3 s, there is nothing to wait for). Nothing found never creates a card &mdash; only the silent counter grows. Explanation unavailable has two texts: &ldquo;Shown without explanation &mdash; Claude is off for this meeting.&rdquo; (shown here) and, when the mode is Claude explains but Claude Code is missing, &ldquo;Shown without explanation &mdash; Claude Code is not available.&rdquo;</p>
+</section>
+
+<section id="compact">
+  <h2>Compact Mode widgets</h2>
+  <div class="card" id="compactCard"></div>
+</section>
+
+<section id="modes">
+  <h2>Settings &rarr; AI assistants &rarr; Meeting Copilot</h2>
+  <div class="card" id="settings"></div>
+</section>
+
+<section>
+  <h2>Decision</h2>
+  <p class="lead">Decided 2026-11-05: four-position switch, default Off, Claude explains recommended; model Haiku / Sonnet / Opus, default Sonnet, changeable during the meeting; choosing a Claude mode is the consent.</p>
+  <div class="sec-title" style="margin-top:16px">Considered</div>
+  <div class="pc" style="margin-top:0">
+    <div class="card pro"><h3>1 &middot; One mode with on/off</h3>
+      <h4>Pros</h4><ul><li>Simplest: one switch, one code path</li><li>Less settings text to read</li></ul>
+      <h4>Cons</h4><ul><li>No private option: every hint goes through Anthropic</li><li>No Always-on Claude for users who want the best catch rate</li></ul></div>
+    <div class="card pro"><h3>2 &middot; Four-position switch <span class="tag px">RECOMMENDED</span></h3>
+      <h4>Pros</h4><ul><li>Private option (Local hints) for privacy-first users</li><li>Always-on Claude for quality-first users, at their own cost and after a warning</li></ul>
+      <h4>Cons</h4><ul><li>More settings text to read</li><li>Two extra code paths (local and always-on)</li></ul></div>
+  </div>
+</section>
+</div>
+
+<div id="modal" hidden></div>
+
+<script>
+var S = { theme:'light', mode:'off', hint:'explained', layout:'full', model:'sonnet', budget:'2',
+  open:true, showLines:false, oldDis:false, modalOpen:false, modalChk:false };
+var MODES = { off:'Off', local:'Local hints', claude:'Claude explains', always:'Always-on Claude' };
+var MODE_OPTS = [['off', 'Off'], ['local', 'Local hints'], ['claude', 'Claude explains'], ['always', 'Always-on Claude']];
+var MODEL_SHORT = [['haiku', 'Haiku'], ['sonnet', 'Sonnet'], ['opus', 'Opus']];
+var MODEL_LONG = [['sonnet', 'Sonnet (default)'], ['haiku', 'Haiku &mdash; cheaper, finds less'], ['opus', 'Opus &mdash; most capable, costs more']];
+var ROUTE = 'support/csm-group-tickets';
+
+function esc(t) { return String(t).replace(/&/g, '&amp;').replace(/</g, '&lt;'); }
+
+/* what the Hints block shows for the current mode + hint state */
+function eff() {
+  var m = S.mode, h = S.hint;
+  if (m === 'off') return { k:'off', n:0 };
+  if (h === 'praxis') return { k:'paused', n:0 };
+  if (h === 'none') return { k:'none', n:0 };
+  var st = h, local = (m === 'local');
+  if (local && (h === 'searching' || h === 'explained' || h === 'unavail')) st = 'found';
+  var n = (st === 'dismissed' ? 0 : 1) + (S.oldDis ? 0 : 1);
+  return { k:'cards', st:st, n:n, localNote:(local && h === 'explained') };
+}
+
+function transcript() {
+  var L = [
+    ['them', '00:17:12', 'Давай по эскалациям, что сейчас у CSM?'],
+    ['me', '00:17:20', 'В CSM-группах кнопка уже есть, тикет создаётся сразу.'],
+    ['them', '00:17:34', 'И более того, мы <span class="trig">в прошлый раз обсуждали</span><span class="trigtag">trigger</span>, что у CSM из их live-чатов тоже должна быть кнопка «Эскалировать тикет в L2».'],
+    ['me', '00:17:41', 'Да, это есть в макете.']
+  ];
+  return '<div class="lines">' + L.map(function (l, i) {
+    return '<div class="ln ' + l[0] + (i === L.length - 1 ? ' last' : '') + '"><span class="ts">' + l[1] + '</span><span class="who">' + (l[0] === 'me' ? 'Me:' : 'Them:') + '</span>' + l[2] + '</div>';
+  }).join('') + '</div>';
+}
+
+function actionItems() {
+  return '<div class="ai-col"><div class="ai-h">Action items &middot; 2</div>' +
+    '<div class="ai-it">Добавить кнопку эскалации в L2 для live-чатов CSM<div class="own">Them <span class="tag">AI</span></div></div>' +
+    '<div class="ai-it">Показать макет кнопки «Тикет в L2» на следующей встрече<div class="own">Me <span class="tag">AI</span></div></div>' +
+    '<button class="btn" style="align-self:flex-start">+ Add an item</button>' +
+    '<div class="expo"><button class="btn primary">Separate tasks</button><button class="btn">One task</button></div></div>';
+}
+
+function snip(a, b) {
+  return '<div class="sn">' + esc(a) + '</div><div class="sn">' + esc(b) + '</div>';
+}
+function acts(extra, dis) {
+  return '<div class="acts"><button class="btn go">Open route</button><button class="btn ask">Ask</button>' + (extra || '') +
+    '<button class="btn plain" data-act="' + dis + '">Dismiss</button></div>';
+}
+
+function newCard(e) {
+  var st = e.st, h = '';
+  var l1 = 'L18: CSM escalates to L2 with the «Ticket» button in the composer or ⬆ «Тикет в L2» (CRM-207).';
+  var l2 = 'L19: Applies to CSM groups; live chats are not covered yet.';
+  if (st === 'dismissed') {
+    return '<div class="dismrow"><span>Dismissed &middot; ' + ROUTE + ' &mdash; hidden for the rest of this meeting</span><button class="btn plain" data-act="undo">Undo</button></div>';
+  }
+  if (st === 'searching') {
+    return '<div class="hintcard search"><div class="meta"><span>00:17:34</span><span>&middot; squarefi-crm</span></div>' +
+      '<div class="big">Looking for the earlier agreement&hellip;<span class="caret"></span></div>' +
+      '<div class="acts"><button class="btn plain" data-act="dismiss">Dismiss</button></div></div>';
+  }
+  if (st === 'explained') {
+    h = '<div class="hintcard"><div class="meta"><span>00:17:34</span><span class="tag">EXPLAINED</span></div>' +
+      '<div class="big">В прошлый раз решили: CSM эскалирует в L2 кнопкой «Тикет в L2» (CRM-207), но пока только в CSM-группах, не в live-чатах.</div>' +
+      '<div class="src">Source: ' + ROUTE + ' &middot; CRM-207</div>' +
+      (S.showLines ? snip(l1, l2) : '') +
+      acts('<button class="btn plain" data-act="lines">' + (S.showLines ? 'Hide note lines' : 'Show note lines') + '</button>', 'dismiss') + '</div>';
+    return h;
+  }
+  /* found / unavail */
+  h = '<div class="hintcard"><div class="meta"><span>00:17:34</span><b>' + ROUTE + '</b></div>' + snip(l1, l2);
+  if (st === 'unavail') h += '<div class="foot1">Shown without explanation &mdash; Claude is off for this meeting.</div>';
+  else if (e.localNote) h += '<div class="foot1">Local hints show the note as found; no explanation.</div>';
+  return h + acts('', 'dismiss') + '</div>';
+}
+
+function oldCard() {
+  if (S.oldDis) {
+    return '<div class="dismrow"><span>Dismissed &middot; support/sla-timers &mdash; hidden for the rest of this meeting</span><button class="btn plain" data-act="undoOld">Undo</button></div>';
+  }
+  return '<div class="hintcard"><div class="meta"><span>00:09:52</span><b>support/sla-timers</b></div>' +
+    snip('L7: The L2 response timer starts at the first L2 comment in the ticket (CRM-244).', 'L8: Escalation itself does not reset the SLA clock.') +
+    acts('', 'dismissOld') + '</div>';
+}
+
+function hintsBlock() {
+  var e = eff(), h = '<div>';
+  var cnt = '';
+  if (e.k === 'cards' || e.k === 'none') cnt = e.n + ' shown &middot; ' + (e.k === 'none' ? 6 : 5) + ' checked silently';
+  else if (e.k === 'paused') cnt = 'paused';
+  h += '<div class="hh"><div class="blk-t">Hints</div><div class="cnt">' + cnt + '</div></div>';
+  if (e.k === 'off') h += '<div class="empty">Copilot is off. Turn it on in Settings &rarr; AI assistants.</div>';
+  else if (e.k === 'paused') h += '<div class="warnline">PraxisOS is not running. Hints are paused; they resume when it starts.</div>';
+  else if (e.k === 'none') h += '<div class="empty">Listening for references to past agreements.</div>';
+  else h += '<div class="stack">' + newCard(e) + oldCard() + '</div>';
+  return h + '</div>';
+}
+
+function panel() {
+  var h = '<div class="ap ovl"><div class="ap-h"><b>ASSISTANT</b><button class="x" data-act="close" aria-label="Close">&times;</button></div>';
+  h += '<div class="chips"><button class="chip sel">squarefi-crm <span class="d">&#9679;</span></button><button class="chip">August</button></div>';
+  var cl = (S.mode === 'claude' || S.mode === 'always');
+  h += '<div class="mstrip"><span>COPILOT &middot; <b>' + MODES[S.mode] + '</b></span><div class="mctl">' +
+    (cl ? selHtml('model', S.model, MODEL_SHORT, 'Model') : '') + selHtml('mode', S.mode, MODE_OPTS, 'Copilot mode') + '</div></div>';
+  h += '<div class="ap-body">' + hintsBlock();
+  h += '<div><div class="blk-t">Session</div><div class="empty">Session chat (AUG-195)</div></div>';
+  return h + '</div></div>';
+}
+
+function badge(n, cls) {
+  return n > 0 ? '<button class="cbadge" data-act="badge" aria-label="' + n + ' hints, open ASSISTANT">CTX ' + n + '</button>' : '';
+}
+
+function renderFrame() {
+  var n = eff().n, h = '';
+  h += '<div class="topbar"><span class="rec"><span class="dot"></span>REC 00:17:41<span class="st">&middot; Listening</span></span>' + badge(n) + '<span class="spacer"></span>' +
+    '<div class="tb"><button class="pb y">PAUSE</button><button class="pb g">MUTE MIC</button><button class="pb g">COPY ALL</button><button class="pb g">COPY &amp; CLEAR</button>' +
+    '<button class="pb r">CLEAR</button><button class="pb r">STOP LIVE TEXT</button><button class="pb rf">END MEETING</button></div></div>';
+  h += '<div class="main"><div class="canvas">' + transcript() + '</div>' + actionItems() + (S.open ? panel() : '') + '</div>';
+  h += '<div class="pin"><button class="btn">[ SESSIONS ]</button><button class="btn">[ CONTROLS ]</button>' +
+    '<button class="btn' + (S.open ? ' open' : '') + '" data-act="toggle">[ ASSISTANT &bull; 1 ]</button></div>';
+  document.getElementById('frame').innerHTML = h;
+}
+
+function renderCompact() {
+  var n = eff().n, ctx = n > 0 ? ' &middot; ' + '<button class="cbadge" data-act="badgeC" aria-label="Restore window with ASSISTANT">CTX ' + n + '</button>' : '';
+  var h = '<div class="widgets"><div><p class="wlab">Dock Strip</p><div class="dock"><div class="dh"><span>&#9679; 17:41 &middot; LIVE</span>' + (n > 0 ? '<button class="cbadge" data-act="badgeC" aria-label="Restore window with ASSISTANT">CTX ' + n + '</button>' : '') + '</div>' +
+    '<div class="dc">Да, это есть в макете.</div><div class="db"><span>PAUSE</span><span>COPY</span><span>END</span></div></div></div>' +
+    '<div style="flex:1 1 300px;min-width:0"><p class="wlab">Ghost Caption</p><div class="ghost"><span>Да, это есть в макете.</span>' + (n > 0 ? '<button class="cbadge" data-act="badgeC" aria-label="Restore window with ASSISTANT">CTX ' + n + '</button>' : '') + '</div></div></div>';
+  h += '<p class="note">Badge only; a click restores the window with the ASSISTANT overlay open. No cards in compact widgets.</p>' +
+    '<p class="note">Usable compact assistant widgets are proposed separately in compact-assistant.html &mdash; pick one there. <a class="lnk" href="compact-assistant.html">compact-assistant.html</a></p>';
+  var c = document.getElementById('compactCard');
+  c.innerHTML = h;
+  c.className = 'card' + (S.layout === 'compact' ? ' hl' : '');
+}
+
+function optHtml(id, nm, tag, ds, pr) {
+  var sel = S.mode === id;
+  return '<div class="opt' + (sel ? ' sel' : '') + '" role="radio" tabindex="0" aria-checked="' + sel + '"' + ' data-act="mode:' + id + '">' +
+    '<span class="mk"></span><div><div class="nm">' + nm + (tag || '') + '</div><div class="ds">' + ds + '</div></div><div class="pr">' + pr + '</div></div>';
+}
+function selHtml(act, cur, opts, lab) {
+  return '<select class="' + (lab ? 'sm' : '') + '" data-sel="' + act + '"' + (lab ? ' aria-label="' + lab + '"' : '') + '>' + opts.map(function (o) {
+    return '<option value="' + o[0] + '"' + (cur === o[0] ? ' selected' : '') + '>' + o[1] + '</option>';
+  }).join('') + '</select>';
+}
+
+function renderSettings() {
+  var h = '';
+  h += '<div class="panel"><div class="tabs"><span>GENERAL</span><span>AUDIO</span><span>TRANSCRIPTION</span><span>PROJECTS</span><span class="on">AI ASSISTANTS</span><span>COMPACT MODE</span></div>';
+  h += '<div class="sec-title">Meeting Copilot</div>';
+  h += '<div class="opts" role="radiogroup" aria-label="Meeting Copilot mode">';
+  h += optHtml('off', 'Off', '', 'No hints.', 'Free &middot; nothing is sent');
+  h += optHtml('local', 'Local hints', '', 'Spots references to past agreements and shows matching notes from the Praxis project. Finds less in meetings that are not in the notes\' language.', 'Free &middot; runs on this computer, nothing is sent');
+  h += optHtml('claude', 'Claude explains', '<span class="tag px">RECOMMENDED</span>', 'Same trigger; Claude checks the found notes, searches the project when needed and says in one sentence what was agreed.', 'About $0.10&ndash;0.20 per meeting hour of your Claude usage &middot; sends only the few lines around each reference and the matching notes');
+  if (S.mode === 'claude') {
+    h += '<div class="child"><div class="hint">Choosing this mode allows August to send the lines around each reference and the matching notes to Anthropic through your Claude account.</div>' +
+      '<div class="row"><span class="lbl">Model</span>' + selHtml('model', S.model, MODEL_LONG) + '</div></div>';
+  }
+  h += optHtml('always', 'Always-on Claude', '<span class="tag rd">EXPENSIVE</span>', 'Claude reads the whole meeting and decides itself when to show a hint. Catches references without trigger words.', 'About $1&ndash;2.50 per meeting hour &middot; the whole conversation is sent to Anthropic as it happens');
+  if (S.mode === 'always') {
+    h += '<div class="child"><div class="row"><span class="lbl">Model</span>' + selHtml('model', S.model, MODEL_LONG) + '</div>' +
+      '<div class="row"><span class="lbl">Spending limit per meeting</span>' +
+      selHtml('budget', S.budget, [['0.5', '$0.5'], ['1', '$1'], ['2', '$2 (default)'], ['3', '$3'], ['5', '$5'], ['10', '$10']]) + '</div>' +
+      '<div class="hint">At the limit the copilot switches to Claude explains for the rest of the meeting.</div></div>';
+  }
+  h += '</div>';
+  h += '<div class="hint">The copilot is off by default. You can switch modes during a meeting from the ASSISTANT panel.</div></div>';
+  document.getElementById('settings').innerHTML = h;
+}
+
+function renderModal() {
+  var m = document.getElementById('modal');
+  m.hidden = !S.modalOpen;
+  if (!S.modalOpen) { m.innerHTML = ''; return; }
+  m.innerHTML = '<div class="mcard" role="dialog" aria-modal="true" aria-labelledby="mt"><div class="mh" id="mt">Turn on Always-on Claude?</div>' +
+    '<p>Always-on Claude sends the whole conversation to Anthropic as it happens, through your Claude account. A one-hour meeting costs about $1&ndash;2.50 of your Claude usage; it stops at your limit of $' + esc(S.budget) + '.</p>' +
+    '<label class="chk"><input type="checkbox" id="mchk" data-act="mchk"' + (S.modalChk ? ' checked' : '') + '><span>I understand the whole conversation leaves this computer</span></label>' +
+    '<div class="mact"><button class="btn plain" data-act="mcancel">Cancel</button><button class="pb rf" id="mok" data-act="mok"' + (S.modalChk ? '' : ' disabled') + '>Turn on</button></div></div>';
+  var c = document.getElementById('mchk'); if (c) c.focus();
+}
+
+function sync() {
+  document.querySelectorAll('.seg button[data-act]').forEach(function (b) {
+    var p = b.getAttribute('data-act').split(':');
+    var cur = p[0] === 'mode' ? S.mode : S[p[0]];
+    b.setAttribute('aria-pressed', String(cur === p[1]));
+  });
+  document.documentElement.setAttribute('data-theme', S.theme);
+}
+
+function render() {
+  renderFrame(); renderCompact(); renderSettings(); renderModal(); sync();
+}
+
+function resetDis() { S.oldDis = false; }
+function setMode(m) {
+  if (m === S.mode) return;
+  if (m === 'always') { S.modalOpen = true; S.modalChk = false; return; }
+  S.mode = m; resetDis();
+}
+
+function onAct(a) {
+  var p = a.split(':'), k = p[0], v = p[1];
+  if (k === 'theme') S.theme = v;
+  else if (k === 'hint') { S.hint = v; resetDis(); S.open = true; }
+  else if (k === 'layout') {
+    S.layout = v;
+    if (v === 'compact') setTimeout(function () { document.getElementById('compact').scrollIntoView(); }, 0);
+  }
+  else if (k === 'mode') setMode(v);
+  else if (a === 'close') S.open = false;
+  else if (a === 'toggle' || a === 'badge') S.open = !S.open;
+  else if (a === 'badgeC') { S.layout = 'full'; S.open = true; setTimeout(function () { document.getElementById('live').scrollIntoView(); }, 0); }
+  else if (a === 'dismiss') S.hint = 'dismissed';
+  else if (a === 'dismissOld') S.oldDis = true;
+  else if (a === 'undo') S.hint = 'found';
+  else if (a === 'undoOld') S.oldDis = false;
+  else if (a === 'lines') S.showLines = !S.showLines;
+  else if (a === 'mcancel') S.modalOpen = false;
+  else if (a === 'mok') { if (S.modalChk) { S.mode = 'always'; S.modalOpen = false; resetDis(); } }
+}
+
+document.addEventListener('click', function (e) {
+  var el = e.target.closest ? e.target.closest('[data-act]') : null;
+  if (!el) {
+    if (e.target.id === 'modal') { S.modalOpen = false; renderModal(); }
+    return;
+  }
+  var a = el.getAttribute('data-act');
+  if (a === 'mchk') {
+    S.modalChk = el.checked;
+    var ok = document.getElementById('mok'); if (ok) ok.disabled = !S.modalChk;
+    return;
+  }
+  onAct(a); render();
+});
+document.addEventListener('change', function (e) {
+  var k = e.target.getAttribute && e.target.getAttribute('data-sel');
+  if (!k) return;
+  if (k === 'mode') setMode(e.target.value); else S[k] = e.target.value;
+  render();
+});
+document.addEventListener('keydown', function (e) {
+  if (e.key === 'Escape' && S.modalOpen) { S.modalOpen = false; renderModal(); return; }
+  if ((e.key === 'Enter' || e.key === ' ') && e.target && e.target.getAttribute && e.target.getAttribute('role') === 'radio') {
+    e.preventDefault(); onAct(e.target.getAttribute('data-act')); render();
+  }
+});
+(function () {
+  S.theme = window.matchMedia && matchMedia('(prefers-color-scheme: dark)').matches ? 'dark' : 'light';
+  render();
+})();
+</script>
+</body>
+</html>

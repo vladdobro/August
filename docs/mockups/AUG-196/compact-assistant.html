@@ -1,0 +1,613 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Compact Assistant</title>
+<style>
+:root {
+  --bg:#f2efe8; --surface:rgba(250,248,244,.92); --line:rgba(45,58,51,.25); --fg:#1e2b24; --muted:#566b5e;
+  --accent:#0d8c5c; --accent-light:rgba(13,140,92,.12); --pause:#d49a00; --danger:#d44040; --them:#9a7a1a;
+  --on-accent:#f2efe8; --body-bg:#e6e2d8; --glow:rgba(13,140,92,.18);
+  --mono:'Cascadia Code','Fira Code',Consolas,monospace;
+}
+@media (prefers-color-scheme: dark) { :root:not([data-theme="light"]) {
+  --bg:#0a110d; --surface:rgba(12,20,16,.92); --line:rgba(0,200,118,.18); --fg:#c0cec4; --muted:#5e7d6a;
+  --accent:#00c876; --accent-light:rgba(0,200,118,.10); --pause:#d4a020; --danger:#e05555; --them:#d4a843;
+  --on-accent:#0a110d; --body-bg:#0f1914; --glow:rgba(0,200,118,.3); color-scheme:dark; } }
+:root[data-theme="dark"] {
+  --bg:#0a110d; --surface:rgba(12,20,16,.92); --line:rgba(0,200,118,.18); --fg:#c0cec4; --muted:#5e7d6a;
+  --accent:#00c876; --accent-light:rgba(0,200,118,.10); --pause:#d4a020; --danger:#e05555; --them:#d4a843;
+  --on-accent:#0a110d; --body-bg:#0f1914; --glow:rgba(0,200,118,.3); color-scheme:dark; }
+
+* { box-sizing:border-box; border-radius:0; }
+[hidden] { display:none !important; }
+body { margin:0; background:var(--bg); color:var(--fg); font-family:var(--mono); font-size:13px; line-height:1.5;
+  padding:0 max(16px,env(safe-area-inset-left,0px)) 48px; overflow-x:hidden; }
+.wrap { max-width:1000px; margin:0 auto; display:grid; grid-template-columns:minmax(0,1fr); gap:28px; }
+.wrap > * { min-width:0; }
+header { padding-top:24px; }
+h1 { margin:0; font-size:20px; text-wrap:balance; }
+h2 { margin:0 0 10px; font-size:13px; letter-spacing:.08em; text-transform:uppercase; color:var(--accent); border-bottom:1px solid var(--line); padding-bottom:6px; }
+h3 { margin:0; font-size:14px; display:flex; flex-wrap:wrap; gap:8px; align-items:center; }
+.lead { margin:4px 0 0; color:var(--muted); max-width:80ch; }
+.note { margin:6px 0 0; font-size:11px; color:var(--muted); max-width:100ch; }
+button { font-family:var(--mono); cursor:pointer; }
+button:disabled, input:disabled { opacity:.4; cursor:not-allowed; }
+button:focus-visible, input:focus-visible { outline:2px solid var(--accent); outline-offset:2px; }
+
+.bar { position:sticky; top:0; z-index:20; background:var(--bg); border-bottom:1px solid var(--line); padding:10px 0; display:flex; flex-wrap:wrap; gap:10px 16px; align-items:center; }
+.grp { display:flex; align-items:center; gap:6px; flex-wrap:wrap; }
+.grp > span { font-size:10px; text-transform:uppercase; letter-spacing:.06em; color:var(--muted); }
+.seg { display:flex; border:1px solid var(--line); flex-wrap:wrap; }
+.seg button { border:0; background:transparent; color:var(--fg); font-size:11px; padding:6px 10px; }
+.seg button[aria-pressed="true"] { background:var(--accent); color:var(--on-accent); }
+.cb { font-size:10px; text-transform:uppercase; letter-spacing:.05em; padding:5px 8px; border:1px solid var(--line); background:transparent; color:var(--fg); white-space:nowrap; }
+.cb:hover { border-color:var(--accent); color:var(--accent); }
+
+/* option cards */
+.opt { border:1px solid var(--line); padding:14px; margin-top:16px; background:var(--surface); }
+.opt.picked { border-color:var(--accent); box-shadow:inset 3px 0 0 var(--accent); }
+.oh { display:flex; flex-wrap:wrap; justify-content:space-between; gap:8px; align-items:center; }
+.desc { margin:6px 0 4px; max-width:90ch; }
+.pc { margin:2px 0 10px; font-size:11px; color:var(--muted); max-width:110ch; }
+.pc b { letter-spacing:.06em; margin-right:4px; }
+.pc .pro { color:var(--accent); } .pc .con { color:var(--danger); margin-left:8px; }
+.pickb { font-size:11px; padding:4px 10px; background:transparent; border:1px solid var(--accent); color:var(--accent); white-space:nowrap; }
+.pickb:hover { background:var(--accent-light); }
+.pickb.b-solid { background:var(--accent); color:var(--on-accent); }
+.hscroll { overflow-x:auto; }
+.desk { display:flex; gap:0; padding:12px; border:1px solid var(--line); background:var(--body-bg);
+  background-image:linear-gradient(rgba(128,128,128,.07) 1px,transparent 1px),linear-gradient(90deg,rgba(128,128,128,.07) 1px,transparent 1px); background-size:40px 40px; }
+.fake { flex:1; min-width:0; padding:8px 14px; color:var(--muted); font-size:11px; }
+.fake div { border:1px solid var(--line); height:46px; margin-bottom:10px; background:var(--surface); padding:4px 8px; }
+.fake div:nth-child(2) { height:90px; } .fake div:nth-child(4) { height:130px; }
+.win { display:flex; flex:none; border:1px dashed var(--muted); }
+.winlab { font-size:10px; color:var(--muted); text-align:right; margin-bottom:4px; }
+.tag { font:700 9px var(--mono); letter-spacing:.06em; padding:0 4px; border:1px solid var(--accent); color:var(--accent); white-space:nowrap; text-transform:uppercase; }
+.tag.y { border-color:var(--pause); color:var(--pause); }
+.tag.px { background:var(--accent); color:var(--on-accent); }
+
+/* shared widget controls (from AUG-178) */
+.b { position:relative; flex:none; padding:2px 6px; font:700 10px var(--mono); letter-spacing:.06em; text-transform:uppercase; color:var(--fg); background:transparent; border:1px solid var(--line); white-space:nowrap; user-select:none; -webkit-user-select:none; }
+.b:hover:not(:disabled) { color:var(--accent); border-color:var(--accent); }
+.b.ic { border-color:transparent; padding:1px 5px; font-size:11px; }
+.b.ic:hover:not(:disabled) { border-color:var(--accent); }
+.b.ic.on { color:var(--accent); border-color:var(--accent); }
+.b-sm { font-size:9px; padding:1px 5px; }
+.b-green { color:var(--accent); border-color:var(--accent); }
+.b-solid { color:var(--on-accent); background:var(--accent); border-color:var(--accent); }
+.b-solid:hover:not(:disabled) { color:var(--on-accent); background:var(--accent); opacity:.85; }
+.b-red { color:var(--danger); border-color:var(--danger); }
+.b-red:hover:not(:disabled) { color:var(--danger); border-color:var(--danger); background:color-mix(in srgb,var(--danger) 12%,transparent); }
+.b-pause { color:var(--pause); border-color:var(--pause); }
+.b-pause:hover:not(:disabled) { color:var(--pause); border-color:var(--pause); background:color-mix(in srgb,var(--pause) 14%,transparent); }
+.b-end { color:#fff; background:var(--danger); border-color:var(--danger); }
+.b-end:hover:not(:disabled) { color:#fff; border-color:var(--danger); }
+.rec { width:8px; height:8px; background:var(--danger); flex:none; animation:pulse 1.4s ease-in-out infinite; display:inline-block; }
+@keyframes pulse { 50% { opacity:.35; } }
+.tm { font:700 13px var(--mono); color:var(--fg); font-variant-numeric:tabular-nums; }
+.tg { font:700 10px var(--mono); letter-spacing:.08em; text-transform:uppercase; color:var(--muted); white-space:nowrap; }
+.tg.ok { color:var(--accent); }
+.sp { flex:1; }
+.ln { flex:none; padding-left:8px; border-left:3px solid var(--accent); font:13px/1.4 system-ui,-apple-system,"Segoe UI",sans-serif; color:var(--fg); opacity:.45; }
+.ln.them { border-left-color:var(--them); }
+.ln:nth-last-child(3) { opacity:.6; } .ln:nth-last-child(2) { opacity:.8; } .ln:last-child { opacity:1; font-weight:500; }
+.ah { display:flex; align-items:center; gap:6px; padding:4px 8px; font:700 10px var(--mono); letter-spacing:.08em; text-transform:uppercase; color:var(--muted); flex:none; }
+.ah .c { color:var(--accent); }
+.its { display:flex; flex-direction:column; overflow-y:auto; min-height:0; padding:0 8px 4px; gap:2px; }
+.it { display:flex; align-items:center; gap:6px; font:11px system-ui,-apple-system,"Segoe UI",sans-serif; padding:2px 0; }
+.it .t { flex:1; min-width:0; overflow:hidden; text-overflow:ellipsis; white-space:nowrap; }
+.it .o { color:var(--muted); font:9px var(--mono); text-transform:uppercase; }
+
+/* Dock Strip */
+.dock { background:var(--bg); border:1px solid var(--line); color:var(--fg); }
+.strip { width:340px; height:600px; display:flex; flex-direction:column; flex:none; }
+.sh { flex:none; display:flex; align-items:center; gap:8px; height:24px; padding:0 6px 0 8px; border-bottom:1px solid var(--line); }
+.stl { flex:none; display:flex; flex-wrap:wrap; gap:6px; align-items:center; min-height:24px; padding:3px 8px; border-bottom:1px solid var(--line); }
+.sbw { position:relative; flex:1; min-height:0; display:flex; }
+.sbody { flex:1; min-height:0; overflow-y:auto; padding:8px 10px; display:flex; flex-direction:column; gap:8px; justify-content:flex-end; }
+.sact { flex:0 1 auto; max-height:33%; min-height:0; display:flex; flex-direction:column; border-top:1px solid var(--line); overflow:hidden; }
+.sfoot { flex:none; display:flex; height:32px; gap:6px; padding:4px 8px; border-top:1px solid var(--line); }
+.sfoot .b { flex:1 1 auto; min-width:0; font-size:11px; padding-left:4px; padding-right:4px; }
+.pg { display:inline-flex; align-items:center; gap:2px; color:var(--fg); }
+.drawer { width:320px; height:600px; display:flex; flex-direction:column; flex:none; border-right:0; }
+.tabs { flex:none; display:flex; border-bottom:1px solid var(--line); }
+.tab { border:0; border-bottom:2px solid transparent; background:transparent; color:var(--muted); font:700 10px var(--mono); letter-spacing:.08em; padding:5px 12px; }
+.tab.on { color:var(--accent); border-bottom-color:var(--accent); }
+.tab.flash { outline:2px solid var(--pause); outline-offset:-2px; animation:fo 1.4s ease-out 1 forwards; }
+@keyframes fo { to { outline-color:transparent; } }
+.avw { flex:1; min-height:0; display:flex; flex-direction:column; }
+
+/* assistant pieces (dock + ghost) */
+.hc { flex:none; border:1px solid var(--line); border-left:3px solid var(--pause); background:var(--surface); padding:6px 8px; font:11px/1.4 system-ui,-apple-system,"Segoe UI",sans-serif; }
+.hc .hm { display:flex; flex-wrap:wrap; gap:2px 6px; align-items:baseline; font:10px var(--mono); color:var(--muted); margin-bottom:2px; }
+.hc .hm b { color:var(--fg); word-break:break-all; }
+.hc .hbig { margin:2px 0; color:var(--fg); }
+.hc .hsrc { font:10px var(--mono); color:var(--muted); margin:2px 0; word-break:break-word; }
+.hc .sn { margin:1px 0; }
+.hc .hnote { font:10px var(--mono); color:var(--accent); margin-top:3px; }
+.hc .hacts { display:flex; flex-wrap:wrap; gap:4px; margin-top:5px; }
+.asc { flex:1 1 auto; min-height:0; overflow-y:auto; padding:6px 8px; display:flex; flex-direction:column; gap:6px; scrollbar-width:thin; }
+.sec { flex:none; font:700 9px var(--mono); letter-spacing:.1em; color:var(--muted); text-transform:uppercase; }
+.emp { flex:none; border:1px dashed var(--line); padding:8px; color:var(--muted); font:10px/1.4 var(--mono); text-align:center; }
+.emp.warn { border-color:var(--pause); color:var(--pause); }
+.q { flex:none; font:11px/1.4 system-ui,-apple-system,"Segoe UI",sans-serif; color:var(--muted); padding:2px 0; }
+.q .who { font:700 9px var(--mono); letter-spacing:.06em; margin-right:6px; }
+.an { flex:none; border-left:3px solid var(--accent); padding:3px 0 3px 8px; font:11px/1.45 system-ui,-apple-system,"Segoe UI",sans-serif; color:var(--fg); background:var(--accent-light); }
+.aacts { display:flex; flex-wrap:wrap; gap:4px; margin-top:4px; }
+.caret { display:inline-block; width:7px; height:12px; background:var(--accent); vertical-align:text-bottom; margin-left:2px; animation:bl 1s steps(1) infinite; }
+@keyframes bl { 50% { opacity:0; } }
+.ask { flex:none; display:flex; gap:4px; padding:6px 8px; border-top:1px solid var(--line); }
+.ask input, .askr input { flex:1; min-width:0; font:11px var(--mono); background:transparent; border:1px solid var(--line); color:var(--fg); padding:3px 6px; }
+.sessn { flex:none; padding:6px 8px; border-top:1px solid var(--pause); color:var(--pause); font:10px/1.4 var(--mono); }
+
+/* Dock Square */
+.square { width:180px; height:180px; display:flex; flex-direction:column; }
+.sqt { flex:none; display:flex; align-items:center; gap:4px; height:24px; padding:0 4px 0 8px; }
+.sqt .tg { flex:1; min-width:0; overflow:hidden; text-overflow:ellipsis; font-size:9px; }
+.sqm { flex:1; min-height:0; display:flex; flex-direction:column; align-items:center; justify-content:center; gap:6px; }
+.sqtm { font:700 28px var(--mono); font-variant-numeric:tabular-nums; }
+.sqr { display:flex; gap:6px; align-items:center; }
+.bars { flex:none; display:flex; align-items:flex-end; gap:2px; height:28px; padding:0 10px 6px; }
+.bars i { flex:1; background:var(--accent); height:100%; transform-origin:bottom; animation:bar .8s ease-in-out infinite alternate; }
+@keyframes bar { from { transform:scaleY(.12); } to { transform:scaleY(1); } }
+.sqend { flex:none; width:100%; height:30px; border:0; border-top:1px solid var(--danger); color:var(--danger); font-size:11px; letter-spacing:.1em; }
+
+/* Ghost */
+.screen { padding:16px; overflow:auto; display:flex; flex-wrap:wrap; gap:28px; align-items:flex-start; border:1px solid var(--line); }
+.screen.dark { background:linear-gradient(rgba(255,255,255,.035) 1px,transparent 1px),linear-gradient(90deg,rgba(255,255,255,.035) 1px,transparent 1px),linear-gradient(135deg,#17332b,#0e1b2b); background-size:40px 40px,40px 40px,100% 100%; }
+.lab { font-size:10px; color:#a9c2b3; margin-bottom:8px; text-transform:uppercase; letter-spacing:.06em; }
+.gx { --fg:#c0cec4; --muted:#5e7d6a; --line:rgba(0,200,118,.3); --accent:#00c876; --accent-light:rgba(0,200,118,.12); --danger:#e05555; --pause:#d4a020; --them:#d4a843; --bg:#0a110d; --on-accent:#0a110d;
+  color:var(--fg); font-family:var(--mono); }
+.gx .b { background:rgba(6,11,8,.6); border-color:rgba(0,200,118,.3); padding:1px 5px; }
+.gx .b.ic { border-color:rgba(0,200,118,.3); }
+.gx .b-red { border-color:var(--danger); } .gx .b-green { border-color:var(--accent); } .gx .b-pause { border-color:var(--pause); }
+.gx .b-solid { background:var(--accent); } .gx .b-end { background:rgba(6,11,8,.6); color:var(--danger); border-color:var(--danger); }
+.gx .tm { color:#e8f0ea; }
+.gx .ln { color:#e8f0ea; }
+.gx .hc { background:rgba(6,11,8,.55); color:#e8f0ea; }
+.gx .hc .hbig, .gx .hc .hm b { color:#e8f0ea; }
+.gx .an { color:#e8f0ea; }
+.gx .q { color:#8fa89a; }
+.gx .ask input, .gx .askr input { border-color:rgba(0,200,118,.3); color:#e8f0ea; }
+.gx .ask { border-top-color:rgba(0,200,118,.18); }
+.call { position:relative; min-width:800px; overflow:hidden; background:linear-gradient(135deg,#17202a,#0e1318); border:1px solid var(--line); }
+.tiles { position:absolute; inset:0; display:grid; grid-template-columns:1fr 1fr; grid-template-rows:1fr 1fr; gap:6px; padding:6px; opacity:.55; }
+.tile { background:linear-gradient(160deg,#243241,#18222c); position:relative; }
+.tile i { position:absolute; left:50%; top:42%; width:54px; height:54px; transform:translate(-50%,-50%); background:#33485c; }
+.tile span { position:absolute; left:8px; bottom:6px; font:10px var(--mono); color:#9fb3c4; }
+.capwrap { position:absolute; left:50%; bottom:14px; transform:translateX(-50%); width:760px; }
+.cap { display:flex; background:rgba(6,11,8,.78); backdrop-filter:blur(6px); border:1px solid rgba(0,200,118,.35); overflow:hidden; }
+.cap-l { width:104px; flex:none; display:flex; flex-direction:column; gap:5px; padding:8px; border-right:1px solid rgba(0,200,118,.18); }
+.r1 { display:flex; align-items:center; gap:6px; }
+.cap-l .tg { color:var(--accent); font-size:9px; }
+.gt { display:none; grid-template-columns:repeat(3,1fr); gap:4px; }
+.gt .b { padding:1px 0; text-align:center; font-size:9px; }
+.cap:hover .gt { display:grid; }
+.cap-m { flex:1; min-width:0; display:flex; flex-direction:column; }
+.tbar { display:none; flex:none; align-items:center; gap:4px; padding:5px 8px 3px; white-space:nowrap; overflow:hidden; }
+.cap.tools .tbar { display:flex; }
+.tbar .b { font-size:9px; padding:1px 3px; letter-spacing:.02em; }
+.tbar .g { display:inline-flex; gap:3px; align-items:center; }
+.tbar .v { font:700 9px var(--mono); color:#e8f0ea; min-width:16px; text-align:center; }
+.tbar .sep { width:1px; height:12px; background:rgba(0,200,118,.3); }
+.cap-lines { flex:1; min-height:0; display:flex; flex-direction:column; justify-content:flex-end; gap:4px; padding:4px 12px 8px; overflow:hidden; font-size:14px;
+  -webkit-mask-image:linear-gradient(to bottom,transparent 0,#000 12px); mask-image:linear-gradient(to bottom,transparent 0,#000 12px); }
+.cap-lines .ln { line-height:1.3; }
+.hl, .al { flex:none; display:flex; align-items:flex-start; gap:4px; margin:6px 8px 0; padding:1px 4px 1px 6px; font:12px/1.35 system-ui,-apple-system,"Segoe UI",sans-serif; color:#e8f0ea; }
+.hl { border-left:3px solid var(--pause); background:rgba(212,160,32,.14); align-items:center; min-height:22px; }
+.hl.muted { border-left-color:var(--muted); background:rgba(94,125,106,.14); color:#8fa89a; }
+.al { border-left:3px solid var(--accent); background:rgba(0,200,118,.12); margin-top:4px; }
+.hl .t, .al .t { flex:1; min-width:0; }
+.hl .t { white-space:nowrap; overflow:hidden; text-overflow:ellipsis; }
+.al .t { display:-webkit-box; -webkit-line-clamp:2; -webkit-box-orient:vertical; overflow:hidden; }
+.al .aacts { margin:0; flex:none; flex-direction:column; }
+.askr { flex:none; display:flex; align-items:center; gap:4px; padding:5px 8px 3px; }
+.askr .sessn { border:0; padding:0; flex:1; }
+.cap-b2 { width:280px; flex:none; display:flex; flex-direction:column; min-height:0; border-left:1px solid rgba(0,200,118,.18); }
+.cap-tab { width:34px; flex:none; display:flex; flex-direction:column; align-items:center; gap:6px; padding-top:6px; border-left:1px solid rgba(0,200,118,.18); font:700 10px var(--mono); color:var(--pause); }
+.fcard { position:absolute; right:0; bottom:calc(100% + 8px); width:340px; max-height:260px; display:flex; flex-direction:column; background:rgba(6,11,8,.88); backdrop-filter:blur(6px); border:1px solid rgba(0,200,118,.35); overflow:hidden; }
+.fbar { flex:none; height:2px; background:var(--pause); transform-origin:left; animation:shr 20s linear 1 forwards; }
+@keyframes shr { from { transform:scaleX(1); } to { transform:scaleX(0); } }
+.fchip { position:absolute; right:0; bottom:calc(100% + 8px); }
+.fchip .b { font-size:10px; padding:2px 8px; background:rgba(6,11,8,.85); }
+.dot { display:inline-block; width:6px; height:6px; background:var(--pause); margin-right:4px; }
+.coin { display:flex; height:56px; background:rgba(6,11,8,.85); border:1px solid rgba(0,200,118,.5); }
+.coin-f { width:54px; flex:none; display:flex; flex-direction:column; align-items:center; justify-content:center; gap:3px; }
+.coin-f .tm { font-size:11px; }
+.coin .cnt { padding:0 3px; font-size:8px; }
+.coin-a { flex:1; min-width:0; display:flex; align-items:center; justify-content:center; gap:4px; padding:0 4px; }
+.coin-a .b { font-size:9px; padding:1px 3px; }
+
+#toast { position:fixed; left:50%; bottom:20px; transform:translateX(-50%); z-index:50; background:var(--accent); color:var(--on-accent); font:700 11px var(--mono); padding:6px 12px; max-width:90vw; opacity:0; pointer-events:none; transition:opacity .15s; }
+#toast.show { opacity:1; }
+.dec { border:1px solid var(--line); background:var(--surface); padding:14px; }
+.dec p { margin:4px 0; max-width:90ch; }
+</style>
+</head>
+<body>
+<div class="wrap">
+<header>
+  <h1>Compact Assistant &mdash; AUG-196</h1>
+  <p class="lead">A usable assistant inside Compact Mode: see the newest copilot hint and act on it (Open route, Ask, Dismiss), and ask the Claude session a question with the streamed answer shown, without leaving the compact widget. Three options per transcript widget; pick one per variant. Every frame is live: use Ask, type a question and press Enter, dismiss a hint.</p>
+</header>
+
+<div class="bar">
+  <div class="grp"><span>Theme</span><div class="seg"><button data-act="theme:light">Light</button><button data-act="theme:dark">Dark</button></div></div>
+  <div class="grp"><span>Variant</span><div class="seg"><button data-act="variant:A">A Dock</button><button data-act="variant:B">B Ghost</button></div></div>
+  <div class="grp"><span>Hint state</span><div class="seg"><button data-act="hint:new">New hint</button><button data-act="hint:explained">Explained</button><button data-act="hint:none">No hints</button><button data-act="hint:praxis">PraxisOS off</button><button data-act="hint:session">Session off</button></div></div>
+  <div class="grp"><button class="cb" data-act="replay">Replay answer</button></div>
+</div>
+
+<section id="secA">
+  <h2>Variant A &mdash; Dock</h2>
+  <p class="note">The Dock follows the app theme. Every Dock Strip is 340 &times; 600 on a mock desktop. Clicking a hint state button again replays the &ldquo;new hint arrived&rdquo; event (A2 tab flash, B3 card). Dock Square is shared by all three.</p>
+  <div id="bodyA"></div>
+</section>
+
+<section id="secB" hidden>
+  <h2>Variant B &mdash; Ghost</h2>
+  <p class="note">Ghost widgets are translucent and always dark, over a dim fake video call. Every Ghost Caption is 760 wide, docked bottom. The tools row is shown permanently here (hover-only in the product); hover the caption to see the left-column tool grid. Ghost Coin is shared by all three.</p>
+  <div id="bodyB"></div>
+</section>
+
+<section>
+  <h2>Decision</h2>
+  <div class="dec">
+    <p><b>Pick one Dock option (A1/A2/A3) and one Ghost option (B1/B2/B3).</b></p>
+    <p><span class="tag px">RECOMMENDED</span> <b>A1</b> &mdash; keeps the transcript visible and reuses the action-items block pattern.</p>
+    <p><span class="tag px">RECOMMENDED</span> <b>B3</b> &mdash; keeps the caption at its size and click-through behaviour.</p>
+    <p class="note" id="picks"></p>
+    <p class="note">The pick buttons only highlight; the real decision is taken in chat. No model names, prices or token counts appear in any compact widget.</p>
+  </div>
+</section>
+</div>
+<div id="toast" role="status"></div>
+
+<script>
+(function () {
+  var ROUTE = 'support/csm-group-tickets';
+  var EXPL = 'В прошлый раз решили: CSM эскалирует в L2 кнопкой «Тикет в L2» (CRM-207), но пока только в CSM-группах, не в live-чатах.';
+  var Q0 = 'Есть задача на кнопку в live-чатах?';
+  var ANS = 'Нет, отдельной задачи нет. Могу создать карточку в squarefi-crm — «Кнопка «Тикет в L2» в live-чатах CSM».';
+  var NW = ANS.split(' ').length;
+  var TX = [
+    ['Them', 'Давай по эскалациям, что сейчас у CSM?'],
+    ['Me', 'В CSM-группах кнопка уже есть, тикет создаётся сразу.'],
+    ['Them', 'И более того, мы в прошлый раз обсуждали, что у CSM из их live-чатов тоже должна быть кнопка «Эскалировать тикет в L2».'],
+    ['Me', 'Да, это есть в макете.']
+  ];
+  var S = {
+    theme: (window.matchMedia && matchMedia('(prefers-color-scheme: dark)').matches) ? 'dark' : 'light',
+    variant: 'A', hint: 'explained', dismissed: {}, opened: {},
+    chat: [{ q: Q0, n: NW, done: true }],
+    draft: {}, picks: { a: null, b: null }, sec: 1061, focus: null, streaming: false, iv: 0,
+    a1: { open: true, page: 0 }, a2: { tab: 'text', flash: false }, a3: { open: true },
+    b1: { ask: false, pin: false }, b2: { open: true },
+    b3: { card: 'open', touched: false, t0: Date.now(), timer: 0 }
+  };
+
+  function $(id) { return document.getElementById(id); }
+  function esc(t) { return String(t).replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;').replace(/"/g, '&quot;'); }
+  function p2(n) { return (n < 10 ? '0' : '') + n; }
+  function fmt() { var s = S.sec; return p2(Math.floor(s / 3600)) + ':' + p2(Math.floor(s / 60) % 60) + ':' + p2(s % 60); }
+  function btn(act, cls, label, title) {
+    return '<button class="b ' + cls + '" data-act="' + act + '"' + (title ? ' title="' + title + '"' : '') + '>' + label + '</button>';
+  }
+
+  /* ---------- data ---------- */
+  function hints() {
+    if (S.hint === 'none' || S.hint === 'praxis') return [];
+    var l = [
+      { id: 'h1', time: '00:17:34', route: ROUTE, explained: S.hint === 'explained', isNew: S.hint === 'new',
+        snips: ['L18: CSM escalates to L2 with the «Ticket» button in the composer or ⬆ «Тикет в L2» (CRM-207).', 'L19: Applies to CSM groups; live chats are not covered yet.'] },
+      { id: 'h2', time: '00:09:52', route: 'support/sla-timers', explained: false, isNew: false,
+        snips: ['L7: The L2 response timer starts at the first L2 comment in the ticket (CRM-244).', 'L8: Escalation itself does not reset the SLA clock.'] }
+    ];
+    return l.filter(function (h) { return !S.dismissed[h.id]; });
+  }
+  function nHints() { return hints().length; }
+
+  /* ---------- shared assistant pieces ---------- */
+  function hintEmpty() {
+    if (S.hint === 'praxis') return '<div class="emp warn">PraxisOS is not running. Hints are paused; they resume when it starts.</div>';
+    if (S.hint === 'none') return '<div class="emp">Listening for references to past agreements.</div>';
+    return '<div class="emp">All hints dismissed.</div>';
+  }
+  function hintCard(h, key) {
+    var m = '<div class="hm"><span>' + h.time + '</span>' + (h.explained ? '<span class="tag">Explained</span>' : (h.isNew ? '<span class="tag y">New</span>' : '')) + (h.explained ? '' : '<b>' + h.route + '</b>') + '</div>';
+    var body;
+    if (h.explained) body = '<div class="hbig">' + esc(EXPL) + '</div><div class="hsrc">Source: ' + h.route + ' · CRM-207</div>';
+    else {
+      body = '<div class="sn">' + esc(h.snips[0]) + '</div><div class="sn">' + esc(h.snips[1]) + '</div>';
+      if (S.hint === 'session' && h.id === 'h1') body += '<div class="hsrc">Shown without explanation — Claude is off.</div>';
+    }
+    var note = S.opened[h.id] ? '<div class="hnote">↗ opens ' + h.route + ' in August (mockup: no navigation)</div>' : '';
+    return '<div class="hc">' + m + body + note + '<div class="hacts">' +
+      btn('open:' + h.id, 'b-green b-sm', 'Open route') + btn('ask:' + key, 'b-pause b-sm', 'Ask') + btn('dismiss:' + h.id, 'b-sm ic', 'Dismiss') + '</div></div>';
+  }
+  function chatHtml(list) {
+    return list.map(function (c) {
+      var text = ANS.split(' ').slice(0, c.n).join(' ');
+      return '<div class="q"><span class="who">YOU</span>' + esc(c.q) + '</div><div class="an">' + esc(text) + (c.done ? '' : '<span class="caret"></span>') +
+        (c.done ? '<div class="aacts">' + btn('toast:Creates a Praxis task draft in squarefi-crm (mockup)', 'b-green b-sm', '→ Praxis task') + btn('toast:Adds an action item (mockup)', 'b-sm', '→ Action item') + '</div>' : '') + '</div>';
+    }).join('');
+  }
+  function inputRow(key) {
+    if (S.hint === 'session') return '<div class="sessn">Ask needs Claude: choose Claude explains or turn on the Active session in Settings.</div>';
+    return '<div class="ask"><input data-in="' + key + '" placeholder="Ask…" autocomplete="off" value="' + esc(S.draft[key] || '') + '">' + btn('send:' + key, 'b-solid', '↵', 'Send') + '</div>';
+  }
+  function asstBody(key, nh, nq, labels) {
+    var hs = hints(), h = '';
+    if (labels) h += '<div class="sec">Hints</div>';
+    if (!hs.length) h += hintEmpty();
+    else hs.slice(0, nh || hs.length).forEach(function (x) { h += hintCard(x, key); });
+    var ch = nq ? S.chat.slice(-nq) : S.chat;
+    if (ch.length) { if (labels) h += '<div class="sec">Session chat</div>'; h += chatHtml(ch); }
+    return '<div class="asc" data-sc="' + key + '" data-stick>' + h + '</div>' + inputRow(key);
+  }
+
+  /* ---------- Dock ---------- */
+  function lines() {
+    return TX.map(function (l) { return '<div class="ln' + (l[0] === 'Them' ? ' them' : '') + '"><b style="font-size:.8em;opacity:.7">' + l[0] + ':</b> ' + esc(l[1]) + '</div>'; }).join('');
+  }
+  function actionBlock() {
+    return '<div class="sact"><div class="ah"><span>Action items</span><span class="c">2</span><span class="sp"></span>' +
+      btn('toast:Adds an action item (mockup)', 'b-sm', '+ ADD') + btn('toast:Opens August with Send to Praxis (mockup)', 'b-sm b-green', '→ PRAXIS') + '</div>' +
+      '<div class="its"><div class="it"><span class="t">Добавить кнопку эскалации в L2 для live-чатов CSM</span><span class="o">Them</span>' + btn('toast:Send to Praxis (mockup)', 'b-sm ic', '→') + btn('toast:Delete (mockup)', 'b-sm ic', '×') + '</div>' +
+      '<div class="it"><span class="t">Показать макет кнопки «Тикет в L2» на следующей встрече</span><span class="o">Me</span>' + btn('toast:Send to Praxis (mockup)', 'b-sm ic', '→') + btn('toast:Delete (mockup)', 'b-sm ic', '×') + '</div></div></div>';
+  }
+  function stripHead(extra) {
+    return '<div class="sh"><i class="rec"></i><span class="tm" data-timer>' + fmt() + '</span><span class="tg ok">LIVE</span><span class="sp"></span>' + (extra || '') +
+      btn('toast:Switches to Dock Square', 'ic', '⇄', 'Switch to Dock Square') + btn('toast:Expands to the full window', 'ic', '⤢', 'Expand to full window') + '</div>';
+  }
+  function toolRow() {
+    return '<div class="stl">' + btn('toast:Copied', '', 'COPY ALL') + btn('toast:Copied and cleared', 'b-green', 'COPY &amp; CLEAR') + btn('toast:Clear (mockup)', 'b-red', 'CLEAR') + btn('toast:Hold 1.5 s to stop live text (mockup)', 'b-red', 'STOP LIVE TEXT', 'Hold 1.5 s to stop live text') + '</div>';
+  }
+  function foot() {
+    return '<div class="sfoot">' + btn('toast:Pause (mockup)', 'b-pause', 'PAUSE') + btn('toast:Mute (mockup)', '', 'MUTE') + btn('toast:Hold 1.5 s to end the meeting (mockup)', 'b-end', 'END MEETING', 'Hold 1.5 s to end meeting') + '</div>';
+  }
+  function transcript() { return '<div class="sbw"><div class="sbody">' + lines() + '</div></div>'; }
+
+  function stripA1() {
+    var hs = hints(), n = hs.length, pg = Math.min(S.a1.page, Math.max(0, n - 1)), o = S.a1.open;
+    var head = '<div class="ah"><span>Assistant</span><span>·</span><span class="c">CTX ' + n + '</span><span class="sp"></span>' +
+      (n > 1 ? '<span class="pg">' + btn('a1prev', 'b-sm ic', '‹') + (pg + 1) + '/' + n + btn('a1next', 'b-sm ic', '›') + '</span>' : '') +
+      btn('a1toggle', 'b-sm ic', o ? '▾' : '▸', o ? 'Collapse' : 'Expand') + '</div>';
+    var inner = '';
+    if (o) {
+      var c = S.chat.slice(-1);
+      inner = '<div class="asc" data-sc="a1" data-stick>' + (hs[pg] ? hintCard(hs[pg], 'a1') : hintEmpty()) + (c.length ? chatHtml(c) : '') + '</div>' + inputRow('a1');
+    }
+    return '<div class="dock strip">' + stripHead() + toolRow() + transcript() + '<div class="sact" style="border-top:1px solid var(--pause)">' + head + inner + '</div>' + actionBlock() + foot() + '</div>';
+  }
+  function stripA2() {
+    var n = nHints(), on = S.a2.tab === 'assist';
+    var tabs = '<div class="tabs"><button class="tab' + (on ? '' : ' on') + '" data-act="a2tab:text">TEXT</button><button class="tab' + (on ? ' on' : '') + (S.a2.flash && !on ? ' flash' : '') + '" data-act="a2tab:assist">ASSIST · ' + n + '</button></div>';
+    var mid = on ? '<div class="avw">' + asstBody('a2', 0, 0, true) + '</div>' : toolRow() + transcript() + actionBlock();
+    return '<div class="dock strip">' + stripHead() + tabs + mid + foot() + '</div>';
+  }
+  function stripA3() {
+    var strip = '<div class="dock strip">' + stripHead(btn('a3toggle', 'ic' + (S.a3.open ? ' on' : ''), '◧', 'Assistant drawer')) + toolRow() + transcript() + actionBlock() + foot() + '</div>';
+    if (!S.a3.open) return { w: 340, html: strip };
+    var d = '<div class="dock drawer"><div class="sh"><span class="tg ok">Assistant</span><span>·</span><span class="tg" style="color:var(--accent)">CTX ' + nHints() + '</span><span class="sp"></span>' + btn('a3toggle', 'ic', '×', 'Close drawer') + '</div>' + asstBody('a3', 0, 0, true) + '</div>';
+    return { w: 660, html: d + strip };
+  }
+  function deskFrame(win, w, minw) {
+    return '<div class="hscroll"><div style="min-width:' + minw + 'px"><div class="winlab">window ' + w + ' px' + (w === 660 ? ' — the shell grows the window from 340 to 660 px' : '') + '</div><div class="desk"><div class="fake"><div>other app</div><div></div><div></div><div></div></div><div class="win">' + win + '</div></div></div></div>';
+  }
+  function square() {
+    var n = nHints(), bars = '', i;
+    for (i = 0; i < 12; i++) bars += '<i style="animation-duration:' + (0.55 + ((i * 37) % 50) / 100) + 's;animation-delay:-' + ((i * 13) % 40) / 100 + 's"></i>';
+    return '<div class="dock square"><div class="sqt"><i class="rec"></i><span class="tg ok">MIC + SYS</span>' + btn('toast:Pause (mockup)', 'ic', '❚❚') + btn('toast:Expands to the full window', 'ic', '⤢') + '</div>' +
+      '<div class="sqm"><div class="sqtm" data-timer>' + fmt() + '</div><div class="sqr">' + btn('toast:Switches to Dock Strip', 'b-sm', '▤ 4 ⇄') + (n > 0 ? btn('sqctx', 'b-sm b-green', 'CTX ' + n, 'Open the assistant in Dock Strip') : '') + '</div></div>' +
+      '<div class="bars">' + bars + '</div>' + btn('toast:Hold 1.5 s to end the meeting (mockup)', 'b-end sqend', 'END MEETING') + '</div>';
+  }
+
+  /* ---------- Ghost ---------- */
+  function capLeft() {
+    return '<div class="cap-l"><div class="r1"><i class="rec"></i><span class="tm" data-timer>' + fmt() + '</span></div><span class="tg">LIVE</span><div class="gt">' +
+      btn('toast:Expands to the full window', 'ic', '⤢') + btn('toast:Switches to Ghost Coin', 'ic', '⇄') + btn('toast:Pause (mockup)', 'ic', '❚❚') +
+      btn('toast:Mute (mockup)', 'ic', 'MIC') + btn('toast:Stop live text (mockup)', 'b-red', '▤×') + btn('toast:End meeting (mockup)', 'b-end', '■') + '</div></div>';
+  }
+  function tools() {
+    return '<div class="tbar"><span class="g">' + btn('toast:Copied', '', 'COPY ALL') + btn('toast:Copied and cleared', 'b-green', 'COPY &amp; CLEAR') + btn('toast:Clear (mockup)', 'b-red', 'CLEAR') + '</span><span class="sep"></span>' +
+      '<span class="g">' + btn('toast:Smaller text', '', 'A−') + '<span class="v">14</span>' + btn('toast:Larger text', '', 'A+') + '</span><span class="sep"></span>' + btn('toast:Background opacity', '', '◐ 78%') + '</div>';
+  }
+  function capLines() { return '<div class="cap-lines">' + lines() + '</div>'; }
+  function b1Hint() {
+    if (S.hint === 'praxis') return '<div class="hl muted"><span class="t">PraxisOS is not running — hints paused</span></div>';
+    var hs = hints(); if (!hs.length) return '';
+    var h = hs[0], t = h.explained ? EXPL : h.route + ' — ' + h.snips[0];
+    return '<div class="hl"><span class="t" title="' + esc(t) + '">' + esc(t) + '</span>' + btn('open:' + h.id, 'b-green b-sm', 'OPEN') + btn('ask:b1', 'b-pause b-sm', 'ASK') + btn('dismiss:' + h.id, 'b-sm', '×', 'Dismiss') + '</div>' +
+      (S.opened[h.id] ? '<div class="hl muted" style="margin-top:2px"><span class="t">↗ opens ' + h.route + ' in August (mockup: no navigation)</span></div>' : '');
+  }
+  function b1Ans() {
+    var c = S.chat[S.chat.length - 1]; if (!c) return '';
+    var text = ANS.split(' ').slice(0, c.n).join(' ');
+    return '<div class="al"><span class="t">' + esc(text) + (c.done ? '' : '<span class="caret"></span>') + '</span>' +
+      (c.done ? '<span class="aacts" style="display:flex">' + btn('toast:Creates a Praxis task draft (mockup)', 'b-green b-sm', '→ TASK') + btn('toast:Adds an action item (mockup)', 'b-sm', '→ ITEM') + '</span>' : '') +
+      btn('b1x', 'b-sm', '×', 'Close answer') + '</div>';
+  }
+  function b1Ask() {
+    if (S.hint === 'session') return '<div class="askr"><div class="sessn">Ask needs Claude: choose Claude explains or turn on the Active session in Settings.</div>' + btn('b1cancel', 'b-sm', '×', 'Cancel') + '</div>';
+    return '<div class="askr"><input data-in="b1" placeholder="Ask…" autocomplete="off" value="' + esc(S.draft.b1 || '') + '">' + btn('send:b1', 'b-solid', '↵', 'Send') + btn('b1cancel', 'b-sm', '×', 'Cancel') + '</div>';
+  }
+  function cap(kind) {
+    var open2 = kind === 'b2' && S.b2.open, h = open2 ? 220 : 112, mid = '<div class="cap-m">', right = '';
+    if (kind === 'b1') {
+      mid += b1Hint();
+      if (S.b1.pin) mid += b1Ans();
+      mid += S.b1.ask ? b1Ask() : tools();
+    } else mid += tools();
+    mid += capLines() + '</div>';
+    if (kind === 'b2') {
+      if (open2) right = '<div class="cap-b2"><div class="ah"><span>Assistant</span><span>·</span><span class="c">' + nHints() + '</span><span class="sp"></span>' + btn('b2toggle', 'b-sm ic', '▸', 'Collapse') + '</div>' + asstBody('b2', 0, 1, false) + '</div>';
+      else right = '<div class="cap-tab">' + btn('b2toggle', 'b-sm ic', '◂', 'Open assistant') + (nHints() ? '<span>' + nHints() + '</span>' : '') + '</div>';
+    }
+    return '<div class="gx cap tools" style="width:760px;height:' + h + 'px">' + capLeft() + mid + right + '</div>';
+  }
+  function callFrame(inner, h) {
+    var names = ['Anna K.', 'Dmitry S.', 'Elena V.', 'You'], t = '';
+    names.forEach(function (n) { t += '<div class="tile"><i></i><span>' + n + '</span></div>'; });
+    return '<div class="hscroll"><div class="call" style="height:' + h + 'px"><div class="tiles">' + t + '</div><div class="capwrap">' + inner + '</div></div></div>';
+  }
+  function b3Overlay() {
+    var n = nHints(), b = S.b3;
+    if (b.card === 'chip') return n > 0 ? '<div class="gx fchip">' + btn('b3open', '', '<i class="dot"></i>CTX ' + n, 'Reopen the assistant card') + '</div>' : '';
+    if (n === 0 && !b.touched) return '';
+    var el = Math.min(20, (Date.now() - b.t0) / 1000);
+    var bar = b.touched ? '' : '<div class="fbar" style="animation-delay:-' + el.toFixed(2) + 's"></div>';
+    return '<div class="gx fcard" title="">' + bar + '<div class="ah"><span>Assistant</span><span>·</span><span class="c" style="color:var(--pause)">CTX ' + n + '</span><span class="sp"></span>' + (b.touched ? '' : '<span class="fadetx" style="font-weight:400;letter-spacing:0;text-transform:none">fades to chip in 20 s</span>') + btn('b3close', 'b-sm ic', '×', 'Collapse to chip') + '</div>' +
+      asstBody('b3', 1, 1, false) + '</div>';
+  }
+  function coin() {
+    var n = nHints();
+    var face = '<div class="coin-f"><div class="r1"><i class="rec"></i><span class="tm" data-timer>' + fmt() + '</span></div>' + (n > 0 ? btn('coinctx', 'cnt b-green', '<i class="dot"></i>CTX ' + n, 'Open the assistant in Ghost Caption') : '') + '</div>';
+    return '<div class="gx"><div class="lab">Collapsed · 56 px</div><div class="coin" style="width:56px">' + face + '</div></div>' +
+      '<div class="gx"><div class="lab">Hover-expanded · 372 px</div><div class="coin" style="width:372px">' + face + '<div class="coin-a">' + btn('toast:Pause (mockup)', 'b-pause', 'PAUSE') + btn('toast:Mute (mockup)', '', 'MUTE') + btn('toast:Hold 1.5 s to end the meeting (mockup)', 'b-end', 'END MEETING') + btn('coinassist', 'b-green', 'ASSIST') + '</div></div></div>';
+  }
+
+  /* ---------- option shell ---------- */
+  function opt(id, title, rec, desc, pro, con, frame, note) {
+    var k = id.charAt(0).toLowerCase(), p = S.picks[k] === id;
+    return '<article class="opt' + (p ? ' picked' : '') + '"><div class="oh"><h3>' + id + ' — ' + title + (rec ? ' <span class="tag px">Recommended</span>' : '') + '</h3>' +
+      '<button class="pickb' + (p ? ' b-solid' : '') + '" data-act="pick:' + id + '">' + (p ? '[ ✓ PICKED ' + id + ' ]' : '[ I pick ' + id + ' ]') + '</button></div>' +
+      '<p class="desc">' + desc + '</p><p class="pc"><b class="pro">PROS</b>' + pro + '<b class="con">CONS</b>' + con + '</p>' + frame + (note ? '<p class="note">' + note + '</p>' : '') + '</article>';
+  }
+  function renderA() {
+    var a3 = stripA3();
+    return opt('A1', 'Assistant block', true, 'A collapsible ASSISTANT block between the transcript and Action items (same pattern, capped at 1/3 of the strip, own scroll): newest hint, the last Q/A and a one-line input; older hints through the pager.',
+        'transcript stays visible; reuses the action-items pattern; no window resize', 'only about 1/3 of the height; one hint at a time', deskFrame(stripA1(), 340, 520)) +
+      opt('A2', 'Tabs', false, 'The strip header gets TEXT / ASSIST tabs. ASSIST replaces the transcript area (tool row and action items too) with a full-height hint list, chat and input; the footer stays. A new hint flashes the tab once.',
+        'full height for hints and chat; transcript view stays uncluttered', 'transcript hidden while in ASSIST; one extra click; a hint can be missed', deskFrame(stripA2(), 340, 520)) +
+      opt('A3', 'Side drawer', false, 'The ◧ button in the strip header slides out a 320 px drawer to the left of the strip with hints, chat and input. The shell grows the window from 340 to 660 px; the strip itself does not change.',
+        'strip untouched; roomiest view; text and assistant visible together', 'window grows to 660 px and can cover content; shell resize logic; tight on small screens', deskFrame(a3.html, a3.w, 860)) +
+      '<article class="opt"><h3>Dock Square <span class="tag">Shared by A1 / A2 / A3</span></h3><p class="desc">The 180 × 180 indicator shows a CTX n badge in the mid row. Click it: the widget switches to Dock Strip with the chosen assistant view open (A1: block expanded, A2: ASSIST tab, A3: drawer open). In this page the click opens all three views above.</p>' +
+      '<div class="hscroll"><div class="desk" style="width:max-content;min-width:100%">' + square() + '</div></div></article>';
+  }
+  function renderB() {
+    var b3 = S.b3.card;
+    return opt('B1', 'Hint line in the ribbon', false, 'The newest hint is pinned as one line at the top of the caption (yellow 3 px bar, explained sentence or route + first snippet) with inline OPEN / ASK / ×. ASK turns the tools row into an input; the answer streams as a highlighted line with an accent bar and stays pinned until ×.',
+        'caption size and click-through unchanged; hint always in view', 'one line truncates the explanation; a pinned answer costs about 2 transcript lines at 112 px', callFrame(cap('b1'), 340),
+        'Clicking × on the yellow line dismisses the hint (CTX n drops). The next hint, if any, takes its place.') +
+      opt('B2', 'Right column', false, 'Like the existing 240 px Action items column: a 280 px ASSISTANT column on the right of the caption with compact hint cards and an input at the bottom. The caption auto-grows to 220 px (at least 200) while it is open; ▸ collapses it.',
+        'room for several hints and chat; same pattern as the action items column', 'caption grows and covers more of the call; transcript narrows to about 376 px', callFrame(cap('b2'), 340),
+        'The column takes the slot of the Action items column here; if both should coexist, the width budget is the shell decision.') +
+      opt('B3', 'Floating card', true, 'A second ghost card (340 × up to 260) anchored above the caption right end with the newest hint, an Ask input and the streamed answer. It appears on a new hint, fades to a CTX n chip after 20 s untouched, and a chip click reopens it. The card is not click-through while hovered.',
+        'caption keeps its size and click-through; roomy card; chip is unobtrusive', 'second surface to manage; may cover the call; the auto-fade can be missed', callFrame(cap('b3') + b3Overlay(), 440),
+        'Click a hint state button (New hint / Explained) to bring the card back and restart the 20 s countdown. Hovering or clicking the card stops the countdown. State now: ' + (b3 === 'chip' ? 'chip' : 'card') + '.') +
+      '<article class="opt"><h3>Ghost Coin <span class="tag">Shared by B1 / B2 / B3</span></h3><p class="desc">The 56 px coin shows a CTX n dot-badge on its face. The expanded row gets an ASSIST button that switches to Ghost Caption with the chosen assistant view open (B1: Ask input, B2: column open, B3: card open). In this page ASSIST or the badge opens all three.</p>' +
+      '<div class="screen dark">' + coin() + '</div></article>';
+  }
+
+  /* ---------- render ---------- */
+  function render() {
+    var ae = document.activeElement, fk = ae && ae.getAttribute ? ae.getAttribute('data-in') : null, ss = 0, se = 0;
+    if (fk) { ss = ae.selectionStart; se = ae.selectionEnd; }
+    var sc = {};
+    document.querySelectorAll('[data-sc]').forEach(function (e) { sc[e.getAttribute('data-sc')] = e.scrollTop; });
+    document.documentElement.setAttribute('data-theme', S.theme);
+    $('secA').hidden = S.variant !== 'A'; $('secB').hidden = S.variant !== 'B';
+    if (S.variant === 'A') $('bodyA').innerHTML = renderA(); else $('bodyB').innerHTML = renderB();
+    $('picks').textContent = 'Current highlights — Dock: ' + (S.picks.a || 'none') + ' · Ghost: ' + (S.picks.b || 'none');
+    document.querySelectorAll('.seg button').forEach(function (b) {
+      var p = b.getAttribute('data-act').split(':');
+      b.setAttribute('aria-pressed', String(S[p[0]] === p[1]));
+    });
+    document.querySelectorAll('[data-sc]').forEach(function (e) {
+      var k = e.getAttribute('data-sc');
+      if (S.streaming && e.hasAttribute('data-stick')) e.scrollTop = e.scrollHeight;
+      else if (sc[k] != null) e.scrollTop = sc[k];
+    });
+    var target = S.focus || fk, el = target ? document.querySelector('[data-in="' + target + '"]') : null;
+    if (el && !el.disabled) { el.focus(); if (!S.focus) { try { el.setSelectionRange(ss, se); } catch (x) { } } }
+    S.focus = null;
+  }
+
+  var tt;
+  function toast(m) { var t = $('toast'); t.textContent = m; t.classList.add('show'); clearTimeout(tt); tt = setTimeout(function () { t.classList.remove('show'); }, 1800); }
+
+  function stream() {
+    clearInterval(S.iv); S.streaming = true;
+    var c = S.chat[S.chat.length - 1];
+    S.iv = setInterval(function () {
+      c.n++;
+      if (c.n >= NW) { c.n = NW; c.done = true; S.streaming = false; clearInterval(S.iv); }
+      render();
+    }, 80);
+  }
+  function send(key) {
+    var v = (S.draft[key] || '').replace(/^\s+|\s+$/g, '');
+    if (!v || S.hint === 'session') return;
+    S.chat.push({ q: v, n: 0, done: false }); S.draft[key] = '';
+    if (key === 'b1') { S.b1.pin = true; S.b1.ask = false; }
+    stream();
+  }
+  function touchB3() {
+    if (S.b3.touched) return;
+    S.b3.touched = true; clearTimeout(S.b3.timer);
+    var bar = document.querySelector('.fbar'); if (bar) bar.parentNode.removeChild(bar);
+    var f = document.querySelector('.fcard .fadetx'); if (f) f.parentNode.removeChild(f);
+  }
+  function newEvent() {
+    S.a1.page = 0;
+    if (S.a2.tab === 'text') { S.a2.flash = true; setTimeout(function () { S.a2.flash = false; render(); }, 1500); }
+    S.b3.card = 'open'; S.b3.touched = false; S.b3.t0 = Date.now(); clearTimeout(S.b3.timer);
+    S.b3.timer = setTimeout(function () { if (!S.b3.touched) { S.b3.card = 'chip'; render(); } }, 20000);
+  }
+  function setHint(v) {
+    S.hint = v; S.dismissed = {}; S.opened = {};
+    if (v === 'new' || v === 'explained' || v === 'session') newEvent();
+  }
+
+  document.addEventListener('click', function (e) {
+    var el = e.target.closest ? e.target.closest('[data-act]') : null;
+    if (!el || el.disabled) return;
+    var a = el.getAttribute('data-act'), i = a.indexOf(':'), k = i < 0 ? a : a.slice(0, i), v = i < 0 ? '' : a.slice(i + 1);
+    if (k === 'theme' || k === 'variant') S[k] = v;
+    else if (k === 'hint') setHint(v);
+    else if (k === 'replay') { var c = S.chat[S.chat.length - 1]; if (c) { c.n = 0; c.done = false; stream(); } }
+    else if (k === 'pick') { var pk = v.charAt(0).toLowerCase(); S.picks[pk] = S.picks[pk] === v ? null : v; }
+    else if (k === 'open') S.opened[v] = true;
+    else if (k === 'dismiss') { S.dismissed[v] = true; S.a1.page = 0; }
+    else if (k === 'ask') { S.focus = v; if (v === 'b1') S.b1.ask = true; if (v === 'b3') touchB3(); }
+    else if (k === 'send') send(v);
+    else if (k === 'a1toggle') S.a1.open = !S.a1.open;
+    else if (k === 'a1prev') S.a1.page = Math.max(0, S.a1.page - 1);
+    else if (k === 'a1next') S.a1.page = Math.min(nHints() - 1, S.a1.page + 1);
+    else if (k === 'a2tab') { S.a2.tab = v; S.a2.flash = false; }
+    else if (k === 'a3toggle') S.a3.open = !S.a3.open;
+    else if (k === 'b1cancel') S.b1.ask = false;
+    else if (k === 'b1x') S.b1.pin = false;
+    else if (k === 'b2toggle') S.b2.open = !S.b2.open;
+    else if (k === 'b3close') { S.b3.card = 'chip'; clearTimeout(S.b3.timer); }
+    else if (k === 'b3open') { S.b3.card = 'open'; S.b3.touched = true; clearTimeout(S.b3.timer); }
+    else if (k === 'sqctx') { S.a1.open = true; S.a2.tab = 'assist'; S.a3.open = true; toast('Dock Strip opens with the assistant view (A1 block, A2 ASSIST tab, A3 drawer)'); }
+    else if (k === 'coinctx' || k === 'coinassist') { S.b2.open = true; S.b3.card = 'open'; S.b3.touched = true; S.b1.ask = true; clearTimeout(S.b3.timer); toast('Ghost Caption opens with the assistant view (B1 ask, B2 column, B3 card)'); }
+    else if (k === 'toast') { toast(v); return; }
+    render();
+  });
+  document.addEventListener('mouseover', function (e) { if (e.target.closest && e.target.closest('.fcard')) touchB3(); });
+  document.addEventListener('focusin', function (e) { if (e.target.closest && e.target.closest('.fcard')) touchB3(); });
+  document.addEventListener('input', function (e) {
+    var k = e.target.getAttribute && e.target.getAttribute('data-in');
+    if (k) S.draft[k] = e.target.value;
+  });
+  document.addEventListener('keydown', function (e) {
+    var k = e.target.getAttribute && e.target.getAttribute('data-in');
+    if (k && e.key === 'Enter') { e.preventDefault(); S.draft[k] = e.target.value; send(k); render(); }
+    else if (k === 'b1' && e.key === 'Escape') { S.b1.ask = false; render(); }
+  });
+
+  setInterval(function () {
+    S.sec++;
+    document.querySelectorAll('[data-timer]').forEach(function (e) { e.textContent = fmt(); });
+  }, 1000);
+
+  render();
+})();
+</script>
+</body>
+</html>

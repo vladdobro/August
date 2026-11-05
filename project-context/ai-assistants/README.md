@@ -1,15 +1,16 @@
 # AI Assistants (Meeting Copilot and Active project session)
 
-> Research (AUG-193, 2026-11-05). Nothing here is implemented. Mockups: @docs/mockups/AUG-193/ai-assistants-settings.html and @docs/mockups/AUG-193/assistant-panel.html. User decision 2026-11-05: Copilot V3 (not V1 first), Active session as a persistent `claude -p` child under the user's Claude Code browser login (no API key), P1 overlay, Settings Option A with Sonnet default. Follow-up research with precise mockups: AUG-194 (Settings tab), AUG-195 (Active session), AUG-196 (Copilot V3); implementation tasks come out of those.
+> Research (AUG-193, 2026-11-05). Nothing here is implemented. Mockups: @docs/mockups/AUG-193/ai-assistants-settings.html and @docs/mockups/AUG-193/assistant-panel.html. User decision 2026-11-05: Copilot V3 (not V1 first), Active session as a persistent `claude -p` child under the user's Claude Code browser login (no API key), P1 overlay, Settings Option A with Sonnet default. Follow-up research with precise mockups: AUG-194 (Settings tab), AUG-195 (Active session), AUG-196 (Copilot, done 2026-11-05 → impl AUG-197); implementation tasks come out of those. AUG-196 supersedes the copilot parts of D3, D7 and the Compact Mode rule below — its full spec (gate numbers, prompts, contracts) is @docs/mockups/AUG-196/findings.md; mockups @docs/mockups/AUG-196/copilot-hints.html and @docs/mockups/AUG-196/compact-assistant.html.
 
 ## TL;DR
 
 - Two optional, default-off features: Meeting Copilot (watches the live transcript, surfaces matching notes from a chosen PraxisOS project) and Active project session (a chat with Claude Code bound to a chosen project during the meeting, can answer from project context, add action items and create Praxis tasks).
 - Recommended architecture: one server-side `LiveFeed` per liveKey (ring buffer + subscribers) fed from liveTranscription.ts.
-- Copilot v1 = local trigger gate + Praxis MCP search over HTTP (no LLM, nothing leaves the machine, no consent).
+- Copilot (AUG-196 decision): four modes `aiCopilotMode` — Off (default) / Local hints / Claude explains (recommended) / Always-on Claude; choosing a Claude mode is the consent; model `aiCopilotModel` Haiku/Sonnet/Opus (Sonnet default), mode and model switchable during the meeting from the ASSISTANT panel.
+- Measured on real transcripts (AUG-196): local search alone with Russian speech against English project-context gave 0 [exact] hits in 28 searches; Claude (Sonnet) searching itself found the real note. Local-only mode stays for privacy but finds little in cross-language meetings.
+- Copilot runs its own Claude child per (liveKey, project), separate from the chat child; it does not need the Active session to be on.
 - Active session = one persistent `claude -p --input-format stream-json` child process per (liveKey, project); Praxis is reached by Claude itself through `--mcp-config` (http://127.0.0.1:7865/stream).
 - August's own tiny MCP server (`august`) gives Claude `get_recent_transcript`, `list_action_items`, `add_action_item`.
-- Copilot v2 ("Explain hints with Claude") reuses the active session.
 - Measured on 2026-11-05 (Windows, Claude Code 2.1.318, Praxis MCP 1.30.0): Praxis MCP tool calls 0.07–0.15 s; one-shot `claude -p` 4–6 s wall; persistent stream-json session 3.2 s first turn, then 1.7–2.3 s per turn; one-shot with one Praxis tool call costs $0.003 on Haiku and re-sends ~15k system/tool tokens per spawn.
 - Latency target for a copilot hint: ≤ 10 s from the spoken phrase (4–9 s of that is the existing 4 s chunk window + whisper), ≤ 1 s from the transcript line; with Claude explanation ≤ 15 s.
 - Project is chosen after the session starts, in the Assistant panel; N projects = N tabs; ≤ 3 Claude child processes at once; copilot search loops are cheap and unlimited.
@@ -57,7 +58,24 @@
     - V1 decides when and finds candidates; the active session gets an injected turn with the trigger lines + the hits and returns a 1–2 sentence card ("On 2026-10-28 you agreed X (CMT-012)").
     - ≤ 15 s end to end, ≤ 12 turns/hour ≈ $0.15/hour on Sonnet.
     - Requires the Active session consent.
-  - Verdict: V1 now, V3 next, V2 rejected.
+  - Verdict (AUG-193): V1 now, V3 next, V2 rejected — superseded by AUG-196 below.
+- Copilot final design (AUG-196, decided 2026-11-05):
+  - Why the AUG-193 gate changed:
+    - On the 57-min Support Weekly, the AUG-193 gate fired 74 times/h and 100 times/h on a game video.
+    - 64 of 71 fires came from the Latin-capitalized-word rule ("Slack" ×26, brand names transliterated five ways). The quoted rule only fired on UI labels.
+    - Both rules are dropped. Gate g2 = ru stem triggers (only reflexive `договорил(ись|ась|ся)`, because «договорил» means "finished speaking") + en phrases + task ids.
+    - Result: 17.7 fires/h, about 7 % false positives after the reflexive fix, 0 fires on non-meeting audio.
+  - Retrieval is the bottleneck, not the gate:
+    - Russian keywords against English notes return nothing useful.
+    - The task board (`find_task_by_keywords`, Russian prefixes, 3–15 ms) is searched alongside project-context, because past agreements reach the board through Send to Praxis.
+    - Project-lexicon terms (route names, "Also known as" entries) feed the keywords.
+  - Claude is both the explainer and the relevance filter:
+    - Both Haiku and Sonnet rejected an irrelevant partial hit.
+    - With no local hit, Claude searches Praxis itself with English keywords ("assist" shape).
+    - Haiku missed the one real match that Sonnet found, so Sonnet is the default.
+  - Thresholds confirmed: ≥ 20 s between searches (it merges duplicate fires), ≤ 1 card per route per 5 min, ≤ 12 per hour. The hourly cap now applies to Claude turns, because those carry the cost.
+  - Always-on (V2) is allowed as a user-chosen mode with its own per-meeting spending limit. At the limit it falls back to Claude explains and never resumes on its own. It is never the default.
+  - Contracts (LiveFeed API, copilotEngine, frames copilot-hint/status/dismiss/mode, child flags, payload ≤ 80 words + ≤ 3 candidates, prompt, timeouts 6 s / 12 s with plain-hit fallback, log line without text): see @docs/mockups/AUG-196/findings.md §3–§5.
 - Active session launch mode (D4), compared:
   - One-shot `claude -p` per question: wall 4–6 s measured, no memory, ~15k system/tool tokens re-sent per spawn (cached, still paid as cache reads). Rejected.
   - `claude -p --resume <id>` per question: memory, but still a spawn per question. Kept only as crash recovery.
@@ -89,7 +107,7 @@
     - P2: a permanent column between the transcript and the Action items column (340 px).
     - P3: a separate always-on-top window.
     - P1 keeps the transcript at full width and works in the browser build (minus Claude).
-    - Compact Mode shows only a `CTX n` badge on Dock Strip / Ghost Caption; a click expands the window; no chat in compact widgets.
+    - Compact Mode (AUG-196 user pick, replaces "badge only"): Dock Strip gets a [ ◧ ] side drawer (A3, 320 px to the left, the window widens to 660 px). Ghost Caption gets a floating card (B3, 340 × ≤ 260 px above the caption's right end, fades to a `CTX n` chip after 20 s, not click-through while hovered). Both carry hints + Ask + the streamed answer. Dock Square and Ghost Coin keep a `CTX n` badge that opens them.
   - Transport to the UI: new JSON frames on the existing live WebSocket.
     - client→server: `assistant-start {projectPath}`, `assistant-ask {projectPath, text}`, `assistant-stop {projectPath}`.
     - server→client: `assistant-status`, `assistant-delta` (streamed text), `assistant-message` (final, with a tool-call summary), `copilot-hint`, `copilot-status`.
@@ -107,6 +125,7 @@
   - A REST mirror `POST /api/live/:liveKey/action-items` with the same body and semantics backs the UI button "→ Action item" on an assistant message.
   - Praxis task creation by Claude goes through Praxis `create_task` (server-side counter) followed by `add_action_item({praxisTaskId})` so the existing praxis badge appears; the UI button "→ Praxis task" uses the existing POST /api/praxis/action-items.
 - Settings (D7): tab `assistants` "AI assistants" between Projects and Compact mode.
+  - AUG-196 change: the copilot row becomes a four-mode radio list with a price/privacy line per mode. `aiCopilotEnabled` and `aiCopilotExplain` are dropped in favour of `aiCopilotMode`, `aiCopilotModel` and `aiCopilotAlwaysBudgetUsd`. `aiCopilotConsent` and `aiCopilotAlwaysAck` are written only by POST /api/assistant/copilot-mode. Always-on needs a checkbox-gated confirmation modal every time it is chosen. The rows below describe the AUG-193 draft.
   - Option A (recommended): two independent toggles.
   - Row "Meeting Copilot" → `aiCopilotEnabled` (bool, default false, ALLOWED_KEYS, strict boolean); hint "Watches the live transcript for references to past agreements and shows matching notes from the chosen Praxis project. Runs on this computer; nothing is sent anywhere."; status line "PraxisOS is not running" when health fails (toggle still saveable).
   - Row "Active session (Claude)" → consent modal, then POST /api/assistant/enable {accept:true} writes `aiSessionEnabled: true` and `aiConsent: {acceptedAt, version: 1}`; /disable deletes the consent; both keys are NOT in ALLOWED_KEYS (same pattern as groqTextEnabled/groqTextConsent); a bumped consent `version` re-asks.
@@ -139,7 +158,8 @@
 
 1. D1 — LiveFeed per liveKey on the server (Core Concepts: Subscription point).
 2. D2 — Copilot via direct Praxis MCP HTTP; Active session via Claude's own MCP connection (Praxis access paths).
-3. D3 — Copilot V1 now, V3 later, V2 rejected (Copilot loop).
+3. D3 — Copilot V1 now, V3 later, V2 rejected (Copilot loop). Superseded by D10.
+10. D10 (AUG-196) — copilot modes, gate g2, own copilot child, compact A3/B3 (Copilot final design).
 4. D4 — persistent stream-json child, P1 overlay (Active session launch mode).
 5. D5 — project tabs after start, ≤ 3 children (Project chosen after start).
 6. D6 — `august` MCP server + add_action_item contract with similarity dedup (Action items contract).
@@ -153,7 +173,10 @@
 - Hooking the extractor's buffer: it drops sent speech.
 - Own BM25 over project-context: drifts from Praxis search.
 - Claude for copilot retrieval: latency and cost per trigger.
-- Always-on Claude copilot: cost and privacy.
+- Always-on Claude copilot as the default: cost and privacy (AUG-196 allows it as an opt-in mode).
+- Latin-capitalized words and quoted text as gate triggers: 90 % of the fires, none useful (AUG-196).
+- Copilot hint turns inside the Active session chat child: they would pollute the chat history and block while the user's answer streams (AUG-196).
+- Compact Mode badge-only and the A1/A2/B1/B2 assistant variants: user picked A3 + B3 (AUG-196).
 - One-shot `claude -p` per question: 4–6 s and re-sent system tokens.
 - `--bare`: API-key-only auth.
 - Option B settings: consent would gate a feature that sends nothing.
@@ -184,7 +207,11 @@
 - Both features are off by default; with both off no new process, no MCP connection and no new WebSocket frame exists.
 - The existing live pipeline, LiveTextCorrector, LiveActionItemsExtractor and Send to Praxis are not changed in behavior; LiveFeed is an additive tap.
 - Copilot v1 never sends transcript text off the machine; Praxis is loopback-only.
-- Transcript text reaches Anthropic only inside an Active session turn (a question or an opted-in hint explanation) and only while `aiConsent` is present.
+- Transcript text reaches Anthropic only in these cases:
+  - inside an Active session question turn, while `aiConsent` is present;
+  - in a copilot explanation turn (≤ 80 words around the trigger + candidate lines), while `aiCopilotMode` = 'claude' or 'always' (`aiCopilotConsent`);
+  - continuously, while `aiCopilotMode` = 'always' (`aiCopilotAlwaysAck`).
+- The copilot gate and local search never send anything.
 - Items added by the assistant are manual and locked, so model merges never remove them, and they are deduplicated by exact match or similarity ≥ 0.6 before creation.
 - A Claude child never gets Bash, Edit or Write; its tools are Read/Grep/Glob plus the praxis and august MCP servers.
 - Each Claude child is bound to one project (cwd) and one liveKey (august MCP token); at most 3 children run at once.
@@ -203,7 +230,6 @@
 - Default model: Sonnet (quality) vs Haiku (cost); the mockup shows Sonnet.
 - Should the project's praxis-mcp-codex ad-hoc rule (search before answering) be appended to the child's system prompt, or is CLAUDE.md enough?
 - Agent SDK vs raw stream-json: decide after a 1-day transport prototype; the interface is the same.
-- Copilot hints in Compact Mode: badge only (proposed) or a one-line caption in Ghost Caption?
 - Whether `praxisRecentPaths` should also record projects opened from the Assistant panel (proposed yes, after the first successful answer).
 
 ## Key Files
@@ -222,3 +248,4 @@
 - client/src/components/LiveTranscriptPanel.tsx — live transcript view.
 - electron/src/main.ts — `ensureToolPaths` :83-88.
 - docs/mockups/AUG-193/*.html — mockups.
+- docs/mockups/AUG-196/findings.md — copilot spec; research/*.mjs — scratch gate-eval, explain-bench and task-board probe scripts (not product code).
