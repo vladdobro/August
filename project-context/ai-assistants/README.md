@@ -1,6 +1,6 @@
 # AI Assistants (Meeting Copilot and Active project session)
 
-> Research (AUG-193, 2026-11-05). Nothing here is implemented. Mockups: @docs/mockups/AUG-193/ai-assistants-settings.html and @docs/mockups/AUG-193/assistant-panel.html. User decision 2026-11-05: Copilot V3 (not V1 first), Active session as a persistent `claude -p` child under the user's Claude Code browser login (no API key), P1 overlay, Settings Option A with Sonnet default. Follow-up research with precise mockups: AUG-194 (Settings tab), AUG-195 (Active session), AUG-196 (Copilot, done 2026-11-05 → impl AUG-197); implementation tasks come out of those. AUG-196 supersedes the copilot parts of D3, D7 and the Compact Mode rule below — its full spec (gate numbers, prompts, contracts) is @docs/mockups/AUG-196/findings.md; mockups @docs/mockups/AUG-196/copilot-hints.html and @docs/mockups/AUG-196/compact-assistant.html.
+> Research (AUG-193, 2026-11-05). Nothing here is implemented. Mockups: @docs/mockups/AUG-193/ai-assistants-settings.html and @docs/mockups/AUG-193/assistant-panel.html. User decision 2026-11-05: Copilot V3 (not V1 first), Active session as a persistent `claude -p` child under the user's Claude Code browser login (no API key), P1 overlay, Settings Option A with Sonnet default. Follow-up research with precise mockups: AUG-194 (Settings tab, done 2026-11-06 → impl AUG-198; final spec @docs/mockups/AUG-194/findings.md, mockup @docs/mockups/AUG-194/ai-assistants-tab.html), AUG-195 (Active session), AUG-196 (Copilot, done 2026-11-05 → impl AUG-197); implementation tasks come out of those. AUG-196 supersedes the copilot parts of D3, D7 and the Compact Mode rule below — its full spec (gate numbers, prompts, contracts) is @docs/mockups/AUG-196/findings.md; mockups @docs/mockups/AUG-196/copilot-hints.html and @docs/mockups/AUG-196/compact-assistant.html.
 
 ## TL;DR
 
@@ -14,8 +14,9 @@
 - Measured on 2026-11-05 (Windows, Claude Code 2.1.318, Praxis MCP 1.30.0): Praxis MCP tool calls 0.07–0.15 s; one-shot `claude -p` 4–6 s wall; persistent stream-json session 3.2 s first turn, then 1.7–2.3 s per turn; one-shot with one Praxis tool call costs $0.003 on Haiku and re-sends ~15k system/tool tokens per spawn.
 - Latency target for a copilot hint: ≤ 10 s from the spoken phrase (4–9 s of that is the existing 4 s chunk window + whisper), ≤ 1 s from the transcript line; with Claude explanation ≤ 15 s.
 - Project is chosen after the session starts, in the Assistant panel; N projects = N tabs; ≤ 3 Claude child processes at once; copilot search loops are cheap and unlimited.
-- Settings → new tab "AI assistants": two independent toggles (Copilot; Active session), consent modal only for the Active session (text goes to Anthropic via the user's own Claude Code login), plain-language status when Claude Code is missing or PraxisOS is not running.
-- Also known as: meeting copilot, copilot hints, context hints, active session, assistant panel, Claude session, claude -p, stream-json, Agent SDK, LiveFeed, august MCP server, add_action_item, AI assistants tab, aiCopilotEnabled, aiSessionEnabled, aiConsent, aiModel, aiSessionBudgetUsd, aiTranscriptWindowMin, aiCopilotExplain (AUG-193).
+- Settings → new tab "AI assistants" (AUG-194 final, user-approved 2026-11-06): a Status section on top (Claude Code signed-in state + PraxisOS reachability, one Recheck button), the four-mode copilot list (AUG-196), the Active session toggle with Model / Spending limit per meeting / Transcript window children and a consent modal only for the session; both spending limits are free number fields in USD (real `.settings-input`), 0 = no limit; the Settings card widens to 680 px for all tabs; Claude copilot modes are disabled-but-visible while Claude Code is unusable.
+- Claude Code detection (AUG-194): `claude --version` (55 ms) proves "installed"; `claude auth status` (JSON, `loggedIn`, 0.35 s) proves "signed in"; the probe env drops ANTHROPIC_API_KEY / ANTHROPIC_AUTH_TOKEN so billing stays on the user's Claude login; PraxisOS reachability = tokenless `GET http://127.0.0.1:7865/health`.
+- Also known as: meeting copilot, copilot hints, context hints, active session, assistant panel, Claude session, claude -p, stream-json, Agent SDK, LiveFeed, august MCP server, add_action_item, AI assistants tab, Status section, Recheck, claude auth status, loggedIn, resolveClaudeCli, probeClaudeCli, Claude Code detection, not signed in, No limit, aiSessionEnabled, aiConsent, aiModel, aiSessionBudgetUsd, aiTranscriptWindowMin, aiCopilotMode, aiCopilotModel, aiCopilotAlwaysBudgetUsd, aiCopilotConsent, aiCopilotAlwaysAck, GET /api/assistant/status, POST /api/assistant/copilot-mode (AUG-193, AUG-194, AUG-196).
 
 ## Purpose
 
@@ -124,19 +125,17 @@
   - The optional `assistant` field is kept by the tolerant reader and shown as a small `AI` tag in ActionItemsPanel.
   - A REST mirror `POST /api/live/:liveKey/action-items` with the same body and semantics backs the UI button "→ Action item" on an assistant message.
   - Praxis task creation by Claude goes through Praxis `create_task` (server-side counter) followed by `add_action_item({praxisTaskId})` so the existing praxis badge appears; the UI button "→ Praxis task" uses the existing POST /api/praxis/action-items.
-- Settings (D7): tab `assistants` "AI assistants" between Projects and Compact mode.
-  - AUG-196 change: the copilot row becomes a four-mode radio list with a price/privacy line per mode. `aiCopilotEnabled` and `aiCopilotExplain` are dropped in favour of `aiCopilotMode`, `aiCopilotModel` and `aiCopilotAlwaysBudgetUsd`. `aiCopilotConsent` and `aiCopilotAlwaysAck` are written only by POST /api/assistant/copilot-mode. Always-on needs a checkbox-gated confirmation modal every time it is chosen. The rows below describe the AUG-193 draft.
-  - Option A (recommended): two independent toggles.
-  - Row "Meeting Copilot" → `aiCopilotEnabled` (bool, default false, ALLOWED_KEYS, strict boolean); hint "Watches the live transcript for references to past agreements and shows matching notes from the chosen Praxis project. Runs on this computer; nothing is sent anywhere."; status line "PraxisOS is not running" when health fails (toggle still saveable).
-  - Row "Active session (Claude)" → consent modal, then POST /api/assistant/enable {accept:true} writes `aiSessionEnabled: true` and `aiConsent: {acceptedAt, version: 1}`; /disable deletes the consent; both keys are NOT in ALLOWED_KEYS (same pattern as groqTextEnabled/groqTextConsent); a bumped consent `version` re-asks.
-  - Requires Claude Code: GET /api/assistant/status returns `{claude: {found, version}, praxis: {reachable}}`; when not found the toggle is disabled with the hint "Claude Code is not installed or not signed in. Install it, run `claude` once to sign in, then press Recheck." and a Recheck button.
-  - Children under Active session: Model dropdown `aiModel` 'sonnet' | 'haiku' | 'opus' (default 'sonnet'); Spending limit per meeting `aiSessionBudgetUsd` 0.5–10 step 0.5 (default 2) → `--max-budget-usd`; Transcript window `aiTranscriptWindowMin` 2/5/10/15 (default 5); checkbox "Explain copilot hints with Claude" `aiCopilotExplain` (default false; enabled only when both toggles are on).
+- Settings (D7, final in AUG-194 — spec @docs/mockups/AUG-194/findings.md §1–3, mockup @docs/mockups/AUG-194/ai-assistants-tab.html): tab `assistants` "AI assistants" between Projects and Compact mode; `.settings-card` becomes `min(680px, 100%)` for all tabs because six tabs need ≈ 680 px with today's tab CSS (user chose the wider card over tighter tabs or a shorter label).
+  - Section Status: rows Claude Code (`Signed in · <version>` / `Installed, not signed in` / `Not installed` / `Too old (<version>) — update it` / `Checking…`) and PraxisOS (`Running` / `Not running`); warn hint + one Recheck button only when something is wrong (`GET /api/assistant/status?recheck=1`). Replaces the AUG-193 per-row Claude Code hints.
+  - Section Meeting Copilot: the AUG-196 four-mode radio list (`.settings-choice-list` / `.settings-choice`), price/privacy line per mode, children Model under Claude explains, Model + Spending limit per meeting (`aiCopilotAlwaysBudgetUsd`, free number field, 0 = no limit) under Always-on. Claude modes are disabled-but-visible while Claude Code is unusable; a saved Claude mode stays selected with a warning and runs as Local hints. Choosing Claude explains is the consent; Always-on opens its checkbox-gated red modal every time.
+  - Section Active session (Claude): toggle → consent modal → `POST /api/assistant/enable {accept:true}` writes `aiSessionEnabled: true` + `aiConsent {acceptedAt, version}`; `/disable` deletes the consent; children Model `aiModel` (sonnet default | haiku | opus), Spending limit per meeting `aiSessionBudgetUsd` (free number field, `$` prefix, default 2, 0 = no limit → no `--max-budget-usd`, committed on blur / Enter), Transcript window `aiTranscriptWindowMin` (2 / 5 default / 10 / 15). Toggle disabled with "Needs Claude Code — see Status above." while Claude Code is unusable; a stale consent (version bump) shows OFF + a warn hint and re-asks.
+  - Preferences: `aiCopilotModel`, `aiCopilotAlwaysBudgetUsd`, `aiModel`, `aiSessionBudgetUsd`, `aiTranscriptWindowMin` go through PATCH with `sanitizeAssistantPreferences()` (enum drop, budget: non-finite or negative dropped, rounded to cents, capped at 1000, 0 = no limit; window snapped to 2/5/10/15); `aiCopilotMode`, `aiCopilotConsent`, `aiCopilotAlwaysAck`, `aiSessionEnabled`, `aiConsent` are NOT in ALLOWED_KEYS and are written only by routes/assistant (a Claude mode must never exist without its consent record). `aiCopilotEnabled` and `aiCopilotExplain` (AUG-193 draft) do not exist.
+  - Consent versions: `AI_SESSION_CONSENT_VERSION` and `AI_COPILOT_CONSENT_VERSION` (both 1); bumping one is the only way to re-ask existing users. `DELETE /api/preferences` drops every ai* key.
   - Option B (rejected): one master "AI assistants" consent toggle with two children, like the Groq pattern of AUG-190 — rejected because Copilot v1 sends nothing outside and must not be gated behind an Anthropic consent.
-  - Sanitizing on PATCH: strict booleans, unknown enum values dropped, budget clamped, window snapped to steps.
   - All defaults off → no behavior change for existing users.
-- Consent text (modal "Active session (Claude)"):
-  - "A) During a live recording, when you ask a question (or a copilot hint is explained), the last N minutes of the transcript, the participant names, the action items and your question are sent to Anthropic through Claude Code under your own Claude account. B) Claude may read files of the chosen project folder. C) It needs Claude Code installed and signed in; usage is billed to your Claude plan."
-  - Buttons: Cancel / Agree and enable.
+- Consent text (modal "Active session (Claude)", final AUG-194, Groq-modal pattern with lettered lines; live window and limit values):
+  - "A) When you ask a question during a live recording, the last N minutes of the transcript, the participant names you entered, the collected action items and your question are sent to Anthropic. Nothing is sent until you ask. B) It goes through Claude Code under your own Claude account, the same way as using Claude Code in a terminal. Claude may also read files in the project folder you pick for the meeting. C) Usage counts against your Claude plan — no API key is needed. The session stops at your spending limit of $N per meeting." (No limit: "You chose no spending limit, so usage is capped only by your plan.")
+  - Hint: "You can turn this off at any time here. Meeting Copilot hints are covered by the mode you choose above, not by this consent." Buttons: Cancel / Agree and enable.
 - Privacy and cost (D8):
   - Copilot v1 — nothing leaves the machine, cost 0.
   - Active session per question — system prompt + tool definitions ≈ 15k tokens (cached after the first turn), transcript window (5 min ≈ 750 words ≈ 2.2k tokens in Cyrillic), the question, tool results (route TL;DRs 1–3k), output 200–600 tokens.
@@ -149,7 +148,11 @@
 - Cross-platform (D9): `resolveClaudeCli()`.
   - env `CLAUDE_CLI_PATH` override → win32: `%USERPROFILE%\.local\bin\claude.exe`, then `where claude`; darwin: `~/.local/bin/claude`, `/opt/homebrew/bin/claude`, `/usr/local/bin/claude`, then `which claude` after extending `ensureToolPaths()` in electron/src/main.ts with `~/.local/bin` (GUI apps on macOS do not inherit the shell PATH).
   - Prefer a native executable; an npm `.cmd` shim needs `cmd.exe /d /s /c`.
-  - Verified once per app start with `claude --version` (10 s timeout), cached.
+  - Probe (AUG-194, `probeClaudeCli()`, cached per app start, re-run by Recheck): `claude --version` → "2.1.318 (Claude Code)", 55 ms warm, 10 s timeout → `found`; `claude auth status` (JSON by default, `--json` / `--text` flags) → `{loggedIn, authMethod, apiProvider, loginExpiresAt, email, orgName, subscriptionType, …}`, 0.35 s → `signedIn = loggedIn === true`; "unknown command" → `tooOld` (minimum version pinned at 2.1.318, the one verified); only `loggedIn`, `authMethod` and the version are logged, never e-mail / org / plan. The logged-out JSON is still to be captured on a scratch `CLAUDE_CONFIG_DIR` (AUG-198).
+  - Why not credential files: Windows keeps the OAuth record in `~/.claude/.credentials.json` (`claudeAiOauth`), macOS in the Keychain, so a file check is not cross-platform; `~/.claude.json` `oauthAccount` is a profile cache.
+  - The probe and every August child run with env minus `ANTHROPIC_API_KEY` and `ANTHROPIC_AUTH_TOKEN`: Claude Code prefers an env key over the login, which would bill per token and contradict the consent text. A user's own `apiKeyHelper` in `~/.claude/settings.json` is left alone.
+  - win32 order: `%USERPROFILE%\.local\bin\claude.exe` (native installer, verified: `where claude` finds only this, nothing in `%APPDATA%\npm`), then `%APPDATA%\npm\claude.cmd`, then the first `.exe` line of `where claude`; no PATH change needed on Windows.
+  - PraxisOS reachability (AUG-194): tokenless `GET http://127.0.0.1:7865/health` → `{"status":"ok","service":"praxis-local-api",…,"claude_available":true,"mcp_available":true}` in < 50 ms; `/api/*`, `/mcp`, `/` answer 401 without a token, `/stream` 406 (the MCP transport). Timeout 1.5 s, no retries; Praxis's own `claude_available` is ignored — August judges the CLI from the process that spawns it.
   - Spawn with `path.join`, `windowsHide: true`, `cwd` = project root; a Cyrillic user directory works when the absolute path is passed (verified: `C:\Users\<cyrillic>\.local\bin\claude.exe`); `toSafePath` is not needed (it exists for whisper-cli args).
   - The `--mcp-config` JSON must be built with JSON.stringify (a hand-written backslash path broke the probe).
   - Both resolver branches get unit tests that mock `process.platform` (like gpuBackend.test.ts).
@@ -166,6 +169,7 @@
 7. D7 — Option A settings, consent only for the session (Settings, Consent text).
 8. D8 — caps listed in Privacy and cost.
 9. D9 — `resolveClaudeCli()` resolver + PATH rules (Cross-platform).
+11. D11 (AUG-194, user 2026-11-06) — final Settings tab: Status section on top, spending limits as free number fields with 0 = no limit (dropdown of presets rejected), 680 px Settings card, Claude copilot modes disabled-but-visible, `claude auth status` as the sign-in check (Settings D7, Cross-platform D9).
 
 ## Rejected options
 
@@ -183,6 +187,10 @@
 - P2 column: shrinks the transcript.
 - P3 separate window: more desktop-shell code, not available in the browser build.
 - Re-pointing a running Claude child to another project: cwd is fixed at spawn.
+- Per-row Claude Code hints with two Recheck buttons (AUG-193 draft): one Status section instead (AUG-194).
+- Tighter tab padding or renaming the tab to fit six tabs in 600 px: user chose the 680 px card (AUG-194).
+- Reading `.credentials.json` for the sign-in check: Windows-only; `claude auth status` is cross-platform (AUG-194).
+- Letting PATCH /api/preferences write `aiCopilotMode`: would allow a Claude mode without a consent record (AUG-194).
 
 ## Components (planned, not implemented)
 
@@ -191,7 +199,9 @@
 - copilotEngine (component, planned): per (liveKey, project) gate + search loop; depends on liveFeed and praxisMcpClient.
 - assistantSession (component, planned): owns one Claude child per (liveKey, project) behind a ClaudeTransport interface; depends on liveFeed; talks to Praxis only through the child.
 - augustMcpServer (component, planned): `/api/assistant/mcp/<token>`; depends on liveFeed and liveActionItems (addAssistantItem).
-- routes/assistant (planned): GET /status, POST /enable, POST /disable, POST /api/live/:liveKey/action-items.
+- routes/assistant (planned, AUG-198): GET /status[?recheck=1] → `{claude {found, signedIn, version, tooOld, checkedAt}, praxis {reachable}, copilot {mode, consentStale, model, alwaysBudgetUsd}, session {enabled, consentStale, consentAt, model, budgetUsd, transcriptWindowMin}}`; POST /copilot-mode {mode, accept?, ack?}; POST /enable {accept:true}; POST /disable; POST /api/live/:liveKey/action-items. Never returns the CLI path.
+- claudeCli (component, planned, AUG-198): `resolveClaudeCli()` + `probeClaudeCli()` in server/src/services/claudeCli.ts; used by routes/assistant, copilotEngine and assistantSession.
+- assistantState (component, planned, AUG-198): consent version constants and `sanitizeAssistantPreferences()`; depends on preferencesStore.
 - Client: AssistantPanel (overlay), CopilotHintCard, Settings tab `assistants`, `CTX n` badge in compact widgets.
 - Affected existing components (from the graph explore of liveTranscription and liveActionItems):
   - liveTranscription (three new push lines)
@@ -215,7 +225,8 @@
 - Items added by the assistant are manual and locked, so model merges never remove them, and they are deduplicated by exact match or similarity ≥ 0.6 before creation.
 - A Claude child never gets Bash, Edit or Write; its tools are Read/Grep/Glob plus the praxis and august MCP servers.
 - Each Claude child is bound to one project (cwd) and one liveKey (august MCP token); at most 3 children run at once.
-- Ports, pids, model internals and token counts stay in the server log; the UI shows plain-language status and the spending limit only.
+- Ports, pids, model internals and token counts stay in the server log; the UI shows plain-language status and the spending limit only; the signed-in e-mail, org and plan from `claude auth status` are never shown or logged.
+- A spending limit of 0 means "No limit" (user choice, AUG-194): the child is spawned without `--max-budget-usd`; the other caps (≤ 3 children, ≤ 12 hints/hour, window ≤ 15 min, idle stop) still apply.
 
 ## Route-Specific Constraints
 
@@ -227,7 +238,6 @@
 ## Open questions
 
 - macOS: does the Claude CLI credential (keychain) work from a child of a GUI app without a prompt? [UNVERIFIED] — prototype on a Mac before implementation.
-- Default model: Sonnet (quality) vs Haiku (cost); the mockup shows Sonnet.
 - Should the project's praxis-mcp-codex ad-hoc rule (search before answering) be appended to the child's system prompt, or is CLAUDE.md enough?
 - Agent SDK vs raw stream-json: decide after a 1-day transport prototype; the interface is the same.
 - Whether `praxisRecentPaths` should also record projects opened from the Assistant panel (proposed yes, after the first successful answer).
@@ -247,5 +257,6 @@
 - client/src/components/ActionItemsPanel.tsx — action items column.
 - client/src/components/LiveTranscriptPanel.tsx — live transcript view.
 - electron/src/main.ts — `ensureToolPaths` :83-88.
-- docs/mockups/AUG-193/*.html — mockups.
+- docs/mockups/AUG-193/*.html — AUG-193 comparison mockups.
+- docs/mockups/AUG-194/ai-assistants-tab.html + findings.md — final Settings tab mockup and spec (layout, states, consent text, preferences, routes, Claude Code detection).
 - docs/mockups/AUG-196/findings.md — copilot spec; research/*.mjs — scratch gate-eval, explain-bench and task-board probe scripts (not product code).

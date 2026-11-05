@@ -1,0 +1,1120 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>AI Assistants Tab</title>
+<style>
+/* ===== Real app tokens (client/src/App.css 3-106, verbatim) ===== */
+:root {
+  --necron-950: #040806;
+  --necron-900: #0a110d;
+  --necron-850: #101c17;
+  --necron-800: #16261e;
+  --necron-700: #1e3429;
+  --necron-600: #28453a;
+  --necron-500: #2d6b4f;
+  --necron-400: #0a7b50;
+  --necron-300: #00c876;
+  --necron-200: #2dd690;
+  --necron-100: #6adaa5;
+  --necron-50:  #a0e2c0;
+
+  --accent: #0d8c5c;
+  --accent-hover: #0a7a50;
+  --accent-light: rgba(13, 140, 92, 0.12);
+  --accent-glow: rgba(13, 140, 92, 0.18);
+
+  --page-bg: #f2efe8;
+  --main-bg: #f2efe8;
+
+  --sidebar-bg: #c8dcd0;
+  --sidebar-bg-hover: #bdd4c8;
+  --sidebar-bg-active: #b0ccbe;
+  --sidebar-text: #1a3326;
+  --sidebar-text-muted: #4a7a60;
+  --sidebar-border: #a8c4b4;
+
+  --text-primary: #1e2b24;
+  --text-secondary: #566b5e;
+  --border-color: rgba(45, 58, 51, 0.25);
+
+  --card-bg: rgba(250, 248, 244, 0.92);
+  --circuit-node-bg: #f0ede6;
+  --card-border: rgba(45, 58, 51, 0.14);
+  --card-shadow: 0 12px 34px rgba(45, 58, 51, 0.08);
+  --card-radius: 0;
+
+  --shell-gradient: radial-gradient(circle at 50% 0%, rgba(13, 140, 92, 0.12), transparent 38%),
+    linear-gradient(145deg, rgba(242, 239, 232, 0.92), rgba(234, 230, 222, 0.72));
+  --shell-shadow: 0 24px 70px rgba(45, 58, 51, 0.08);
+
+  --status-uploading: #d49a00;
+  --status-preparing: #d49a00;
+  --status-transcribing: var(--necron-400);
+  --status-completed: var(--necron-500);
+  --status-failed: #d44040;
+  --gpu-color: var(--necron-500);
+  --gpu-bg: rgba(45, 107, 79, 0.12);
+  --cpu-fallback-color: #b8860b;
+  --cpu-fallback-bg: rgba(184, 134, 11, 0.10);
+
+  --btn-radius: 0;
+  --input-radius: 0;
+
+  --font-gothic: 'UnifrakturMaguntia', cursive;
+  --font-terminal: 'Cascadia Code', 'Fira Code', 'Consolas', monospace;
+
+  color-scheme: light dark;
+  font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, Helvetica, Arial, sans-serif,
+    'Apple Color Emoji', 'Segoe UI Emoji';
+}
+
+/* ========== Dark Mode ========== */
+:root[data-theme='dark'] {
+  --page-bg: #060b08;
+  --main-bg: #0a110d;
+
+  --sidebar-bg: #050908;
+  --sidebar-bg-hover: #111d17;
+  --sidebar-bg-active: #182820;
+  --sidebar-text: #c0cec4;
+  --sidebar-text-muted: #5e7d6a;
+  --sidebar-border: rgba(0, 200, 118, 0.12);
+
+  --accent: #00c876;
+  --accent-hover: #2dd690;
+  --accent-light: rgba(0, 200, 118, 0.10);
+  --accent-glow: rgba(0, 200, 118, 0.30);
+
+  --text-primary: #c0cec4;
+  --text-secondary: #5e7d6a;
+  --border-color: rgba(0, 200, 118, 0.18);
+
+  --card-bg: rgba(12, 20, 16, 0.92);
+  --circuit-node-bg: #0c1410;
+  --card-border: rgba(0, 200, 118, 0.15);
+  --card-shadow: 0 14px 40px rgba(0, 0, 0, 0.4);
+
+  --shell-gradient: radial-gradient(circle at 48% 0%, rgba(0, 200, 118, 0.18), transparent 35%),
+    linear-gradient(145deg, rgba(12, 20, 16, 0.96), rgba(10, 17, 13, 0.98));
+  --shell-shadow: 0 28px 80px rgba(0, 0, 0, 0.52);
+
+  --status-uploading: #d4a020;
+  --status-preparing: #d4a020;
+  --status-transcribing: #00c876;
+  --status-completed: #2dd690;
+  --status-failed: #e05555;
+  --gpu-color: var(--necron-200);
+  --gpu-bg: rgba(0, 200, 118, 0.12);
+  --cpu-fallback-color: #d4a020;
+  --cpu-fallback-bg: rgba(212, 160, 32, 0.12);
+}
+
+/* ===== Real Settings rules (App.css 6962-7097) ===== */
+.settings-backdrop {
+  position: fixed;
+  inset: 0;
+  z-index: 50;
+  display: grid;
+  place-items: start center;
+  padding: 16px;
+  padding-top: 7.5vh;
+  background: rgba(0, 0, 0, 0.45);
+  backdrop-filter: blur(8px);
+  animation: modePickerFadeIn 0.12s ease-out;
+}
+
+.settings-card {
+  width: min(600px, 100%);
+  max-height: 85vh;
+  display: flex;
+  flex-direction: column;
+  background: var(--card-bg);
+  border: 1px solid var(--card-border);
+  border-radius: 0;
+  box-shadow: var(--card-shadow);
+  color: var(--text-primary);
+}
+
+.settings-header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  padding: 20px 24px 16px;
+  border-bottom: 1px solid var(--border-color);
+}
+
+.settings-title {
+  font-family: var(--font-terminal);
+  font-size: 16px;
+  font-weight: 700;
+  text-transform: uppercase;
+  letter-spacing: 0.1em;
+  color: var(--accent);
+}
+
+.settings-close {
+  width: 28px;
+  height: 28px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  background: transparent;
+  border: 1px solid transparent;
+  border-radius: 0;
+  color: var(--text-secondary);
+  font-size: 18px;
+  cursor: pointer;
+  transition: color 0.15s, border-color 0.15s;
+}
+
+.settings-close:hover {
+  color: var(--text-primary);
+  border-color: var(--border-color);
+}
+
+.settings-body {
+  flex: 1;
+  overflow-y: auto;
+  scrollbar-width: none;
+  padding: 16px 24px;
+}
+
+.settings-body::-webkit-scrollbar {
+  display: none;
+}
+
+.settings-section {
+  margin-bottom: 20px;
+}
+
+.settings-section:last-child {
+  margin-bottom: 0;
+}
+
+.settings-section-title {
+  font-family: var(--font-terminal);
+  font-size: 11px;
+  font-weight: 700;
+  text-transform: uppercase;
+  letter-spacing: 0.12em;
+  color: var(--text-secondary);
+  margin-bottom: 10px;
+  padding-bottom: 6px;
+  border-bottom: 1px solid var(--border-color);
+}
+
+.settings-row {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  padding: 8px 0;
+  gap: 12px;
+}
+
+.settings-label {
+  font-size: 13px;
+  color: var(--text-primary);
+  flex-shrink: 0;
+}
+
+.settings-hint {
+  font-family: var(--font-terminal);
+  font-size: 11px;
+  line-height: 1.4;
+  color: var(--text-secondary);
+  margin: -4px 0 8px;
+  border-radius: 0;
+}
+
+.settings-hint--warn {
+  color: #d4a028;
+}
+
+/* AUG-190: child options under Online text (Groq) */
+.settings-child {
+  margin-left: 4px;
+  padding-left: 14px;
+  border-left: 2px solid var(--accent);
+  border-radius: 0;
+}
+
+.settings-child--off {
+  opacity: 0.45;
+}
+
+.settings-child--off .settings-toggle,
+.settings-child--off .settings-toggle input {
+  cursor: not-allowed;
+}
+.settings-dropdown {
+  position: relative;
+  min-width: 140px;
+}
+
+.settings-dropdown-trigger {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 8px;
+  width: 100%;
+  padding: 6px 10px;
+  font-family: var(--font-terminal);
+  font-size: 12px;
+  border: 1px solid var(--border-color);
+  border-radius: 0;
+  background: var(--card-bg);
+  color: var(--text-primary);
+  cursor: pointer;
+  outline: none;
+  text-align: left;
+}
+
+.settings-dropdown-trigger:hover {
+  border-color: var(--text-secondary);
+}
+
+.settings-dropdown-trigger:focus-visible {
+  border-color: var(--accent);
+  box-shadow: 0 0 0 2px var(--accent-light);
+}
+
+.settings-dropdown-chevron {
+  width: 12px;
+  height: 12px;
+  flex-shrink: 0;
+  transition: transform 0.15s ease;
+}
+
+.settings-dropdown.open .settings-dropdown-chevron {
+  transform: rotate(180deg);
+}
+
+.settings-dropdown-menu {
+  position: absolute;
+  top: calc(100% + 4px);
+  right: 0;
+  left: 0;
+  background: var(--card-bg);
+  border: 1px solid var(--border-color);
+  border-radius: 0;
+  box-shadow: var(--card-shadow);
+  backdrop-filter: blur(12px);
+  padding: 4px;
+  z-index: 200;
+  animation: settingsDropdownIn 0.12s ease-out;
+}
+
+@keyframes settingsDropdownIn {
+  from { opacity: 0; transform: translateY(-4px); }
+  to { opacity: 1; transform: translateY(0); }
+}
+
+.settings-dropdown-item {
+  display: block;
+  width: 100%;
+  padding: 7px 10px;
+  background: none;
+  border: none;
+  border-radius: 0;
+  color: var(--text-primary);
+  font-family: var(--font-terminal);
+  font-size: 12px;
+  text-align: left;
+  cursor: pointer;
+  transition: background 0.12s ease;
+  opacity: 0;
+  animation: dropdown-item-fade-in 0.25s ease forwards;
+}
+
+.settings-dropdown-item:hover {
+  background: var(--accent);
+  color: var(--necron-900);
+  animation-name: dropdown-item-fade-in, btn-target-pulse;
+  animation-duration: 0.25s, 1.2s;
+  animation-timing-function: ease, ease-in-out;
+  animation-fill-mode: forwards, none;
+  animation-iteration-count: 1, infinite;
+}
+
+.settings-dropdown-item--active {
+  color: var(--accent);
+}
+
+.settings-dropdown-item--disabled {
+  opacity: 0.4;
+  cursor: default;
+}
+
+.settings-dropdown-item--disabled:hover {
+  background: none;
+  color: var(--text-primary);
+  animation-name: dropdown-item-fade-in;
+  animation-duration: 0.25s;
+  animation-timing-function: ease;
+  animation-fill-mode: forwards;
+  animation-iteration-count: 1;
+}
+
+.settings-dropdown--wide .settings-dropdown-menu {
+  min-width: 280px;
+  left: auto;
+  right: 0;
+}
+
+.settings-btn-inline {
+  padding: 6px 10px;
+  font-family: var(--font-terminal);
+  font-size: 11px;
+  font-weight: 700;
+  text-transform: uppercase;
+  letter-spacing: 0.06em;
+  border: 1px solid var(--border-color);
+  border-radius: 0;
+  background: transparent;
+  color: var(--text-primary);
+  cursor: pointer;
+  white-space: nowrap;
+  transition: background 180ms ease, color 180ms ease, border-color 180ms ease;
+}
+
+.settings-btn-inline:hover {
+  border-color: var(--accent);
+  color: var(--accent);
+}
+
+.settings-btn-inline:disabled {
+  opacity: 0.5;
+  cursor: default;
+}
+
+.settings-btn-inline--danger {
+  border-color: var(--status-failed);
+  color: var(--status-failed);
+  padding: 6px 8px;
+}
+
+.settings-btn-inline--danger:hover {
+  background: var(--status-failed);
+  color: #fff;
+}
+
+.settings-toggle {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  cursor: pointer;
+}
+
+.settings-toggle input[type="checkbox"] {
+  width: 16px;
+  height: 16px;
+  accent-color: var(--accent);
+  cursor: pointer;
+}
+
+.settings-toggle-label {
+  font-family: var(--font-terminal);
+  font-size: 12px;
+  color: var(--text-secondary);
+  text-transform: uppercase;
+  letter-spacing: 0.05em;
+}
+
+.settings-path-display {
+  font-family: var(--font-terminal);
+  font-size: 11px;
+  color: var(--text-secondary);
+  max-width: 240px;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  direction: rtl;
+  text-align: left;
+}
+
+/* AUG-142: settings tabs */
+.settings-tabs {
+  display: flex;
+  gap: 0;
+  padding: 0 24px;
+  border-bottom: 1px solid var(--border-color);
+}
+
+.settings-tab {
+  padding: 10px 14px;
+  font-family: var(--font-terminal);
+  font-size: 11px;
+  font-weight: 700;
+  text-transform: uppercase;
+  letter-spacing: 0.1em;
+  color: var(--text-secondary);
+  background: transparent;
+  border: none;
+  border-bottom: 2px solid transparent;
+  border-radius: 0;
+  margin-bottom: -1px;
+  cursor: pointer;
+  transition: color 0.15s, border-color 0.15s;
+}
+
+.settings-tab:hover {
+  color: var(--text-primary);
+}
+
+.settings-tab--active {
+  color: var(--accent);
+  border-bottom-color: var(--accent);
+}
+
+.settings-btn {
+  flex: 1;
+  padding: 8px 14px;
+  font-size: 12px;
+  font-weight: 700;
+  text-transform: uppercase;
+  letter-spacing: 0.08em;
+  border: 1px solid var(--border-color);
+  border-radius: 0;
+  background: transparent;
+  color: var(--text-primary);
+  cursor: pointer;
+  font-family: var(--font-terminal);
+  transition: background 180ms ease, color 180ms ease, border-color 180ms ease;
+}
+
+.settings-btn:hover {
+  border-color: var(--accent);
+  color: var(--accent);
+}
+
+.settings-btn--danger {
+  border-color: var(--status-failed);
+  color: var(--status-failed);
+}
+
+.settings-btn--danger:hover {
+  background: var(--status-failed);
+  color: #fff;
+}
+.groq-setup-backdrop {
+  position: fixed;
+  inset: 0;
+  z-index: 50;
+  display: grid;
+  place-items: center;
+  padding: 16px;
+  background: rgba(0, 0, 0, 0.45);
+  backdrop-filter: blur(8px);
+  animation: modePickerFadeIn 0.12s ease-out;
+}
+
+.groq-setup-card {
+  width: min(440px, 100%);
+  background: var(--card-bg);
+  border: 1px solid var(--card-border);
+  border-radius: 0;
+  box-shadow: var(--card-shadow);
+  padding: 28px;
+  color: var(--text-primary);
+  z-index: 1000;
+  position: relative;
+}
+
+.groq-setup-header {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  font-size: 16px;
+  font-weight: 700;
+  margin-bottom: 16px;
+  color: var(--accent);
+}
+
+.groq-setup-icon {
+  font-size: 18px;
+}
+
+.groq-setup-steps {
+  margin: 0 0 12px 0;
+  padding-left: 20px;
+  font-size: 13px;
+  line-height: 1.7;
+  color: var(--text-primary);
+}
+
+.groq-setup-steps li {
+  margin-bottom: 4px;
+}
+
+.groq-setup-link {
+  color: var(--accent);
+  text-decoration: underline;
+  text-underline-offset: 2px;
+}
+
+.groq-setup-code {
+  background: rgba(0, 0, 0, 0.06);
+  padding: 1px 5px;
+  font-family: var(--font-terminal);
+  font-size: 12px;
+  border-radius: 0;
+}
+
+.groq-setup-pre {
+  background: rgba(0, 0, 0, 0.06);
+  padding: 6px 10px;
+  margin: 6px 0 0 0;
+  font-family: var(--font-terminal);
+  font-size: 11.5px;
+  line-height: 1.5;
+  overflow-x: auto;
+  border-radius: 0;
+  color: var(--text, #1a1a1a);
+}
+
+.groq-setup-input-row {
+  margin-bottom: 10px;
+}
+
+.groq-setup-input {
+  width: 100%;
+  padding: 9px 12px;
+  font-family: var(--font-terminal);
+  font-size: 13px;
+  border: 1px solid var(--border-color);
+  border-radius: 0;
+  background: var(--card-bg);
+  color: var(--text-primary);
+  box-sizing: border-box;
+  outline: none;
+}
+
+.groq-setup-input:focus {
+  border-color: var(--accent);
+  box-shadow: 0 0 0 2px var(--accent-light);
+}
+
+.groq-setup-input::placeholder {
+  opacity: 0.35;
+}
+
+.groq-setup-error {
+  font-size: 12px;
+  color: var(--status-failed);
+  margin-bottom: 8px;
+}
+
+.groq-setup-note {
+  font-size: 11px;
+  color: var(--text-secondary);
+  margin-bottom: 16px;
+  letter-spacing: 0.03em;
+}
+
+.groq-setup-hint {
+  font-size: 12px;
+  color: var(--text-secondary);
+  margin: 0 0 14px;
+  letter-spacing: 0.02em;
+}
+
+.groq-setup-actions {
+  display: flex;
+  gap: 8px;
+}
+
+.groq-setup-btn {
+  flex: 1;
+  padding: 8px 14px;
+  font-size: 13px;
+  font-weight: 700;
+  text-transform: uppercase;
+  letter-spacing: 0.08em;
+  text-align: center;
+  text-decoration: none;
+  border: 1px solid var(--border-color);
+  border-radius: 0;
+  background: transparent;
+  color: var(--text-primary);
+  cursor: pointer;
+  transition: background 180ms ease, color 180ms ease, border-color 180ms ease, transform 180ms ease;
+}
+
+.groq-setup-btn:hover {
+  border-color: var(--accent);
+  color: var(--accent);
+  transform: translateY(-1px);
+}
+
+.groq-setup-btn--primary {
+  background: var(--accent);
+  border-color: var(--accent);
+  color: #e0e8e3;
+  box-shadow: 0 6px 16px var(--accent-glow);
+}
+
+.groq-setup-btn--primary:hover {
+  background: var(--accent-hover);
+  border-color: var(--accent-hover);
+  transform: translateY(-1px);
+}
+
+
+/* ===== Added keyframes ===== */
+@keyframes modePickerFadeIn { from { opacity: 0; } to { opacity: 1; } }
+@keyframes dropdown-item-fade-in { from { opacity: 0; transform: translateY(-2px); } to { opacity: 1; transform: none; } }
+@keyframes btn-target-pulse { 0%, 100% { box-shadow: none; } 50% { box-shadow: 0 0 0 2px var(--accent-light); } }
+
+/* ===== NEW classes (become real app classes) ===== */
+* { box-sizing: border-box; border-radius: 0; }
+.settings-status { font-family: var(--font-terminal); font-size: 12px; color: var(--text-secondary); text-align: right; }
+.settings-status--warn { color: #d4a028; }
+.settings-code { font-family: var(--font-terminal); background: rgba(0,0,0,.06); padding: 0 4px; }
+.settings-recheck { margin: 0 0 8px; }
+.settings-toggle input[type="checkbox"]:disabled { cursor: not-allowed; }
+.settings-dropdown-trigger:disabled { cursor: not-allowed; }
+.settings-dropdown--fit { min-width: 230px; }
+
+.settings-tag { font-size: 9px; letter-spacing: .06em; padding: 0 4px; border: 1px solid var(--accent); color: var(--accent); white-space: nowrap; font-weight: 400; }
+.settings-tag--accent { background: var(--accent); color: #e0e8e3; }
+.settings-tag--danger { border-color: var(--status-failed); color: var(--status-failed); }
+.settings-choice-list { display: flex; flex-direction: column; gap: 8px; margin-bottom: 8px; }
+.settings-choice { display: grid; grid-template-columns: auto minmax(0,1fr) minmax(0,260px); gap: 4px 12px; align-items: start; border: 1px solid var(--border-color); background: var(--card-bg); padding: 10px 12px; cursor: pointer; }
+.settings-choice:focus-visible { outline: 2px solid var(--accent); outline-offset: 2px; }
+.settings-choice--selected { border-color: var(--accent); background: var(--accent-light); }
+.settings-choice--disabled { opacity: .45; cursor: not-allowed; }
+.settings-choice-mark { width: 14px; height: 14px; border: 1px solid var(--text-primary); margin-top: 3px; display: flex; align-items: center; justify-content: center; }
+.settings-choice--selected .settings-choice-mark { border-color: var(--accent); }
+.settings-choice--selected .settings-choice-mark::after { content: ''; width: 8px; height: 8px; background: var(--accent); }
+.settings-choice-name { font-weight: 700; display: flex; gap: 8px; align-items: center; flex-wrap: wrap; }
+.settings-choice-desc { font-size: 12px; color: var(--text-primary); margin-top: 2px; }
+.settings-choice-price { font-size: 11px; color: var(--text-secondary); text-align: right; }
+@media (max-width: 560px) {
+  .settings-choice { grid-template-columns: auto minmax(0,1fr); }
+  .settings-choice-price { grid-column: 2; text-align: left; }
+}
+
+.settings-confirm-card { width: min(440px, 100%); background: var(--card-bg); border: 1px solid var(--status-failed); box-shadow: var(--card-shadow); padding: 28px; color: var(--text-primary); z-index: 1000; position: relative; }
+.settings-confirm-title { font-size: 16px; font-weight: 700; margin-bottom: 16px; color: var(--status-failed); }
+.settings-confirm-text { font-size: 13px; line-height: 1.7; margin: 0 0 14px; }
+.settings-confirm-check { display: flex; gap: 8px; align-items: flex-start; font-size: 12px; margin-bottom: 16px; cursor: pointer; }
+.settings-confirm-check input { width: 16px; height: 16px; margin: 1px 0 0; accent-color: var(--status-failed); flex: none; }
+.settings-confirm-btn--danger, .settings-confirm-btn--danger:hover { background: var(--status-failed); border-color: var(--status-failed); color: #e0e8e3; box-shadow: none; }
+.settings-confirm-btn--danger:disabled { opacity: .4; cursor: not-allowed; transform: none; }
+.groq-setup-steps--lettered { list-style: none; padding-left: 0; }
+
+/* ===== Page chrome (mockup only) ===== */
+html { background: var(--page-bg); }
+body { margin: 0; background: var(--page-bg); color: var(--text-primary); font-family: var(--font-terminal); font-size: 13px; line-height: 1.5; padding: 0 16px 48px; }
+button { font-family: var(--font-terminal); }
+.wrap { max-width: 1000px; margin: 0 auto; display: grid; grid-template-columns: minmax(0,1fr); gap: 24px; }
+.wrap > * { min-width: 0; }
+header { padding-top: 24px; }
+h1 { margin: 0; font-size: 20px; text-wrap: balance; }
+h2 { margin: 0 0 10px; font-size: 13px; letter-spacing: .08em; text-transform: uppercase; color: var(--accent); border-bottom: 1px solid var(--border-color); padding-bottom: 6px; }
+.lead { margin: 4px 0 0; color: var(--text-secondary); max-width: 75ch; }
+.bar { position: sticky; top: 0; z-index: 20; background: var(--page-bg); border-bottom: 1px solid var(--border-color); padding: 10px 0; display: flex; flex-wrap: wrap; gap: 10px 16px; align-items: center; }
+.grp { display: flex; align-items: center; gap: 6px; flex-wrap: wrap; }
+.grp > span { font-size: 10px; text-transform: uppercase; letter-spacing: .06em; color: var(--text-secondary); }
+.seg { display: flex; border: 1px solid var(--border-color); flex-wrap: wrap; }
+.seg button, .bar-btn { border: 0; background: transparent; color: var(--text-primary); font-size: 11px; padding: 6px 10px; cursor: pointer; }
+.bar-btn { border: 1px solid var(--border-color); }
+.bar-btn:hover { border-color: var(--accent); color: var(--accent); }
+.seg button[aria-pressed="true"] { background: var(--accent); color: #e0e8e3; }
+.seg button:focus-visible, .bar-btn:focus-visible { outline: 2px solid var(--accent); outline-offset: 2px; }
+.preview.settings-backdrop { position: relative; inset: auto; z-index: auto; min-height: 640px; padding-top: 32px; animation: none; backdrop-filter: none; }
+.preview .settings-tabs { overflow-x: auto; scrollbar-width: none; }
+.preview .settings-tab { white-space: nowrap; }
+.preview--narrow .settings-card { width: min(420px, 100%); }
+/* Proposed: six tabs do not fit the 600px card with today's 14px padding + .1em spacing (≈680px). */
+/* Real app rule (App.css .settings-input) + the money field wrapper for the spending limits (user decision 2026-11-06: free number, 0 = no limit). */
+.settings-input { min-width: 140px; padding: 6px 10px; font-family: var(--font-terminal); font-size: 12px; border: 1px solid var(--border-color); border-radius: 0; background: var(--card-bg); color: var(--text-primary); outline: none; }
+.settings-input:focus { border-color: var(--accent); box-shadow: 0 0 0 2px var(--accent-light); }
+.settings-input:disabled { opacity: 0.45; cursor: not-allowed; }
+.settings-money { display: flex; align-items: center; gap: 6px; font-family: var(--font-terminal); font-size: 12px; color: var(--text-secondary); }
+.settings-money .settings-input { min-width: 0; width: 96px; text-align: right; -moz-appearance: textfield; }
+.settings-money .settings-input::-webkit-outer-spin-button, .settings-money .settings-input::-webkit-inner-spin-button { -webkit-appearance: none; margin: 0; }
+/* Decision 2026-11-06: the Settings card becomes 680px wide so the six tabs fit; 600px is today's width. */
+.preview--wide .settings-card { width: min(680px, 100%); }
+.preview--narrow .settings-choice { grid-template-columns: auto minmax(0,1fr); }
+.preview--narrow .settings-choice-price { grid-column: 2; text-align: left; }
+.preview--narrow .settings-row { flex-wrap: wrap; }
+.preview--narrow .settings-dropdown--fit { min-width: 200px; }
+.runs { display: grid; grid-template-columns: repeat(auto-fit,minmax(180px,1fr)); border: 1px solid var(--border-color); }
+.runs > div { padding: 8px 10px; border-right: 1px solid var(--border-color); border-bottom: 1px solid var(--border-color); margin: 0 -1px -1px 0; }
+.runs .k { font-size: 10px; text-transform: uppercase; letter-spacing: .06em; color: var(--text-secondary); }
+.runs .v { font-weight: 700; color: var(--accent); }
+.runs .v.offv { color: var(--text-secondary); }
+.runs .v.bad { color: var(--status-failed); }
+.states { list-style: none; margin: 0; padding: 0; display: flex; flex-wrap: wrap; gap: 8px; }
+.notes { margin: 0; padding-left: 18px; color: var(--text-secondary); }
+.notes li { margin-bottom: 4px; }
+</style>
+</head>
+<body>
+<div class="wrap">
+<header>
+  <h1>AUG-194 &mdash; Settings &rarr; AI assistants (final design)</h1>
+  <p class="lead">Pixel-faithful mockup on the real Settings CSS. Use the bar to put the tab into every state; click the controls as a user would. Copilot row per the AUG-196 decision (four modes); the Active session row per AUG-193 Option A.</p>
+</header>
+
+<div class="bar" id="bar">
+  <div class="grp"><span>Theme</span><div class="seg"><button data-set="theme:light">Light</button><button data-set="theme:dark">Dark</button></div></div>
+  <div class="grp"><span>Claude Code</span><div class="seg">
+    <button data-set="claude:ok">Signed in</button><button data-set="claude:nosign">Not signed in</button><button data-set="claude:missing">Not installed</button><button data-set="claude:old">Too old</button><button data-set="claude:checking">Checking&hellip;</button></div></div>
+  <div class="grp"><span>PraxisOS</span><div class="seg"><button data-set="praxis:true">Running</button><button data-set="praxis:false">Not running</button></div></div>
+  <div class="grp"><span>Session consent</span><div class="seg"><button data-set="sessionStale:false">Fresh</button><button data-set="sessionStale:true">Stale (version bump)</button></div></div>
+  <div class="grp"><span>Copilot consent</span><div class="seg"><button data-set="copilotStale:false">Fresh</button><button data-set="copilotStale:true">Stale</button></div></div>
+  <div class="grp"><span>Presets</span>
+    <button class="bar-btn" data-act="preset" data-v="off">All off</button>
+    <button class="bar-btn" data-act="preset" data-v="local">Copilot: Local</button>
+    <button class="bar-btn" data-act="preset" data-v="claude">Copilot: Claude explains</button>
+    <button class="bar-btn" data-act="preset" data-v="always">Copilot: Always-on</button>
+    <button class="bar-btn" data-act="preset" data-v="session">Session on</button>
+    <button class="bar-btn" data-act="preset" data-v="all">Everything on</button></div>
+  <div class="grp"><span>Card</span><div class="seg"><button data-set="tabs:wide">680px (decided)</button><button data-set="tabs:today">600px (today, tabs scroll)</button></div></div>
+  <div class="grp"><span>Width</span><div class="seg"><button data-set="narrow:false">Desktop (600px card)</button><button data-set="narrow:true">Narrow (420px card)</button></div></div>
+</div>
+
+<section>
+  <h2>Settings &rarr; AI assistants</h2>
+  <div class="preview settings-backdrop" id="preview"></div>
+</section>
+
+<section>
+  <h2>What runs</h2>
+  <div class="runs" id="runs"></div>
+</section>
+
+<section>
+  <h2>States to review</h2>
+  <ul class="states" id="states"></ul>
+</section>
+
+<section>
+  <h2>Notes</h2>
+  <ul class="notes">
+    <li>Copilot modes and the Active session share one Status section; no per-row Recheck.</li>
+    <li>Never shown: paths, ports, e-mail, plan name, token counts.</li>
+    <li>Claude modes are disabled, not hidden, when Claude Code is unusable; a saved Claude mode stays selected with a warning.</li>
+    <li>Spec and preferences: findings.md.</li>
+  </ul>
+</section>
+</div>
+
+<div id="modalHost"></div>
+
+<script>
+var S = { theme:'light', claude:'ok', claudePrev:'ok', praxis:true, copilotMode:'off', copilotModel:'sonnet', alwaysBudget:'2',
+  copilotStale:false, session:false, sessionStale:false, model:'sonnet', budget:'2', window:'5', narrow:false,
+  modal:null, modalChk:false, enableError:null, openDd:null, tabs:'wide' };
+var shownModal = null;
+
+var MODELS = [['sonnet', 'Sonnet &mdash; balanced (default)'], ['haiku', 'Haiku &mdash; cheapest, fastest'], ['opus', 'Opus &mdash; strongest, costliest']];
+function noLimit(v) { return Number(v) === 0; }
+function fmtMoney(v) { return noLimit(v) ? 'no limit' : '$' + v; }
+/* Free number field (real .settings-input); 0 = no limit. Committed on change (blur / Enter), not on every keystroke. */
+function money(key, val, dis) {
+  return '<span class="settings-money">$<input class="settings-input" type="number" min="0" step="any" inputmode="decimal" placeholder="0 = no limit" data-chg="' + key + '" value="' + String(val) + '"' + (dis ? ' disabled' : '') + ' aria-label="Spending limit per meeting in USD"></span>';
+}
+var WINDOWS = [['2', '2 min'], ['5', '5 min (default)'], ['10', '10 min'], ['15', '15 min']];
+var CHEV = '<svg class="settings-dropdown-chevron" viewBox="0 0 12 12" fill="none" stroke="currentColor" stroke-width="1.5"><polyline points="3 4.5 6 7.5 9 4.5"/></svg>';
+var DD_KEY = { cpModel:'copilotModel', model:'model', window:'window' };
+
+function usable() { return S.claude === 'ok'; }
+function $(id) { return document.getElementById(id); }
+function code(t) { return '<code class="settings-code">' + t + '</code>'; }
+
+function hint(t, warn) { return '<div class="settings-hint' + (warn ? ' settings-hint--warn' : '') + '">' + t + '</div>'; }
+function row(label, ctl) { return '<div class="settings-row"><span class="settings-label">' + label + '</span>' + ctl + '</div>'; }
+function dd(id, cur, opts, dis) {
+  var label = '', open = S.openDd === id && !dis;
+  opts.forEach(function (o) { if (o[0] === cur) label = o[1]; });
+  var h = '<div class="settings-dropdown settings-dropdown--fit' + (open ? ' open' : '') + '">' +
+    '<button type="button" class="settings-dropdown-trigger" data-act="dd" data-id="' + id + '" aria-haspopup="listbox" aria-expanded="' + open + '"' + (dis ? ' disabled' : '') + '><span>' + label + '</span>' + CHEV + '</button>';
+  if (open) {
+    h += '<div class="settings-dropdown-menu" role="listbox">' + opts.map(function (o) {
+      return '<button type="button" role="option" class="settings-dropdown-item' + (o[0] === cur ? ' settings-dropdown-item--active' : '') + '" data-act="pick" data-id="' + id + '" data-v="' + o[0] + '">' + o[1] + '</button>';
+    }).join('') + '</div>';
+  }
+  return h + '</div>';
+}
+function toggle(chg, checked, dis) {
+  return '<label class="settings-toggle"><input type="checkbox" data-chg="' + chg + '"' + (checked ? ' checked' : '') + (dis ? ' disabled' : '') + '><span class="settings-toggle-label">' + (checked ? 'ON' : 'OFF') + '</span></label>';
+}
+function st(text, warn) { return '<span class="settings-status' + (warn ? ' settings-status--warn' : '') + '">' + text + '</span>'; }
+
+function statusSection() {
+  var c = { ok: ['Signed in &middot; 2.1.318', false], nosign: ['Installed, not signed in', true], missing: ['Not installed', true],
+    old: ['Too old (2.0.14) &mdash; update it', true], checking: ['Checking&hellip;', false] }[S.claude];
+  var h = '<div class="settings-section"><div class="settings-section-title">STATUS</div>';
+  h += row('Claude Code', st(c[0], c[1]));
+  h += row('PraxisOS', st(S.praxis ? 'Running' : 'Not running', !S.praxis));
+  if (S.claude === 'missing') h += hint('Claude Code is not installed. Install it, run ' + code('claude') + ' once in a terminal to sign in, then press Recheck.', true);
+  if (S.claude === 'nosign') h += hint('Claude Code is installed but not signed in. Run ' + code('claude') + ' once in a terminal, sign in through the browser, then press Recheck.', true);
+  if (S.claude === 'old') h += hint('Claude Code is older than 2.1.318 and cannot report its sign-in. Run ' + code('claude update') + ', then press Recheck.', true);
+  if (!S.praxis) h += hint('PraxisOS is not running. Copilot hints start when it is; the Active session can still read project files.', true);
+  if ((S.claude !== 'ok') || !S.praxis) {
+    var chk = S.claude === 'checking';
+    h += '<div class="settings-recheck"><button type="button" class="settings-btn-inline" data-act="recheck"' + (chk ? ' disabled' : '') + '>' + (chk ? 'Checking&hellip;' : 'RECHECK') + '</button></div>';
+  }
+  return h + '</div>';
+}
+
+var MODES = [
+  { id: 'off', name: 'Off', desc: 'No hints.', price: 'Free &middot; nothing is sent' },
+  { id: 'local', name: 'Local hints', desc: 'Spots references to past agreements and shows matching notes from the Praxis project. Finds less in meetings that are not in the notes’ language.', price: 'Free &middot; runs on this computer, nothing is sent' },
+  { id: 'claude', name: 'Claude explains', tag: '<span class="settings-tag settings-tag--accent">RECOMMENDED</span>', claude: true, desc: 'Same trigger; Claude checks the found notes, searches the project when needed and says in one sentence what was agreed.', price: 'About $0.10&ndash;0.20 per meeting hour of your Claude usage &middot; sends only the few lines around each reference and the matching notes' },
+  { id: 'always', name: 'Always-on Claude', tag: '<span class="settings-tag settings-tag--danger">EXPENSIVE</span>', claude: true, desc: 'Claude reads the whole meeting and decides itself when to show a hint. Catches references without trigger words.', price: 'About $1&ndash;2.50 per meeting hour &middot; the whole conversation is sent to Anthropic as it happens' }
+];
+
+function copilotSection() {
+  var off = !usable();
+  var h = '<div class="settings-section"><div class="settings-section-title">MEETING COPILOT</div>';
+  h += '<div class="settings-choice-list" role="radiogroup" aria-label="Meeting Copilot mode">';
+  MODES.forEach(function (m) {
+    var sel = S.copilotMode === m.id, dis = m.claude && off;
+    h += '<div class="settings-choice' + (sel ? ' settings-choice--selected' : '') + (dis ? ' settings-choice--disabled' : '') + '" role="radio" tabindex="0" aria-checked="' + sel + '"' + (dis ? ' aria-disabled="true"' : '') + ' data-act="mode" data-v="' + m.id + '">' +
+      '<span class="settings-choice-mark"></span><div><div class="settings-choice-name">' + m.name + (m.tag ? ' ' + m.tag : '') + '</div><div class="settings-choice-desc">' + m.desc + '</div></div>' +
+      '<div class="settings-choice-price">' + m.price + '</div></div>';
+    if (sel && m.claude) {
+      if (off && S.claude !== 'checking') h += hint('Claude Code is not available &mdash; hints are shown without explanation until it is.', true);
+      if (S.copilotStale) h += hint('What this mode sends has changed since you chose it. Choose it again to confirm.', true);
+      h += '<div class="settings-child' + (off ? ' settings-child--off' : '') + '">';
+      if (m.id === 'claude') {
+        h += hint('Choosing this mode allows August to send the lines around each reference and the matching notes to Anthropic through your Claude account.');
+        h += row('Model', dd('cpModel', S.copilotModel, MODELS, off));
+      } else {
+        h += row('Model', dd('cpModel', S.copilotModel, MODELS, off));
+        h += row('Spending limit per meeting', money('alwaysBudget', S.alwaysBudget, off));
+        h += hint(noLimit(S.alwaysBudget) ? 'No limit: usage is capped only by your Claude plan.' : 'At the limit the copilot switches to Claude explains for the rest of the meeting. Enter 0 for no limit.');
+      }
+      h += '</div>';
+    }
+  });
+  h += '</div>';
+  if (S.copilotMode !== 'off' && !S.praxis) h += hint('PraxisOS is not running. Hints start when it is.', true);
+  h += hint('The copilot is off by default. You can switch modes during a meeting from the ASSISTANT panel.');
+  return h + '</div>';
+}
+
+function sessionOn() { return S.session && !S.sessionStale; }
+function sessionSection() {
+  var dis = !usable(), checked = sessionOn() || S.modal === 'consent';
+  var childOn = sessionOn() && usable();
+  var h = '<div class="settings-section"><div class="settings-section-title">ACTIVE SESSION (CLAUDE)</div>';
+  h += row('Active session', toggle('session', checked, dis));
+  h += hint('A chat with Claude bound to a project of your choice during the meeting. It answers from the project notes, adds action items and creates Praxis tasks. Text is sent only when you ask.');
+  if (dis) h += hint('Needs Claude Code &mdash; see Status above.');
+  if (S.sessionStale) h += hint('What the session sends has changed since you agreed. Turn it on again to review and confirm.', true);
+  if (S.enableError) h += hint(S.enableError, true);
+  h += '<div class="settings-child' + (childOn ? '' : ' settings-child--off') + '">';
+  h += row('Model', dd('model', S.model, MODELS, !childOn)) + hint('Billed to your Claude plan.');
+  h += row('Spending limit per meeting', money('budget', S.budget, !childOn)) + hint(noLimit(S.budget) ? 'No limit: usage is capped only by your Claude plan.' : 'The session stops answering when the limit is reached. Enter 0 for no limit.');
+  h += row('Transcript window', dd('window', S.window, WINDOWS, !childOn)) + hint('How much recent transcript goes with each question.');
+  return h + '</div></div>';
+}
+
+function renderPreview() {
+  var p = $('preview');
+  p.className = 'preview settings-backdrop' + (S.narrow ? ' preview--narrow' : '') + (S.tabs === 'wide' && !S.narrow ? ' preview--wide' : '');
+  var tabs = ['GENERAL', 'AUDIO', 'TRANSCRIPTION', 'PROJECTS', 'AI ASSISTANTS', 'COMPACT MODE'];
+  var h = '<div class="settings-card" role="dialog" aria-label="Settings"><div class="settings-header"><span class="settings-title">SETTINGS</span><button type="button" class="settings-close" aria-label="Close">&times;</button></div>';
+  h += '<nav class="settings-tabs">' + tabs.map(function (t, i) { return '<button type="button" class="settings-tab' + (i === 4 ? ' settings-tab--active' : '') + '">' + t + '</button>'; }).join('') + '</nav>';
+  h += '<div class="settings-body">' + statusSection() + copilotSection() + sessionSection();
+  h += '<div class="settings-section">' + hint('Both assistants are off by default. Transcripts stay on this computer unless a mode above says otherwise.') + '</div>';
+  h += '</div></div>';
+  p.innerHTML = h;
+}
+
+function renderRuns() {
+  var NAMES = { off: 'Off', local: 'Local hints', claude: 'Claude explains', always: 'Always-on Claude' };
+  var m = S.copilotMode, fallback = (m === 'claude' || m === 'always') && (!usable() || S.copilotStale);
+  var eff = fallback ? 'Local hints (fallback)' : NAMES[m];
+  var sess = sessionOn() && usable();
+  var data = 'never';
+  if (!fallback && m === 'always') data = 'the whole conversation';
+  else if (!fallback && m === 'claude') data = 'lines around each reference';
+  else if (sess) data = 'only when you ask';
+  var items = [
+    ['Copilot mode (effective)', eff, m !== 'off'],
+    ['Session', sess ? 'ON' : 'OFF', sess],
+    ['Data leaves the machine', data, data !== 'never'],
+    ['Claude Code', S.claude === 'checking' ? 'checking' : (usable() ? 'usable' : 'not usable'), usable()],
+    ['PraxisOS', S.praxis ? 'Running' : 'Not running', S.praxis]
+  ];
+  $('runs').innerHTML = items.map(function (c) {
+    return '<div><div class="k">' + c[0] + '</div><div class="v' + (c[2] ? '' : ' offv') + '">' + c[1] + '</div></div>';
+  }).join('');
+}
+
+function renderBar() {
+  var btns = document.querySelectorAll('[data-set]');
+  for (var i = 0; i < btns.length; i++) {
+    var kv = btns[i].getAttribute('data-set').split(':');
+    btns[i].setAttribute('aria-pressed', String(String(S[kv[0]]) === kv[1]));
+  }
+}
+
+function consentModal() {
+  var w = S.window + ' minutes', b = '$' + S.budget;
+  var h = '<div class="groq-setup-backdrop" id="modalBackdrop"><div class="groq-setup-card" role="dialog" aria-modal="true" aria-labelledby="mt">';
+  h += '<div class="groq-setup-header"><span class="groq-setup-icon">✦</span><span id="mt">Active session (Claude)</span></div>';
+  h += '<ol class="groq-setup-steps groq-setup-steps--lettered">';
+  h += '<li>A) When you ask a question during a live recording, the last <strong>' + w + '</strong> of the transcript, the participant names you entered, the collected action items and your question are sent to Anthropic. Nothing is sent until you ask.</li>';
+  h += '<li>B) It goes through Claude Code under your own Claude account, the same way as using Claude Code in a terminal. Claude may also read files in the project folder you pick for the meeting.</li>';
+  h += '<li>C) Usage counts against your Claude plan &mdash; no API key is needed. ' + (noLimit(S.budget) ? 'You chose no spending limit, so usage is capped only by your plan.' : 'The session stops at your spending limit of <strong>' + b + '</strong> per meeting.') + '</li></ol>';
+  h += '<p class="groq-setup-hint">You can turn this off at any time here. Meeting Copilot hints are covered by the mode you choose above, not by this consent.</p>';
+  if (S.enableError) h += '<div class="groq-setup-error">' + S.enableError + '</div>';
+  h += '<div class="groq-setup-actions"><button type="button" class="groq-setup-btn" data-act="m-cancel">Cancel</button><button type="button" class="groq-setup-btn groq-setup-btn--primary" id="mOk" data-act="m-ok-consent">Agree and enable</button></div>';
+  return h + '</div></div>';
+}
+function alwaysModal() {
+  var h = '<div class="groq-setup-backdrop" id="modalBackdrop"><div class="settings-confirm-card" role="dialog" aria-modal="true" aria-labelledby="mt">';
+  h += '<div class="settings-confirm-title" id="mt">Turn on Always-on Claude?</div>';
+  h += '<p class="settings-confirm-text">Always-on Claude sends the whole conversation to Anthropic as it happens, through your Claude account. A one-hour meeting costs about $1&ndash;2.50 of your Claude usage; ' + (noLimit(S.alwaysBudget) ? 'you chose no spending limit.' : 'it stops at your limit of $' + S.alwaysBudget + '.') + '</p>';
+  h += '<label class="settings-confirm-check"><input type="checkbox" id="mChk" data-chg="modalChk"' + (S.modalChk ? ' checked' : '') + '><span>I understand the whole conversation leaves this computer</span></label>';
+  h += '<div class="groq-setup-actions"><button type="button" class="groq-setup-btn" data-act="m-cancel">Cancel</button><button type="button" class="groq-setup-btn groq-setup-btn--primary settings-confirm-btn--danger" id="mOk" data-act="m-ok-always"' + (S.modalChk ? '' : ' disabled') + '>Turn on</button></div>';
+  return h + '</div></div>';
+}
+function renderModal() {
+  if (shownModal === S.modal) return;
+  shownModal = S.modal;
+  $('modalHost').innerHTML = S.modal === 'consent' ? consentModal() : (S.modal === 'always' ? alwaysModal() : '');
+  if (S.modal) { var f = $('mChk') || $('mOk'); if (f) f.focus(); }
+}
+
+function focusKey() {
+  var a = document.activeElement;
+  if (!a || !a.getAttribute || !$('preview').contains(a)) return null;
+  return ['data-act', 'data-chg'].map(function (n) { return a.getAttribute(n) ? '[' + n + '="' + a.getAttribute(n) + '"]' : ''; }).join('') +
+    (a.getAttribute('data-v') ? '[data-v="' + a.getAttribute('data-v') + '"]' : '') + (a.getAttribute('data-id') ? '[data-id="' + a.getAttribute('data-id') + '"]' : '');
+}
+function renderAll() {
+  var k = focusKey();
+  renderPreview(); renderRuns(); renderBar(); renderModal();
+  if (k) { var el = document.querySelector('#preview ' + k); if (el && !el.disabled) el.focus(); }
+}
+
+function theme(t) {
+  S.theme = t;
+  document.documentElement.setAttribute('data-theme', t);
+  document.documentElement.style.colorScheme = t;
+}
+function reset() {
+  S.claude = 'ok'; S.claudePrev = 'ok'; S.praxis = true; S.copilotMode = 'off'; S.copilotStale = false; S.session = false; S.sessionStale = false;
+  S.narrow = false; S.modal = null; S.modalChk = false; S.enableError = null; S.openDd = null;
+}
+
+function pickMode(v) {
+  var m = MODES.filter(function (x) { return x.id === v; })[0];
+  if (m.claude && !usable()) return;
+  if (v === 'claude') { S.copilotMode = 'claude'; S.copilotStale = false; }
+  else if (v === 'always') { S.modal = 'always'; S.modalChk = false; }
+  else S.copilotMode = v;
+}
+function preset(v) {
+  S.modal = null; S.openDd = null;
+  S.copilotMode = 'off'; S.copilotStale = false; S.session = false; S.sessionStale = false;
+  if (v === 'local' || v === 'claude' || v === 'always') S.copilotMode = v;
+  if (v === 'session') S.session = true;
+  if (v === 'all') { S.copilotMode = 'claude'; S.session = true; }
+}
+function setBar(key, val) {
+  if (key === 'theme') return theme(val);
+  if (key === 'claude') { S.claude = val; if (val !== 'checking') S.claudePrev = val; return; }
+  if (key === 'praxis' || key === 'narrow') { S[key] = val === 'true'; return; }
+  if (key === 'tabs') { S.tabs = val; return; }
+  if (key === 'sessionStale') { S.sessionStale = val === 'true'; if (S.sessionStale) S.session = true; return; }
+  if (key === 'copilotStale') { S.copilotStale = val === 'true'; if (S.copilotStale && S.copilotMode !== 'claude' && S.copilotMode !== 'always') S.copilotMode = 'claude'; }
+}
+
+var STATES = [
+  ['All off', function () {}],
+  ['Copilot on (Claude explains)', function () { S.copilotMode = 'claude'; }],
+  ['Session on', function () { S.session = true; }],
+  ['Consent modal open', function () { S.modal = 'consent'; }],
+  ['Always-on confirmation open', function () { S.modal = 'always'; }],
+  ['Claude Code not installed', function () { S.claude = 'missing'; S.copilotMode = 'claude'; S.session = true; }],
+  ['Claude Code not signed in', function () { S.claude = 'nosign'; S.copilotMode = 'claude'; S.session = true; }],
+  ['Claude Code too old', function () { S.claude = 'old'; S.copilotMode = 'claude'; S.session = true; }],
+  ['PraxisOS not running', function () { S.praxis = false; S.copilotMode = 'local'; }],
+  ['Session consent stale', function () { S.session = true; S.sessionStale = true; }],
+  ['Copilot consent stale', function () { S.copilotMode = 'claude'; S.copilotStale = true; }],
+  ['Narrow width', function () { S.narrow = true; S.copilotMode = 'claude'; }]
+];
+$('states').innerHTML = STATES.map(function (s, i) {
+  return '<li><button type="button" class="settings-btn-inline" data-act="state" data-v="' + i + '">' + s[0] + '</button></li>';
+}).join('');
+
+function cancelModal() { S.modal = null; S.modalChk = false; S.enableError = null; }
+
+document.addEventListener('click', function (e) {
+  var t = e.target;
+  if (t.id === 'modalBackdrop') { cancelModal(); return renderAll(); }
+  var hadDd = !!S.openDd;
+  if (S.openDd && !(t.closest && t.closest('.settings-dropdown'))) S.openDd = null;
+  var b = t.closest ? t.closest('[data-act]') : null;
+  var set = t.closest ? t.closest('[data-set]') : null;
+  if (set) { var kv = set.getAttribute('data-set').split(':'); setBar(kv[0], kv[1]); return renderAll(); }
+  // No action: re-render only to close a dropdown. A render here would replace a toggle checkbox
+  // before its change event fires (the event would then land on a detached node).
+  if (!b || b.disabled) { if (hadDd && !S.openDd) renderAll(); return; }
+  var act = b.getAttribute('data-act'), v = b.getAttribute('data-v'), id = b.getAttribute('data-id');
+  if (act === 'dd') S.openDd = S.openDd === id ? null : id;
+  else if (act === 'pick') { S[DD_KEY[id]] = v; S.openDd = null; }
+  else if (act === 'mode') pickMode(v);
+  else if (act === 'preset') preset(v);
+  else if (act === 'state') { reset(); STATES[+v][1](); }
+  else if (act === 'm-cancel') cancelModal();
+  else if (act === 'm-ok-consent') { S.session = true; S.sessionStale = false; S.enableError = null; S.modal = null; }
+  else if (act === 'm-ok-always') { if (S.modalChk) { S.copilotMode = 'always'; S.copilotStale = false; S.modal = null; S.modalChk = false; } }
+  else if (act === 'recheck') {
+    if (S.claude !== 'checking') {
+      S.claudePrev = S.claude; S.claude = 'checking';
+      setTimeout(function () { if (S.claude === 'checking') S.claude = S.claudePrev; renderAll(); }, 800);
+    }
+  }
+  renderAll();
+});
+document.addEventListener('change', function (e) {
+  var c = e.target.getAttribute && e.target.getAttribute('data-chg');
+  if (!c) return;
+  if (c === 'modalChk') {
+    S.modalChk = e.target.checked;
+    var ok = $('mOk'); if (ok) ok.disabled = !S.modalChk;
+    return;
+  }
+  if (c === 'budget' || c === 'alwaysBudget') {
+    // Same rule as the server sanitizer: finite, >= 0, rounded to cents; anything else keeps the old value.
+    var n = Number(e.target.value);
+    if (!isFinite(n) || n < 0 || e.target.value.trim() === '') n = Number(S[c]);
+    S[c] = String(Math.round(n * 100) / 100);
+    return renderAll();
+  }
+  if (c === 'session') {
+    if (e.target.checked) { S.modal = 'consent'; S.modalChk = false; S.enableError = null; }
+    else { S.session = false; S.sessionStale = false; }
+  }
+  renderAll();
+});
+document.addEventListener('keydown', function (e) {
+  if (e.key === 'Escape') {
+    if (S.modal) { cancelModal(); renderAll(); }
+    else if (S.openDd) { S.openDd = null; renderAll(); }
+    return;
+  }
+  var ch = e.target.closest ? e.target.closest('.settings-choice') : null;
+  if (ch && (e.key === 'Enter' || e.key === ' ')) { e.preventDefault(); pickMode(ch.getAttribute('data-v')); renderAll(); }
+});
+
+(function () {
+  var d = window.matchMedia && matchMedia('(prefers-color-scheme: dark)').matches;
+  theme(d ? 'dark' : 'light');
+  renderAll();
+})();
+</script>
+</body>
+</html>
