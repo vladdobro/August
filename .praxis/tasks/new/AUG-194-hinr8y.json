@@ -1,0 +1,20 @@
+{
+  "id": "AUG-194-hinr8y",
+  "assignee": "jarvis.json",
+  "priority": "high",
+  "status": "new",
+  "title": "[AUG-194] Research: Settings → «AI assistants» tab — precise mockup, prefs, consent and status model (Option A)",
+  "why_we_need_this": "AUG-193 agreed the direction (Option A: two independent toggles, consent only for the Claude session, Sonnet default), but the mockup there is a comparison sketch. Before implementation the user wants a precise, pixel-faithful design of the tab with every state, so the implementation task can be written as exact UI + preferences work without re-deciding anything. The tab is the foundation the Copilot and Active session tasks plug into (their toggles, consent and status live here). Source: @project-context/ai-assistants/README.md, @docs/mockups/AUG-193/ai-assistants-settings.html.",
+  "acceptance_criteria": "- [ ] Precise HTML mockup @docs/mockups/AUG-194/ai-assistants-tab.html, self-contained, built on August's real Settings CSS (client/src/App.css .settings-* rules, 0 border-radius, terminal font): tab strip with «AI assistants» between Projects and Compact mode; rows Meeting Copilot, Active session (Claude), children Model (Sonnet default / Haiku / Opus), Spending limit per meeting (0.5–10 USD, default 2), Transcript window (2/5/10/15 min, default 5), Explain copilot hints with Claude; every state clickable: all off, copilot on, session on, consent modal, Claude Code not installed/not signed in (+ Recheck), PraxisOS not running, consent stale (version bump).\n- [ ] Consent modal text finalized in plain language (what is sent, to whom, that billing goes to the user's own Claude plan via Claude Code login, no API key needed); reviewed against the Groq consent (AUG-164/190) for consistency.\n- [ ] Preferences spec written: keys aiCopilotEnabled, aiSessionEnabled, aiConsent {acceptedAt, version}, aiModel, aiSessionBudgetUsd, aiTranscriptWindowMin, aiCopilotExplain — which are in ALLOWED_KEYS, sanitizers, defaults (all off), which are written only by POST /api/assistant/enable|disable; client UserPreferences additions; GET /api/assistant/status shape {claude: {found, version}, praxis: {reachable}}.\n- [ ] Claude Code detection researched for Windows x64 and macOS arm64/x64: resolveClaudeCli() search order, `claude --version` check, how to tell «installed but not signed in» from «missing» (the user signs in through the browser, no ANTHROPIC_API_KEY), what the Settings row shows in each case; macOS PATH augmentation (electron ensureToolPaths) covered.\n- [ ] Decision recorded in this card after the user reviews the mockup (AskUserQuestion); CLOSURE CONDITION: an implementation task with SMART criteria and a link to the final mockup is created; its ID is written here and into the M4 roadmap line in @project-context/roadmap/README.md.",
+  "important_constraints": "Research only — no product code. Direction already decided in AUG-193 (Option A, Sonnet default); do not re-open Option B. Both toggles default off; the Copilot toggle needs no consent. Never show ports, paths or model internals in the UI. Cross-platform per @CLAUDE.md. Roadmap: M4 AI assistants.\n\nOrder: 1/3. Blocks: AUG-195-5dsqpc, AUG-196-gxk1pv. Parent research: AUG-193-bj5mw1.",
+  "labels": [
+    "research",
+    "praxis",
+    "ai-assistants",
+    "settings"
+  ],
+  "on_hold_reason": "",
+  "contextRouterIncluded": true,
+  "created_at": 1793907060838,
+  "column_entered_at": 1793907060838
+}

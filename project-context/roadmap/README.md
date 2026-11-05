@@ -75,6 +75,12 @@ Turn the 1–2 Nov 2026 user feedback (@docs/feedback/2026-11-rodion-feedback.md
 
 - [ ] Compact Mode daily-use controls — add the buttons that make Compact Mode usable every day; research AUG-178 → impl AUG-188 (in-place widget switch, Start Live Text again, Ghost Caption copy + text size/opacity, Dock Square pause, action items → Praxis via the modal; mockup docs/mockups/AUG-178/compact-controls.html).
 
+### M4 AI assistants (Praxis deep integration)
+
+- [ ] Meeting Copilot — live transcript → Praxis context hints (local gate + MCP search; only the explanation turn goes to Claude); research AUG-193 → decision 2026-11-05: V3 (local gate + Praxis search + Claude explanation through the active session) → detailed research with precise mockups AUG-196 → impl pending.
+- [ ] Active project session — Claude Code chat bound to a Praxis project during the meeting, adds action items and creates tasks; research AUG-193 → decision 2026-11-05: persistent stream-json `claude -p` child under the user's Claude Code login (no API key), P1 overlay → detailed research with precise mockups AUG-195 → impl pending.
+- [ ] Settings → AI assistants tab — two independent toggles with a consent for the Claude session; research AUG-193 → decision 2026-11-05: Option A, Sonnet default → detailed research with precise mockup AUG-194 → impl pending.
+
 ## Backlog
 
 Items not yet assigned to a phase.

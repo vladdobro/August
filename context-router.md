@@ -42,6 +42,7 @@ Match your task keywords to the routes you need to read:
 | UI design, colors, theme, dark mode, light mode, CSS, styling, brandbook, emerald, jade | Frontend Design |
 | preferences, settings, user defaults, auto-save, mic device, language selection, recording mode | Preferences |
 | Electron, desktop app, installer, dmg, msi, tray, global hotkey, native notifications, auto-update, code signing, electron-builder | Desktop Shell |
+| meeting copilot, copilot hints, active session, assistant panel, Claude Code session, claude -p, stream-json, Agent SDK, Praxis MCP from August, AI assistants tab, add_action_item | AI Assistants |
 
 # context-router.md terminology
 
@@ -113,6 +114,10 @@ Directory Path: project-context/preferences/README.md
 ## Desktop Shell Route
 Electron desktop application: embedded Express server, tray, global record hotkey, native notifications, electron-builder packaging and GitHub Releases auto-update.
 Directory Path: project-context/desktop-shell/README.md
+
+## AI Assistants Route
+Research-stage design of the Meeting Copilot (live transcript to Praxis context hints) and the Active project session (Claude Code chat bound to a Praxis project during a meeting): subscription point, Praxis access, launch mode, settings and consent, privacy and cost caps. Nothing implemented yet (AUG-193).
+Directory Path: project-context/ai-assistants/README.md
 
 ## Roadmap
 Planned and completed work items organized by phase and milestone.

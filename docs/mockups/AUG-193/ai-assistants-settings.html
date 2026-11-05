@@ -1,0 +1,328 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>AI Assistants Settings</title>
+<style>
+:root {
+  --bg:#f2efe8; --surface:rgba(250,248,244,.92); --line:rgba(45,58,51,.25); --fg:#1e2b24; --muted:#566b5e;
+  --accent:#0d8c5c; --accent-light:rgba(13,140,92,.12); --pause:#d49a00; --danger:#d44040; --them:#9a7a1a;
+  --on-accent:#f2efe8; --body-bg:#e6e2d8; --glow:rgba(13,140,92,.18); --warn:#d4a028;
+  --mono:'Cascadia Code','Fira Code',Consolas,monospace;
+}
+@media (prefers-color-scheme: dark) { :root:not([data-theme="light"]) {
+  --bg:#0a110d; --surface:rgba(12,20,16,.92); --line:rgba(0,200,118,.18); --fg:#c0cec4; --muted:#5e7d6a;
+  --accent:#00c876; --accent-light:rgba(0,200,118,.10); --pause:#d4a020; --danger:#e05555; --them:#d4a843;
+  --on-accent:#0a110d; --body-bg:#0f1914; --glow:rgba(0,200,118,.3); color-scheme:dark; } }
+:root[data-theme="dark"] {
+  --bg:#0a110d; --surface:rgba(12,20,16,.92); --line:rgba(0,200,118,.18); --fg:#c0cec4; --muted:#5e7d6a;
+  --accent:#00c876; --accent-light:rgba(0,200,118,.10); --pause:#d4a020; --danger:#e05555; --them:#d4a843;
+  --on-accent:#0a110d; --body-bg:#0f1914; --glow:rgba(0,200,118,.3); color-scheme:dark; }
+
+* { box-sizing:border-box; border-radius:0; }
+body { margin:0; background:var(--bg); color:var(--fg); font-family:var(--mono); font-size:13px; line-height:1.5;
+  padding:0 max(16px,env(safe-area-inset-left,0px)) 48px; overflow-x:hidden; }
+.wrap { max-width:1000px; margin:0 auto; display:grid; grid-template-columns:minmax(0,1fr); gap:24px; }
+.wrap > * { min-width:0; }
+header { padding-top:24px; }
+h1 { margin:0; font-size:20px; text-wrap:balance; }
+h2 { margin:0 0 10px; font-size:13px; letter-spacing:.08em; text-transform:uppercase; color:var(--accent); border-bottom:1px solid var(--line); padding-bottom:6px; display:flex; flex-wrap:wrap; gap:8px; align-items:center; }
+.lead { margin:4px 0 0; color:var(--muted); max-width:75ch; }
+.note { margin:8px 0 0; font-size:11px; color:var(--muted); }
+button { font-family:var(--mono); cursor:pointer; }
+button:disabled { opacity:.4; cursor:not-allowed; }
+button:focus-visible, select:focus-visible, input:focus-visible { outline:2px solid var(--accent); outline-offset:2px; }
+
+.bar { position:sticky; top:0; z-index:20; background:var(--bg); border-bottom:1px solid var(--line); padding:10px 0; display:flex; flex-wrap:wrap; gap:10px 16px; align-items:center; }
+.grp { display:flex; align-items:center; gap:6px; flex-wrap:wrap; }
+.grp > span { font-size:10px; text-transform:uppercase; letter-spacing:.06em; color:var(--muted); }
+.seg { display:flex; border:1px solid var(--line); flex-wrap:wrap; }
+.seg button { border:0; background:transparent; color:var(--fg); font-size:11px; padding:6px 10px; }
+.seg button[aria-pressed="true"] { background:var(--accent); color:var(--on-accent); }
+
+.card { border:1px solid var(--line); background:var(--surface); padding:14px; }
+.badge { font-size:10px; letter-spacing:.06em; padding:1px 6px; background:var(--accent); color:var(--on-accent); }
+.badge.no { background:var(--danger); }
+.lab { font-size:10px; color:var(--muted); margin:0 0 6px; text-transform:uppercase; letter-spacing:.06em; }
+
+.panel { border:1px solid var(--line); background:var(--body-bg); padding:12px 14px; }
+.tabs { display:flex; flex-wrap:wrap; border-bottom:1px solid var(--line); margin:-4px 0 12px; }
+.tabs span { font-size:11px; letter-spacing:.1em; padding:6px 10px; color:var(--muted); border-bottom:2px solid transparent; }
+.tabs span.on { color:var(--accent); border-bottom-color:var(--accent); font-weight:700; }
+.sec-title { font-size:11px; font-weight:700; text-transform:uppercase; letter-spacing:.12em; color:var(--muted); margin:14px 0 10px; padding-bottom:6px; border-bottom:1px solid var(--line); }
+.sec-title:first-of-type { margin-top:0; }
+.row { display:flex; align-items:center; justify-content:space-between; padding:8px 0; gap:12px; }
+.row > .lbl { font-size:13px; flex:1 1 auto; min-width:0; }
+.hint { font-size:11px; line-height:1.4; color:var(--muted); margin:-4px 0 8px; }
+.hint.warn { color:var(--warn); }
+.tog { display:flex; align-items:center; gap:8px; cursor:pointer; flex:none; }
+.tog input { width:16px; height:16px; margin:0; accent-color:var(--accent); cursor:pointer; }
+.tog input:disabled { cursor:not-allowed; }
+.tog .st { font-size:12px; color:var(--muted); text-transform:uppercase; letter-spacing:.05em; min-width:24px; }
+.child { margin-left:4px; border-left:2px solid var(--accent); padding-left:14px; }
+.child.off { opacity:.45; }
+select { font-family:var(--mono); font-size:12px; background:var(--bg); color:var(--fg); border:1px solid var(--line); padding:4px 6px; max-width:100%; }
+.status { display:flex; flex-wrap:wrap; gap:8px; align-items:center; font-size:12px; padding:6px 0; }
+.btn { border:1px solid var(--line); background:transparent; color:var(--fg); font-size:11px; text-transform:uppercase; letter-spacing:.05em; padding:4px 10px; }
+.btn:hover:not(:disabled) { border-color:var(--accent); color:var(--accent); }
+.btn.primary { background:var(--accent); border-color:var(--accent); color:var(--on-accent); }
+.btn.primary:hover:not(:disabled) { color:var(--on-accent); opacity:.85; }
+.btn.red { color:var(--danger); border-color:var(--danger); }
+
+.runs { display:grid; grid-template-columns:repeat(auto-fit,minmax(200px,1fr)); border:1px solid var(--line); margin-top:12px; }
+.runs > div { padding:8px 10px; border-right:1px solid var(--line); border-bottom:1px solid var(--line); margin:0 -1px -1px 0; }
+.runs .k { font-size:10px; text-transform:uppercase; letter-spacing:.06em; color:var(--muted); }
+.runs .v { font-weight:700; color:var(--accent); }
+.runs .v.offv { color:var(--muted); }
+.pc { display:grid; grid-template-columns:repeat(auto-fit,minmax(240px,1fr)); gap:12px; margin-top:12px; }
+.pc h4 { margin:0 0 4px; font-size:11px; text-transform:uppercase; letter-spacing:.08em; }
+.pc .pro h4 { color:var(--accent); } .pc .con h4 { color:var(--danger); }
+.pc ul { margin:0; padding-left:18px; font-size:12px; }
+.warnbox { border:1px solid var(--danger); color:var(--danger); padding:8px 10px; margin-top:8px; font-size:12px; }
+.ro-panel { pointer-events:none; }
+.pitch { margin:4px 0 12px; color:var(--muted); }
+
+#modal { position:fixed; inset:0; z-index:100; background:rgba(0,0,0,.6); display:flex; align-items:center; justify-content:center; padding:16px; }
+#modal[hidden] { display:none; }
+.mcard { width:min(460px,100%); max-height:100%; overflow:auto; background:var(--bg); border:1px solid var(--line); box-shadow:0 8px 32px rgba(0,0,0,.4); padding:24px; color:var(--fg); }
+.mh { display:flex; gap:8px; align-items:center; font-weight:700; font-size:14px; margin-bottom:12px; }
+.mcard ol { margin:0 0 12px; padding-left:0; list-style:none; font-size:12px; }
+.mcard ol li { margin-bottom:8px; }
+.mcard p { font-size:11px; color:var(--muted); margin:0 0 16px; }
+.mact { display:flex; justify-content:flex-end; gap:8px; flex-wrap:wrap; }
+.mact .btn { padding:8px 14px; }
+</style>
+</head>
+<body>
+<div class="wrap">
+<header>
+  <h1>AUG-193 &mdash; Settings &rarr; AI assistants</h1>
+  <p class="lead">Two optional assistants, both off by default. Option A keeps the toggles independent; Option B puts both behind one consent. Flip the switchers to see dependent states.</p>
+</header>
+
+<div class="bar">
+  <div class="grp"><span>Theme</span>
+    <div class="seg"><button id="th-light" aria-pressed="false">Light</button><button id="th-dark" aria-pressed="false">Dark</button></div></div>
+  <div class="grp"><span>Claude Code</span>
+    <div class="seg"><button id="cc-found" aria-pressed="true">found</button><button id="cc-missing" aria-pressed="false">missing</button></div></div>
+  <div class="grp"><span>PraxisOS</span>
+    <div class="seg"><button id="px-on" aria-pressed="true">running</button><button id="px-off" aria-pressed="false">off</button></div></div>
+</div>
+
+<section>
+  <h2>Today (read-only)</h2>
+  <div class="card">
+    <div class="panel ro-panel">
+      <div class="tabs"><span>GENERAL</span><span>AUDIO</span><span>TRANSCRIPTION</span><span>PROJECTS</span><span>COMPACT MODE</span></div>
+      <div class="hint">Settings has no place for assistants yet.</div>
+    </div>
+    <div class="warnbox">No AI assistants tab yet.</div>
+  </div>
+</section>
+
+<section><h2>Option A &mdash; independent toggles <span class="badge">RECOMMENDED</span></h2><div class="card" id="cardA"></div></section>
+<section><h2>Option B &mdash; one consent for both <span class="badge no">REJECTED</span></h2><div class="card" id="cardB"></div></section>
+
+<section>
+  <h2>Decision</h2>
+  <p class="lead">Pick A or B in the session. Recommended: A.</p>
+</section>
+</div>
+
+<div id="modal" hidden>
+  <div class="mcard" role="dialog" aria-modal="true" aria-labelledby="mt">
+    <div class="mh"><span>&#9889;</span><span id="mt">Active session (Claude)</span></div>
+    <ol id="mbody"></ol>
+    <p id="mnote"></p>
+    <div class="mact"><button class="btn" id="m-cancel">Cancel</button><button class="btn primary" id="m-ok">Agree and enable</button></div>
+  </div>
+</div>
+
+<script>
+var G = {
+  theme: 'light', claudeFound: true, praxisOn: true,
+  A: { copilot:false, session:false, consent:false, model:'sonnet', budget:'2', window:'5', explain:false },
+  B: { master:false, consent:false, copilot:true, session:true, model:'sonnet', budget:'2', window:'5' }
+};
+var pending = null;
+var CONSENT_A = [
+  'A) During a live recording, when you ask a question (or a copilot hint is explained), the last N minutes of the transcript, the participant names, the action items and your question are sent to Anthropic through Claude Code under your own Claude account.',
+  'B) Claude may read files of the chosen project folder.',
+  'C) It needs Claude Code installed and signed in; usage is billed to your Claude plan.'
+];
+var CONSENT_B = [
+  'A) The Meeting Copilot runs on this computer and sends nothing anywhere.',
+  'B) The Active session sends the last N minutes of the transcript, the participant names, the action items and your question to Anthropic through Claude Code under your own Claude account, only when you ask.',
+  'C) Claude may read files of the chosen project folder. It needs Claude Code installed and signed in; usage is billed to your Claude plan.'
+];
+
+function tog(act, checked, opts) {
+  opts = opts || {};
+  return '<label class="tog"><input type="checkbox" data-act="' + act + '"' + (checked ? ' checked' : '') +
+    (opts.disabled ? ' disabled' : '') + '><span class="st">' + (checked ? 'ON' : 'OFF') + '</span></label>';
+}
+function row(label, ctl) { return '<div class="row"><span class="lbl">' + label + '</span>' + ctl + '</div>'; }
+function hint(t, warn) { return '<div class="hint' + (warn ? ' warn' : '') + '">' + t + '</div>'; }
+function title(t) { return '<div class="sec-title">' + t + '</div>'; }
+function tabs() {
+  return '<div class="tabs"><span>GENERAL</span><span>AUDIO</span><span>TRANSCRIPTION</span><span>PROJECTS</span>' +
+    '<span class="on">AI ASSISTANTS</span><span>COMPACT MODE</span></div>';
+}
+function sel(act, cur, opts, disabled) {
+  return '<select data-act="' + act + '"' + (disabled ? ' disabled' : '') + '>' + opts.map(function (o) {
+    return '<option value="' + o[0] + '"' + (cur === o[0] ? ' selected' : '') + '>' + o[1] + '</option>';
+  }).join('') + '</select>';
+}
+var MODELS = [['sonnet', 'Sonnet &mdash; balanced (default)'], ['haiku', 'Haiku &mdash; cheapest, fastest'], ['opus', 'Opus &mdash; strongest, costliest']];
+var BUDGETS = [['0.5', '0.5 USD'], ['1', '1 USD'], ['2', '2 USD (default)'], ['5', '5 USD'], ['10', '10 USD']];
+var WINDOWS = [['2', '2 min'], ['5', '5 min (default)'], ['10', '10 min'], ['15', '15 min']];
+
+function claudeHint() {
+  return hint('Claude Code is not installed or not signed in. Install it, run `claude` once to sign in, then press Recheck.', true) +
+    '<div class="status"><button class="btn" data-act="recheck">Recheck</button></div>';
+}
+function children(o, st, on, withExplain) {
+  var h = '<div class="child' + (on ? '' : ' off') + '">';
+  h += row('Model', sel(o + ':model', st.model, MODELS, !on)) + hint('Billed to your Claude plan.');
+  h += row('Spending limit per meeting', sel(o + ':budget', st.budget, BUDGETS, !on)) + hint('The session stops answering when the limit is reached.');
+  h += row('Transcript window', sel(o + ':window', st.window, WINDOWS, !on)) + hint('How much recent transcript goes with each question.');
+  if (withExplain) {
+    var can = on && st.copilot;
+    h += row('Explain copilot hints with Claude', tog(o + ':explain', st.explain && can, { disabled: !can })) + hint('Each hint costs one short Claude turn.');
+  }
+  return h + '</div>';
+}
+function strip(items) {
+  return '<div class="lab" style="margin-top:12px">What runs</div><div class="runs">' + items.map(function (c) {
+    return '<div><div class="k">' + c[0] + '</div><div class="v' + (c[2] ? '' : ' offv') + '">' + c[1] + '</div></div>';
+  }).join('') + '</div>';
+}
+function pc(pros, cons) {
+  function li(a) { return a.map(function (x) { return '<li>' + x + '</li>'; }).join(''); }
+  return '<div class="pc"><div class="pro"><h4>Pros</h4><ul>' + li(pros) + '</ul></div><div class="con"><h4>Cons</h4><ul>' + li(cons) + '</ul></div></div>';
+}
+
+function renderA() {
+  var s = G.A, h = '<p class="pitch">Meeting Copilot works on its own. Only the Claude session asks for consent.</p>';
+  h += '<div class="lab">Settings &rarr; AI assistants</div><div class="panel">' + tabs();
+  h += title('Meeting Copilot');
+  h += row('Meeting Copilot', tog('A:copilot', s.copilot));
+  h += hint('Watches the live transcript for references to past agreements and shows matching notes from the chosen Praxis project. Runs on this computer; nothing is sent anywhere.');
+  if (s.copilot && !G.praxisOn) h += hint('PraxisOS is not running. Copilot starts when it is.', true);
+  h += title('Active session (Claude)');
+  h += row('Active session', tog('A:session', s.session, { disabled: !G.claudeFound }));
+  h += hint('A chat with Claude bound to a project of your choice during the meeting. It can answer from project notes, add action items and create tasks.');
+  if (!G.claudeFound) h += claudeHint();
+  h += children('A', s, s.session && G.claudeFound, true);
+  h += '</div>';
+  var sess = s.session && G.claudeFound;
+  h += strip([
+    ['Copilot', s.copilot ? 'ON' : 'OFF', s.copilot],
+    ['Session', sess ? 'ON' : 'OFF', sess],
+    ['Consent', s.consent ? 'given' : 'none', s.consent],
+    ['Data leaves the machine', sess ? 'only when you ask' : 'never', sess]
+  ]);
+  h += '<p class="note">Defaults off: existing users see no change.</p>';
+  h += pc(['Copilot needs no consent', 'Mirrors the Groq pattern for the consent', 'Defaults off'],
+          ['Two switches to understand', 'The explain-hints checkbox depends on both']);
+  document.getElementById('cardA').innerHTML = h;
+}
+
+function renderB() {
+  var s = G.B, h = '<p class="pitch">One master switch and one consent for both assistants.</p>';
+  h += '<div class="lab">Settings &rarr; AI assistants</div><div class="panel">' + tabs();
+  h += title('AI assistants');
+  h += row('AI assistants (Claude + PraxisOS)', tog('B:master', s.master, { disabled: !G.claudeFound }));
+  h += hint('Turns on the Meeting Copilot and the Active session together.');
+  if (!G.claudeFound) h += claudeHint();
+  var on = s.master && G.claudeFound;
+  h += '<div class="child' + (on ? '' : ' off') + '">';
+  h += row('Meeting Copilot', tog('B:copilot', s.copilot && on, { disabled: !on }));
+  if (on && s.copilot && !G.praxisOn) h += hint('PraxisOS is not running. Copilot starts when it is.', true);
+  h += row('Active session', tog('B:session', s.session && on, { disabled: !on }));
+  h += '</div>';
+  h += children('B', s, on && s.session, false);
+  h += '</div>';
+  h += strip([
+    ['Copilot', on && s.copilot ? 'ON' : 'OFF', on && s.copilot],
+    ['Session', on && s.session ? 'ON' : 'OFF', on && s.session],
+    ['Consent', s.consent ? 'given' : 'none', s.consent],
+    ['Data leaves the machine', on && s.session ? 'only when you ask' : 'never', on && s.session]
+  ]);
+  h += pc(['One switch'], ['Copilot (local only) blocked behind an Anthropic consent', 'Users without Claude Code lose the copilot too']);
+  h += '<div class="warnbox">Rejected in research: gates a local-only feature behind a cloud consent.</div>';
+  document.getElementById('cardB').innerHTML = h;
+}
+
+function renderAll() { renderA(); renderB(); }
+
+function ask(lines, note, apply) {
+  document.getElementById('mbody').innerHTML = lines.map(function (l) { return '<li>' + l + '</li>'; }).join('');
+  document.getElementById('mnote').textContent = note;
+  pending = apply;
+  document.getElementById('modal').hidden = false;
+  document.getElementById('m-ok').focus();
+}
+function closeModal() { document.getElementById('modal').hidden = true; pending = null; renderAll(); }
+document.getElementById('m-cancel').onclick = closeModal;
+document.getElementById('m-ok').onclick = function () {
+  var p = pending; document.getElementById('modal').hidden = true; pending = null;
+  if (p) p();
+  renderAll();
+};
+document.getElementById('modal').addEventListener('click', function (e) { if (e.target === this) closeModal(); });
+document.addEventListener('keydown', function (e) { if (e.key === 'Escape' && !document.getElementById('modal').hidden) closeModal(); });
+
+function handle(act, el) {
+  var p = act.split(':'), o = p[0], k = p[1], v = el.type === 'checkbox' ? el.checked : el.value;
+  var s = G[o];
+  if (o === 'A') {
+    if (k === 'session') {
+      if (v && !s.consent) {
+        ask(CONSENT_A, 'Only the Claude session sends text out; the Copilot never does.', function () { s.consent = true; s.session = true; });
+        return;
+      }
+      s.session = v; if (!v) { s.consent = false; s.explain = false; }
+    } else if (k === 'copilot') { s.copilot = v; if (!v) s.explain = false; }
+    else { s[k] = v; }
+  } else if (o === 'B') {
+    if (k === 'master') {
+      if (v && !s.consent) {
+        ask(CONSENT_B, 'One consent covers both assistants.', function () { s.consent = true; s.master = true; });
+        return;
+      }
+      s.master = v; if (!v) s.consent = false;
+    } else { s[k] = v; }
+  }
+}
+document.addEventListener('change', function (e) {
+  var a = e.target.getAttribute && e.target.getAttribute('data-act');
+  if (!a) return;
+  handle(a, e.target); renderAll();
+});
+document.addEventListener('click', function (e) {
+  var a = e.target.getAttribute && e.target.getAttribute('data-act');
+  if (a === 'recheck') renderAll();
+});
+
+function setPressed(ids, on) { ids.forEach(function (id, i) { document.getElementById(id).setAttribute('aria-pressed', String(i === on)); }); }
+function theme(t) {
+  G.theme = t;
+  document.documentElement.setAttribute('data-theme', t);
+  setPressed(['th-light', 'th-dark'], t === 'light' ? 0 : 1);
+}
+document.getElementById('th-light').onclick = function () { theme('light'); };
+document.getElementById('th-dark').onclick = function () { theme('dark'); };
+document.getElementById('cc-found').onclick = function () { G.claudeFound = true; setPressed(['cc-found', 'cc-missing'], 0); renderAll(); };
+document.getElementById('cc-missing').onclick = function () { G.claudeFound = false; setPressed(['cc-found', 'cc-missing'], 1); renderAll(); };
+document.getElementById('px-on').onclick = function () { G.praxisOn = true; setPressed(['px-on', 'px-off'], 0); renderAll(); };
+document.getElementById('px-off').onclick = function () { G.praxisOn = false; setPressed(['px-on', 'px-off'], 1); renderAll(); };
+(function () {
+  var d = window.matchMedia && matchMedia('(prefers-color-scheme: dark)').matches;
+  setPressed(['th-light', 'th-dark'], d ? 1 : 0);
+})();
+renderAll();
+</script>
+</body>
+</html>
