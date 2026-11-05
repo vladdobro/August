@@ -2,7 +2,7 @@
   "id": "AUG-118-ik9q14",
   "assignee": "assistant.json",
   "priority": "medium",
-  "status": "to_review",
+  "status": "completed",
   "title": "[AUG-118] System direct doesn't work",
   "why_we_need_this": "system direct not possible to chose. You must fix it. I'm working on MAC arm64",
   "acceptance_criteria": "",

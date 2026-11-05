@@ -2,7 +2,7 @@
   "id": "AUG-63-o6xfox",
   "assignee": "jarvis.json",
   "priority": "medium",
-  "status": "to_review",
+  "status": "completed",
   "title": "[AUG-63] Quiz task",
   "why_we_need_this": "lets imagine that you have to create a new window popup over the main page\nfor example, by clicking the August title\nA new window opens the August info: who has created it, when and why\nplus shout out to Reddidgy as a companion on praxis project",
   "acceptance_criteria": "",

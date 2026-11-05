@@ -2,7 +2,7 @@
   "id": "AUG-172-f9wi5a",
   "assignee": "jarvis.json",
   "priority": "medium",
-  "status": "to_review",
+  "status": "completed",
   "title": "[AUG-172] Research: resizable Default Prompt field in Settings",
   "why_we_need_this": "Rodion's feedback (Feature Request 1): the Default Prompt field (transcript processing instructions with {sessionName}, {date}, {duration}) is too small — the whole prompt cannot be seen. Users want to drag the bottom edge to expand it. Source: @docs/feedback/2026-11-rodion-feedback.md",
   "acceptance_criteria": "- [ ] Current field described with file:line refs (component, CSS, height limits) and every place the same prompt editor is used.\n- [ ] Options compared: vertical resize handle, auto-grow to content with max height, expand-to-modal — with trade-offs; whether the chosen height should persist.\n- [ ] HTML mockup: a self-contained file @docs/mockups/AUG-172/default-prompt.html (opens in a browser, no build) with a working interactive demo of each option (drag handle, auto-grow, expand) using a long real prompt; built on August's real design tokens (frontend-design route, 0 border-radius).\n- [ ] Recommendation given; the user picks an option on the mockup (AskUserQuestion); the decision is recorded in this card.\n- [ ] CLOSURE CONDITION: an implementation task with the agreed scope, SMART acceptance criteria and a link to the chosen mockup is created on the board; its ID is written into this card and into the roadmap line in @project-context/roadmap/README.md.",

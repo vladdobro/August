@@ -2,7 +2,7 @@
   "id": "AUG-184-iuiqi2",
   "assignee": "assistant.json",
   "priority": "medium",
-  "status": "to_review",
+  "status": "completed",
   "title": "[AUG-184] Audit inline code comments with Comment Scanner",
   "why_we_need_this": "Inline code comments duplicate project knowledge that belongs in project-context and cost AI agents tokens every time they read the code. This task was created from the Boosts view; the scanner skill was written to `.agents/skills/comment-scanner/`.",
   "acceptance_criteria": "- Follow `.agents/skills/comment-scanner/SKILL.md` and run the scanner on the project root.\n- The user gets a short summary: total comments, estimated tokens, counts by type, the heaviest files and all TODO/FIXME/HACK markers.\n- The full Markdown report is shared with the user.\n- Cleanup candidates are proposed, with directive and license comments excluded.\n- No comment is removed or rewritten without explicit user approval; knowledge worth keeping is moved into project-context first.",

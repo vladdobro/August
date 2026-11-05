@@ -2,7 +2,7 @@
   "id": "AUG-82-l7pzj5",
   "assignee": "jarvis.json",
   "priority": "medium",
-  "status": "to_review",
+  "status": "completed",
   "title": "[AUG-82] Weird frams on clicking some buttons",
   "why_we_need_this": "when I click some buttons I see the weird white frames appeared \nHow can we fix it?\n",
   "acceptance_criteria": "",
