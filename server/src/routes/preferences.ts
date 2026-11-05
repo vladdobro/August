@@ -5,6 +5,7 @@ import {
   readPreferencesMigrated,
   writePreferences,
   sanitizePraxisProjects,
+  sanitizePraxisRecentPaths,
   sanitizeCompactPreferences,
   migratePraxisProjects,
 } from '../services/preferencesStore.js';
@@ -24,6 +25,7 @@ const ALLOWED_KEYS = new Set([
   'praxisProjectPath',
   'praxisProjects',
   'praxisDefaultPrompt',
+  'praxisRecentPaths',
   'sidebarCollapsed',
   'sessionSortOrder',
   'skipStopConfirmation',
@@ -97,6 +99,10 @@ router.patch('/', async (req, res) => {
 
   const current = await readPreferencesMigrated();
   const merged = migratePraxisProjects({ ...current, ...patch });
+  // AUG-192: re-check recents on every PATCH, so a path saved as a project leaves the Recent list.
+  if ('praxisRecentPaths' in merged) {
+    merged.praxisRecentPaths = sanitizePraxisRecentPaths(merged.praxisRecentPaths, merged.praxisProjects);
+  }
   await writePreferences(merged);
   res.json(merged);
 });

@@ -4,7 +4,7 @@ import { sendActionItemsToPraxis, addActionItem, deleteActionItem, fetchActionIt
 import PraxisModal from './PraxisModal';
 import ConfidenceBadge from './ConfidenceBadge';
 import ActionItemsPanel from './ActionItemsPanel';
-import type { PraxisProject } from '../services/preferences';
+import type { PraxisProject, UserPreferences } from '../services/preferences';
 
 interface TranscriptViewProps {
   session: SessionMetadata;
@@ -14,6 +14,8 @@ interface TranscriptViewProps {
   ffmpegAvailable?: boolean;
   praxisProjects?: PraxisProject[];
   praxisDefaultPromptCustom?: boolean;
+  praxisRecentPaths?: string[];
+  onPraxisPreferenceChange?: (patch: Partial<UserPreferences>) => void | Promise<void>;
   onRename?: (title: string) => Promise<void>;
   onRedownload?: () => Promise<void>;
 }
@@ -363,7 +365,7 @@ const ChronoRing: React.FC<{ session: SessionMetadata }> = ({ session }) => {
   );
 };
 
-const TranscriptView: React.FC<TranscriptViewProps> = ({ session, transcript, onRetranscribe, onCancel, ffmpegAvailable = false, praxisProjects, praxisDefaultPromptCustom, onRename, onRedownload }) => {
+const TranscriptView: React.FC<TranscriptViewProps> = ({ session, transcript, onRetranscribe, onCancel, ffmpegAvailable = false, praxisProjects, praxisDefaultPromptCustom, praxisRecentPaths, onPraxisPreferenceChange, onRename, onRedownload }) => {
   const [feedbackText, setFeedbackText] = useState<string | null>(null);
   const [dropdownOpen, setDropdownOpen] = useState(false);
   const [retrying, setRetrying] = useState(false);
@@ -968,6 +970,8 @@ const TranscriptView: React.FC<TranscriptViewProps> = ({ session, transcript, on
           sessionTitle={session.title}
           projects={praxisProjects ?? []}
           defaultPromptCustom={praxisDefaultPromptCustom}
+          recentPaths={praxisRecentPaths ?? []}
+          onPreferenceChange={onPraxisPreferenceChange}
           onRenameSession={onRename}
           onClose={() => setShowPraxisModal(false)}
         />
@@ -978,6 +982,8 @@ const TranscriptView: React.FC<TranscriptViewProps> = ({ session, transcript, on
           sessionTitle={session.title}
           projects={praxisProjects ?? []}
           defaultPromptCustom={praxisDefaultPromptCustom}
+          recentPaths={praxisRecentPaths ?? []}
+          onPreferenceChange={onPraxisPreferenceChange}
           onClose={() => setPraxisExport(null)}
           actionItems={{
             mode: praxisExport.mode,

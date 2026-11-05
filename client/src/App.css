@@ -7483,6 +7483,15 @@ button:hover:not(:disabled):not(.sidebar-menu-item):not(.export-menu-item):not(.
 .praxis-chip--on { border-color: var(--accent); color: var(--accent); background: var(--accent-light); }
 .praxis-chip:disabled { opacity: 0.6; cursor: not-allowed; }
 .praxis-chip-sub { font-size: 9px; color: var(--text-secondary); white-space: nowrap; overflow: hidden; text-overflow: ellipsis; max-width: 160px; }
+/* AUG-192: recent unregistered folders — dashed chip with × (remove) and Save (to Projects) */
+.praxis-chips-divider { flex-basis: 100%; font-family: var(--font-terminal); font-size: 9px; text-transform: uppercase; letter-spacing: 0.1em; color: var(--text-secondary); border-top: 1px solid var(--border-color); padding-top: 4px; margin-top: 2px; }
+.praxis-chip-wrap { display: flex; align-items: stretch; min-width: 0; max-width: 100%; }
+.praxis-chip--recent { border-style: dashed; }
+.praxis-chip-x { margin-left: -1px; width: 20px; min-width: 16px; padding: 0; border: 1px dashed var(--border-color); border-radius: 0; background: transparent; color: var(--text-secondary); font-size: 13px; line-height: 1; cursor: pointer; }
+.praxis-chip-x:hover:not(:disabled) { color: var(--danger, #e5484d); border-color: var(--danger, #e5484d); }
+.praxis-chip-save { margin-left: -1px; padding: 0 8px; min-width: 16px; border: 1px dashed var(--border-color); border-radius: 0; background: transparent; color: var(--text-secondary); font-family: var(--font-terminal); font-size: 9px; text-transform: uppercase; cursor: pointer; }
+.praxis-chip-save:hover:not(:disabled) { color: var(--accent); border-color: var(--accent); }
+.praxis-chip-x:disabled, .praxis-chip-save:disabled { opacity: 0.6; cursor: not-allowed; }
 
 @media (max-width: 560px) {
   .praxis-md { grid-template-columns: 1fr; grid-template-rows: auto 1fr; }

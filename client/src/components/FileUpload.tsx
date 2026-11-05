@@ -1369,6 +1369,8 @@ const FileUpload: React.FC<FileUploadProps> = ({ onUploaded, onRecordingChange, 
           sessionTitle="Live recording"
           projects={preferences?.praxisProjects ?? []}
           defaultPromptCustom={Boolean(preferences?.praxisDefaultPrompt?.trim())}
+          recentPaths={preferences?.praxisRecentPaths ?? []}
+          onPreferenceChange={onPreferenceChange}
           onClose={() => setPraxisExport(null)}
           actionItems={{
             mode: praxisExport.mode,

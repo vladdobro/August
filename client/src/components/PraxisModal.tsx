@@ -1,6 +1,6 @@
 import React, { useState, useEffect, useRef } from 'react';
 import { sendToPraxis, validatePraxisProject, browsePraxisFolder } from '../api';
-import type { PraxisProject } from '../services/preferences';
+import type { PraxisProject, UserPreferences } from '../services/preferences';
 import SettingsDropdown from './SettingsDropdown';
 
 const AugustLogo: React.FC = () => (
@@ -68,6 +68,9 @@ interface PraxisModalProps {
   defaultPromptCustom?: boolean;
   onClose: () => void;
   onRenameSession?: (title: string) => Promise<void>;
+  /// AUG-192: recent unregistered folders (server pref praxisRecentPaths) and the preferences writer.
+  recentPaths?: string[];
+  onPreferenceChange?: (patch: Partial<UserPreferences>) => void | Promise<void>;
   /// AUG-166: export of action items instead of the transcript card.
   actionItems?: {
     mode: 'separate' | 'common';
@@ -77,16 +80,22 @@ interface PraxisModalProps {
   };
 }
 
-const STORAGE_KEY = 'august-praxis-project-path';
 const OTHER = '__other__';
 const CHIP_LIMIT = 5;
+const RECENT_LIMIT = 5;
 
 const shortPath = (p: string): string => p.replace(/[\\/]+$/, '').split(/[\\/]/).pop() || p;
+
+const shortenPath = (p: string): string => {
+  const parts = p.replace(/[\\/]+$/, '').split(/[\\/]/);
+  const sep = p.includes('\\') ? '\\' : '/';
+  return parts.length <= 3 ? p : `${parts[0]}${sep}…${sep}${parts.slice(-2).join(sep)}`;
+};
 
 const samePath = (a: string, b: string): boolean =>
   a.trim().replace(/[\\/]+$/, '').toLowerCase() === b.trim().replace(/[\\/]+$/, '').toLowerCase();
 
-const PraxisModal: React.FC<PraxisModalProps> = ({ sessionId, sessionTitle, projects, defaultPromptCustom, onClose, onRenameSession, actionItems }) => {
+const PraxisModal: React.FC<PraxisModalProps> = ({ sessionId, sessionTitle, projects, defaultPromptCustom, onClose, onRenameSession, recentPaths = [], onPreferenceChange, actionItems }) => {
   const [projectPath, setProjectPath] = useState('');
   const [selected, setSelected] = useState<string>(OTHER);
   const [renameNote, setRenameNote] = useState<string | null>(null);
@@ -100,12 +109,7 @@ const PraxisModal: React.FC<PraxisModalProps> = ({ sessionId, sessionTitle, proj
   const backdropRef = useRef<HTMLDivElement>(null);
 
   useEffect(() => {
-    let saved = '';
-    try {
-      saved = (localStorage.getItem(STORAGE_KEY) ?? '').trim();
-    } catch {
-      // localStorage unavailable
-    }
+    const saved = (recentPaths[0] ?? '').trim();
     const match = saved ? projects.find((p) => samePath(p.path, saved)) : undefined;
     const defaultProject = projects.find((p) => p.isDefault);
     if (match) {
@@ -125,10 +129,58 @@ const PraxisModal: React.FC<PraxisModalProps> = ({ sessionId, sessionTitle, proj
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
 
+  const recents = recentPaths.filter((r) => !projects.some((p) => samePath(p.path, r)));
+
+  const rememberRecent = (sent: string) => {
+    if (!onPreferenceChange) return;
+    if (projects.some((p) => samePath(p.path, sent))) return;
+    const next = [sent, ...recentPaths.filter((r) => !samePath(r, sent))].slice(0, RECENT_LIMIT);
+    void Promise.resolve(onPreferenceChange({ praxisRecentPaths: next })).catch(() => {});
+  };
+  const removeRecent = (p: string) => {
+    if (selected === OTHER && samePath(projectPath, p)) setProjectPath('');
+    void Promise.resolve(onPreferenceChange?.({ praxisRecentPaths: recentPaths.filter((r) => !samePath(r, p)) })).catch(() => {});
+  };
+  const saveRecent = (p: string) => {
+    const project: PraxisProject = { path: p, name: shortPath(p), isDefault: projects.length === 0 };
+    void Promise.resolve(onPreferenceChange?.({
+      praxisProjects: [...projects, project],
+      praxisRecentPaths: recentPaths.filter((r) => !samePath(r, p)),
+    })).catch(() => {});
+    setSelected(p);
+    setError(null);
+  };
+  const pickRecent = (p: string) => { setSelected(OTHER); setProjectPath(p); setError(null); };
+  const recentOn = (p: string) => selected === OTHER && samePath(projectPath, p);
+
+  const recentChips = recents.length > 0 && (
+    <>
+      <span className="praxis-chips-divider">Recent</span>
+      {recents.map((r) => (
+        <div key={r} className="praxis-chip-wrap">
+          <button
+            type="button"
+            role="radio"
+            aria-checked={recentOn(r)}
+            className={`praxis-chip praxis-chip--recent${recentOn(r) ? ' praxis-chip--on' : ''}`}
+            title={r}
+            disabled={sending || validating}
+            onClick={() => pickRecent(r)}
+          >
+            <span className="praxis-chip-name">{shortPath(r)}</span>
+            <span className="praxis-chip-sub">{shortenPath(r)}</span>
+          </button>
+          <button type="button" className="praxis-chip-x" aria-label={`Remove ${shortPath(r)} from recent`} title="Remove from recent" disabled={sending || validating} onClick={() => removeRecent(r)}>×</button>
+          <button type="button" className="praxis-chip-save" aria-label={`Save ${shortPath(r)} to Projects`} title="Save to Projects" disabled={sending || validating} onClick={() => saveRecent(r)}>Save</button>
+        </div>
+      ))}
+    </>
+  );
+
   const useChips = projects.length > 0 && projects.length <= CHIP_LIMIT;
   const sel = projects.find((p) => p.path === selected);
   const defaultLabel = `default · ${defaultPromptCustom ? 'custom' : 'built-in'}`;
-  const promptHint = sel?.prompt ? `Prompt: ${sel.name} · custom` : `Prompt: ${defaultLabel}`;
+  const promptHint = selected === OTHER && recents.some(recentOn) ? 'Recent · last 5 sent, oldest drops off' : sel?.prompt ? `Prompt: ${sel.name} · custom` : `Prompt: ${defaultLabel}`;
 
   const options = [
     ...projects.map((p) => ({ value: p.path, label: p.name + (p.isDefault ? '  ·  default' : ''), sublabel: p.path })),
@@ -183,20 +235,12 @@ const PraxisModal: React.FC<PraxisModalProps> = ({ sessionId, sessionTitle, proj
     try {
       if (actionItems) {
         const out = await actionItems.onSubmit(trimmed, actionItems.alreadySent.length > 0);
-        try {
-          localStorage.setItem(STORAGE_KEY, trimmed);
-        } catch {
-          // localStorage unavailable
-        }
+        rememberRecent(trimmed);
         setSuccess({ taskId: out.taskIds.join(', '), projectTag: null });
         return;
       }
       const result = await sendToPraxis(sessionId, trimmed, taskName.trim() || undefined);
-      try {
-        localStorage.setItem(STORAGE_KEY, trimmed);
-      } catch {
-        // localStorage unavailable
-      }
+      rememberRecent(trimmed);
       const nextTitle = taskName.trim();
       if (onRenameSession && nextTitle && nextTitle !== sessionTitle) {
         try {
@@ -272,12 +316,13 @@ const PraxisModal: React.FC<PraxisModalProps> = ({ sessionId, sessionTitle, proj
                       <span className="praxis-chip-sub">{p.isDefault ? 'default' : shortPath(p.path)}</span>
                     </button>
                   ))}
+                  {recentChips}
                   <button
                     type="button"
                     role="radio"
-                    aria-checked={selected === OTHER}
-                    className={`praxis-chip${selected === OTHER ? ' praxis-chip--on' : ''}`}
-                    onClick={() => setSelected(OTHER)}
+                    aria-checked={selected === OTHER && !recents.some(recentOn)}
+                    className={`praxis-chip${selected === OTHER && !recents.some(recentOn) ? ' praxis-chip--on' : ''}`}
+                    onClick={() => { if (recents.some(recentOn)) setProjectPath(''); setSelected(OTHER); }}
                     disabled={sending || validating}
                   >
                     <span className="praxis-chip-name">Other…</span>
@@ -292,6 +337,9 @@ const PraxisModal: React.FC<PraxisModalProps> = ({ sessionId, sessionTitle, proj
                   onChange={setSelected}
                   placeholder="Choose a project"
                 />
+              )}
+              {!useChips && recents.length > 0 && (
+                <div className="praxis-chips" role="radiogroup" aria-label="Recent folders">{recentChips}</div>
               )}
             </label>
             <label className="praxis-label">

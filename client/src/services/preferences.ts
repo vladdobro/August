@@ -25,6 +25,8 @@ export interface UserPreferences {
   praxisProjectPath?: string | null;
   praxisProjects?: PraxisProject[];
   praxisDefaultPrompt?: string | null;
+  // AUG-192: recently sent unregistered Praxis folders, newest first, max 5 (server-sanitized). Not localStorage: the packaged origin port changes every launch.
+  praxisRecentPaths?: string[];
   sidebarCollapsed?: boolean;
   sessionSortOrder?: 'newest' | 'oldest' | 'alphabetical';
   skipClearConfirmation?: boolean;
@@ -72,6 +74,7 @@ export const DEFAULT_PREFERENCES: Required<UserPreferences> = {
   praxisProjectPath: null,
   praxisProjects: [],
   praxisDefaultPrompt: null,
+  praxisRecentPaths: [],
   sidebarCollapsed: false,
   sessionSortOrder: 'newest',
   skipClearConfirmation: false,

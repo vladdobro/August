@@ -109,6 +109,29 @@ export function sanitizePraxisProjects(input: unknown): PraxisProject[] {
   return out;
 }
 
+export const PRAXIS_RECENT_LIMIT = 5;
+
+/// AUG-192: recent unregistered Praxis folders. Strings only, trimmed, empty dropped, deduped by resolved
+/// path case-insensitively (same rule as sanitizePraxisProjects), registered project paths dropped,
+/// at most PRAXIS_RECENT_LIMIT, order kept (callers put the newest first). Paths are stored exactly as given.
+export function sanitizePraxisRecentPaths(input: unknown, projects: unknown): string[] {
+  if (!Array.isArray(input)) return [];
+  const key = (p: string) => path.resolve(p).toLowerCase();
+  const seen = new Set(sanitizePraxisProjects(projects).map((p) => key(p.path)));
+  const out: string[] = [];
+  for (const item of input) {
+    if (typeof item !== 'string') continue;
+    const trimmed = item.trim();
+    if (!trimmed) continue;
+    const k = key(trimmed);
+    if (seen.has(k)) continue;
+    seen.add(k);
+    out.push(trimmed);
+    if (out.length >= PRAXIS_RECENT_LIMIT) break;
+  }
+  return out;
+}
+
 /// Compact Mode prefs (AUG-156): booleans are strict, enums drop unknown values, the strip width clamps to 280–520
 /// and the Ghost Caption height to 72–480 and width to 320–760. AUG-188: the Ghost Caption font size and background
 /// opacity snap to the nearest step (12/14/16/18/22 px, 40/60/78/90/100 %).

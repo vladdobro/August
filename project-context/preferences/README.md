@@ -2,13 +2,14 @@
 
 ## TL;DR
 - User preferences persist as a flat JSON file at server/data/user-preferences.json with GET/PATCH/DELETE REST endpoints.
-- All 31 client preference fields are optional; the client applies defaults when absent from the server response. The server-only fields llmEnabled and llmModel (AUG-162) follow the same rule: absent means off and the default model. The server-only groqTextEnabled and groqTextConsent (AUG-164) follow the same rule: absent means Online text (Groq) is off.
+- All 32 client preference fields are optional; the client applies defaults when absent from the server response. The server-only fields llmEnabled and llmModel (AUG-162) follow the same rule: absent means off and the default model. The server-only groqTextEnabled and groqTextConsent (AUG-164) follow the same rule: absent means Online text (Groq) is off.
 - praxisProjects (array of path, name, isDefault, optional prompt) and praxisDefaultPrompt (string or null) hold the multi-project Praxis setup (AUG-142).
 - The legacy praxisProjectPath key stays in ALLOWED_KEYS for backward compatibility only; it is folded into praxisProjects and removed.
 - migratePraxisProjects() in preferencesStore.ts turns a legacy praxisProjectPath into the first project, named after the folder basename, default if none is default.
 - readPreferencesMigrated() runs the migration on every GET and PATCH of /api/preferences and on each Praxis export, writing the file only when something changed.
 - The Praxis migration therefore happens at app start, before the Settings modal is ever opened.
 - sanitizePraxisProjects() runs on every PATCH: it drops entries without a path, trims values, dedupes by resolved path case-insensitively, and keeps at most one default.
+- praxisRecentPaths (string[], default []) holds the last unregistered folders sent to Praxis, newest first (AUG-192). sanitizePraxisRecentPaths() re-runs on every PATCH against the merged praxisProjects: strings only, trimmed, empty dropped, deduped by resolved path case-insensitively, registered paths dropped, at most PRAXIS_RECENT_LIMIT (5). So saving a recent as a project (or adding the same path in Settings → Projects) drops it from recents. Paths are kept exactly as given (Cyrillic, no 8.3 form). The client (PraxisModal) writes it; see: frontend-design
 - Removing the default Praxis project promotes the first remaining project to default.
 - systemAudioSource ('auto' | 'browser' | 'system', default 'auto') chooses HOW system audio is captured; the systemAudio boolean stays the on/off switch.
 - systemAudio defaults to true in DEFAULT_PREFERENCES; FileUpload's initial toggle reads that same constant so Settings and the record screen never disagree when the key is unsaved.
@@ -50,7 +51,7 @@ Eliminate repeated manual re-configuration every app session. Before this system
 
 - Preferences file: server/data/user-preferences.json — a flat JSON object, created on first PATCH, deleted on reset. The path is derived from config.dataDir (server/src/config.ts), the same root as sessions, uploads, captures, and perf-stats.json.
 - Legacy migration: before AUG-109 the file lived at server/src/data/user-preferences.json and was tracked in git. On every server start, migrateLegacyPreferences() (server/src/services/preferencesStore.ts) moves that file to server/data/ once, removes the old copy, and logs the move. It never overwrites an existing server/data/ file.
-- Schema: 34 optional fields (language, micDeviceId, systemAudio, systemAudioSource, recordingMode, liveEngine, audioBoost, retranscriptionLanguage, praxisProjectPath (legacy), praxisProjects, praxisDefaultPrompt, sidebarCollapsed, sessionSortOrder, skipStopConfirmation (legacy, unused by the client since AUG-182), skipClearConfirmation, gpuEngine, autoDeleteWav, autoDeleteWavThreshold, compactEnabled, compactMode, compactIndicatorWidget, compactTranscriptWidget, compactAlwaysOnTop, compactExpandOn, compactStripWidth, compactCaptionHeight, compactCaptionWidth, compactCaptionFontSize, compactCaptionOpacity, compactHintSeen, llmCorrections, batchCorrectionEngine, groqLiveCorrection, groqLiveActionItems), plus the server-only llmEnabled and llmModel written by /api/llm (AUG-162), and the server-only groqTextEnabled and groqTextConsent written by /api/groq-text (AUG-164).
+- Schema: 35 optional fields (language, micDeviceId, systemAudio, systemAudioSource, recordingMode, liveEngine, audioBoost, retranscriptionLanguage, praxisProjectPath (legacy), praxisProjects, praxisDefaultPrompt, praxisRecentPaths (AUG-192), sidebarCollapsed, sessionSortOrder, skipStopConfirmation (legacy, unused by the client since AUG-182), skipClearConfirmation, gpuEngine, autoDeleteWav, autoDeleteWavThreshold, compactEnabled, compactMode, compactIndicatorWidget, compactTranscriptWidget, compactAlwaysOnTop, compactExpandOn, compactStripWidth, compactCaptionHeight, compactCaptionWidth, compactCaptionFontSize, compactCaptionOpacity, compactHintSeen, llmCorrections, batchCorrectionEngine, groqLiveCorrection, groqLiveActionItems), plus the server-only llmEnabled and llmModel written by /api/llm (AUG-162), and the server-only groqTextEnabled and groqTextConsent written by /api/groq-text (AUG-164).
 - readPreferences and writePreferences live in server/src/services/preferencesStore.ts; the route has no private file helpers.
 - Server allowlist: ALLOWED_KEYS set in the route filters unknown keys from PATCH requests.
 - Auto-delete controls (AUG-152): Settings → Transcription shows the "Delete audio.wav after transcription" toggle after Retranscription Language; only while it is on, a "Minimum confidence" range input (50–95, step 5) appears, followed by a hint whose text changes with the toggle state.
@@ -124,7 +125,7 @@ Eliminate repeated manual re-configuration every app session. Before this system
 ## Key Files
 
 - server/src/routes/preferences.ts — GET/PATCH/DELETE /api/preferences endpoints.
-- server/src/services/preferencesStore.ts — PREFS_PATH / LEGACY_PREFS_PATH constants, migrateLegacyPreferences() startup migration, readPreferences/writePreferences, migratePraxisProjects(), readPreferencesMigrated(), sanitizePraxisProjects(), sanitizeCompactPreferences() (AUG-156).
+- server/src/services/preferencesStore.ts — PREFS_PATH / LEGACY_PREFS_PATH constants, migrateLegacyPreferences() startup migration, readPreferences/writePreferences, migratePraxisProjects(), readPreferencesMigrated(), sanitizePraxisProjects(), sanitizePraxisRecentPaths() (AUG-192), sanitizeCompactPreferences() (AUG-156).
 - server/src/services/preferencesStore.test.ts — tests for the Praxis project migration and sanitizing.
 - client/src/services/preferences.ts — UserPreferences interface, DEFAULT_PREFERENCES, API wrappers.
 - client/src/components/SettingsModal.tsx — Settings modal UI component with the General, Audio, Transcription, Projects and Compact mode tabs; Transcription holds the auto-delete toggle and threshold slider (AUG-152) and the Local language model toggle, model dropdown and download confirmation (AUG-162).
@@ -142,6 +143,7 @@ Eliminate repeated manual re-configuration every app session. Before this system
 - Do not migrate the theme toggle to this system — it must remain in localStorage per explicit design decision.
 - New preference fields require adding the key to ALLOWED_KEYS in server/src/routes/preferences.ts and to the UserPreferences interface in client/src/services/preferences.ts.
 - Any write of praxisProjects must go through sanitizePraxisProjects(); never persist the array unsanitized.
+- Never keep Praxis recents (or anything else that must survive a restart) in localStorage: the packaged origin port changes each launch (AUG-171).
 - Never write praxisProjectPath from new code; it is read-only legacy input for migratePraxisProjects().
 - The Settings modal follows the Necron/brutalist design system (0 border-radius, theme tokens, monospace terminal font).
 - Do not put capability detection in the client — the server probe (GET /api/capture/capabilities) is the only source of truth for whether direct system capture works.

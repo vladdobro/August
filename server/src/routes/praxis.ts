@@ -243,7 +243,9 @@ router.post('/browse', async (_req, res) => {
     let selectedPath = '';
 
     if (process.platform === 'win32') {
+      // AUG-192: PowerShell 5.1 writes stdout in the OEM code page, so a Cyrillic folder came back as mojibake.
       const ps = [
+        '[Console]::OutputEncoding = [System.Text.Encoding]::UTF8',
         'Add-Type -AssemblyName System.Windows.Forms',
         '[System.Windows.Forms.Application]::EnableVisualStyles()',
         '$owner = New-Object System.Windows.Forms.Form',

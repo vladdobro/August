@@ -374,7 +374,7 @@ const App: React.FC = () => {
           )}
 
           {!needsSetup && !showArchive && selectedSession && (
-            <TranscriptView session={selectedSession} transcript={transcript} onRetranscribe={handleRetranscribe} onCancel={handleCancel} ffmpegAvailable={ffmpegAvailable} praxisProjects={preferences.praxisProjects ?? []} praxisDefaultPromptCustom={Boolean(preferences.praxisDefaultPrompt?.trim())} onRename={(title) => handleRename(selectedSession.id, title)} onRedownload={handleRedownload} />
+            <TranscriptView session={selectedSession} transcript={transcript} onRetranscribe={handleRetranscribe} onCancel={handleCancel} ffmpegAvailable={ffmpegAvailable} praxisProjects={preferences.praxisProjects ?? []} praxisDefaultPromptCustom={Boolean(preferences.praxisDefaultPrompt?.trim())} praxisRecentPaths={preferences.praxisRecentPaths ?? []} onPraxisPreferenceChange={handlePreferenceChange} onRename={(title) => handleRename(selectedSession.id, title)} onRedownload={handleRedownload} />
           )}
 
           {(showFileUpload || isRecording) && (
