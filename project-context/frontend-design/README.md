@@ -678,6 +678,7 @@ The Project path input is always visible; choosing a chip fills it, and typing i
 The Open button launches the OS native folder picker; the path input uses --font-terminal.
 Initial selection: the last-used path from localStorage if it matches a registered project, else Other with that path, else the default project, else the first project, else Other.
 localStorage "august-praxis-project-path" stores the last-used path after a successful export, registered or manual.
+Known bug (AUG-171): in the packaged app this localStorage key is empty after every restart, because the server starts on port 0 and the page origin http://127.0.0.1:<port> changes per launch. Anything that must persist goes into server preferences, not localStorage (same reason as compactHintSeen). Fix planned in AUG-192: a server-side praxisRecentPaths list (max 5, newest first) shown as dashed "Recent" chips with × and Save; mockup @docs/mockups/AUG-171/send-to-praxis.html (option C).
 A note under the path shows which prompt will be used: "Prompt: <name> · custom", or "Prompt: default · built-in" or "default · custom".
 The default-prompt note reads the defaultPromptCustom prop, passed from App through TranscriptView as praxisDefaultPromptCustom.
 Enter on a chip or inside the open dropdown does not send the task; the dropdown toggles instead.

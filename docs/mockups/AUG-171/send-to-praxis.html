@@ -1,0 +1,359 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Send to Praxis Projects</title>
+<style>
+:root {
+  --bg:#f2efe8; --surface:rgba(250,248,244,.92); --line:rgba(45,58,51,.25); --fg:#1e2b24; --muted:#566b5e;
+  --accent:#0d8c5c; --accent-light:rgba(13,140,92,.12); --pause:#d49a00; --danger:#d44040; --them:#9a7a1a;
+  --on-accent:#f2efe8; --body-bg:#e6e2d8; --glow:rgba(13,140,92,.18); --warn:#d4a028;
+  --card-bg:rgba(250,248,244,.92); --card-border:rgba(45,58,51,.14); --border-color:rgba(45,58,51,.25);
+  --text-primary:#1e2b24; --text-secondary:#566b5e; --sidebar-bg:#c8dcd0; --main-bg:#f2efe8; --status-failed:#d44040;
+  --mono:'Cascadia Code','Fira Code',Consolas,monospace;
+}
+@media (prefers-color-scheme: dark) { :root:not([data-theme="light"]) {
+  --bg:#0a110d; --surface:rgba(12,20,16,.92); --line:rgba(0,200,118,.18); --fg:#c0cec4; --muted:#5e7d6a;
+  --accent:#00c876; --accent-light:rgba(0,200,118,.10); --pause:#d4a020; --danger:#e05555; --them:#d4a843;
+  --on-accent:#0a110d; --body-bg:#0f1914; --glow:rgba(0,200,118,.3); color-scheme:dark;
+  --card-bg:rgba(12,20,16,.92); --card-border:rgba(0,200,118,.15); --border-color:rgba(0,200,118,.18);
+  --text-primary:#c0cec4; --text-secondary:#5e7d6a; --sidebar-bg:#050908; --main-bg:#0a110d; --status-failed:#e05555; } }
+:root[data-theme="dark"] {
+  --bg:#0a110d; --surface:rgba(12,20,16,.92); --line:rgba(0,200,118,.18); --fg:#c0cec4; --muted:#5e7d6a;
+  --accent:#00c876; --accent-light:rgba(0,200,118,.10); --pause:#d4a020; --danger:#e05555; --them:#d4a843;
+  --on-accent:#0a110d; --body-bg:#0f1914; --glow:rgba(0,200,118,.3); color-scheme:dark;
+  --card-bg:rgba(12,20,16,.92); --card-border:rgba(0,200,118,.15); --border-color:rgba(0,200,118,.18);
+  --text-primary:#c0cec4; --text-secondary:#5e7d6a; --sidebar-bg:#050908; --main-bg:#0a110d; --status-failed:#e05555; }
+
+* { box-sizing:border-box; border-radius:0; }
+body { margin:0; background:var(--bg); color:var(--fg); font-family:var(--mono); font-size:13px; line-height:1.5;
+  padding:0 max(16px,env(safe-area-inset-left,0px)) 48px; overflow-x:hidden; }
+.wrap { max-width:1100px; margin:0 auto; display:grid; grid-template-columns:minmax(0,1fr); gap:24px; }
+.wrap > * { min-width:0; }
+header { padding-top:24px; }
+h1 { margin:0; font-size:20px; text-wrap:balance; }
+h2 { margin:0 0 10px; font-size:13px; letter-spacing:.08em; text-transform:uppercase; color:var(--accent); border-bottom:1px solid var(--line); padding-bottom:6px; }
+h3 { margin:0 0 4px; font-size:14px; }
+.lead { margin:4px 0 0; color:var(--muted); max-width:75ch; }
+.note { margin:8px 0 0; font-size:11px; color:var(--muted); }
+button { font-family:var(--mono); cursor:pointer; }
+button:disabled { opacity:.4; cursor:not-allowed; }
+button:focus-visible, select:focus-visible, input:focus-visible, [tabindex]:focus-visible { outline:2px solid var(--accent); outline-offset:2px; }
+
+.bar { position:sticky; top:0; z-index:20; background:var(--bg); border-bottom:1px solid var(--line); padding:10px 0; display:flex; flex-wrap:wrap; gap:10px 16px; align-items:center; }
+.grp { display:flex; align-items:center; gap:6px; flex-wrap:wrap; }
+.grp > span { font-size:10px; text-transform:uppercase; letter-spacing:.06em; color:var(--muted); }
+.seg { display:flex; border:1px solid var(--line); flex-wrap:wrap; }
+.seg button { border:0; background:transparent; color:var(--fg); font-size:11px; padding:6px 10px; }
+.seg button[aria-pressed="true"] { background:var(--accent); color:var(--on-accent); }
+
+.card { border:1px solid var(--line); background:var(--surface); padding:14px; }
+.btn { border:1px solid var(--line); background:transparent; color:var(--fg); font-size:11px; text-transform:uppercase; letter-spacing:.05em; padding:4px 10px; }
+.btn:hover:not(:disabled) { border-color:var(--accent); color:var(--accent); }
+.btn.primary { background:var(--accent); border-color:var(--accent); color:var(--on-accent); }
+.btn.primary:hover:not(:disabled) { color:var(--on-accent); opacity:.85; }
+.pc { display:grid; grid-template-columns:minmax(0,1fr); gap:12px; margin-top:12px; }
+.pc h4 { margin:0 0 4px; font-size:11px; text-transform:uppercase; letter-spacing:.08em; }
+.pc .pro h4 { color:var(--accent); } .pc .con h4 { color:var(--danger); }
+.pc ul { margin:0; padding-left:18px; font-size:12px; }
+.pc li { margin-bottom:3px; }
+
+code { background:var(--accent-light); padding:0 4px; overflow-wrap:anywhere; }
+section { scroll-margin-top:70px; }
+.tag { display:inline-block; font-size:10px; padding:1px 6px; letter-spacing:.06em; text-transform:uppercase; vertical-align:middle; margin-left:6px; }
+.tag.bug { background:var(--danger); color:var(--on-accent); }
+.tag.rec { background:var(--accent); color:var(--on-accent); }
+.pitch { margin:0 0 10px; color:var(--muted); font-size:12px; }
+.cur ul, .rules { margin:6px 0 0; padding-left:18px; font-size:12px; }
+.cur li, .rules li { margin-bottom:4px; }
+.tblwrap { overflow-x:auto; border:1px solid var(--line); }
+table { border-collapse:collapse; width:100%; min-width:560px; font-size:12px; }
+th, td { text-align:left; vertical-align:top; padding:6px 10px; border-bottom:1px solid var(--line); border-right:1px solid var(--line); }
+th { color:var(--accent); font-size:11px; text-transform:uppercase; letter-spacing:.06em; }
+tr:last-child td { border-bottom:0; } th:last-child, td:last-child { border-right:0; }
+.reco { border-left:3px solid var(--accent); }
+.reco p { margin:0 0 8px; }
+
+/* ---- options grid ---- */
+.cols { display:grid; grid-template-columns:repeat(auto-fit,minmax(300px,1fr)); gap:20px; align-items:start; }
+.cols > * { min-width:0; }
+.cols > [hidden] { display:none; }
+.opt { display:flex; flex-direction:column; }
+
+/* ---- modal replica ---- */
+.praxis-modal { position:relative; width:100%; max-width:460px; background:var(--card-bg); border:1px solid var(--card-border); padding:28px; color:var(--text-primary); font-family:var(--mono); }
+.praxis-modal-title { margin:0 0 18px; font-size:16px; font-weight:700; color:var(--accent); }
+.praxis-x { position:absolute; top:10px; right:12px; background:transparent; border:0; color:var(--text-secondary); font-size:14px; padding:4px; }
+.praxis-label { display:block; font-size:12px; font-weight:600; color:var(--text-secondary); margin-bottom:16px; }
+.praxis-input { display:block; width:100%; margin-top:6px; padding:10px 12px; font-size:13px; font-family:var(--mono); background:var(--main-bg); color:var(--text-primary); border:1px solid var(--border-color); }
+.praxis-input-row { display:flex; gap:8px; }
+.praxis-input-row .praxis-input { flex:1; min-width:0; }
+.praxis-btn--browse { margin-top:6px; padding:10px 16px; font-size:13px; font-weight:600; background:var(--main-bg); color:var(--text-primary); border:1px solid var(--border-color); }
+.praxis-chips { display:flex; flex-wrap:wrap; gap:6px; margin-top:6px; align-items:stretch; }
+.cw { position:relative; display:flex; }
+.praxis-chip { display:flex; flex-direction:column; align-items:flex-start; text-align:left; padding:6px 10px; font-size:11px; font-family:var(--mono); border:1px solid var(--border-color); background:var(--main-bg); color:var(--text-primary); }
+.cw.has-x .praxis-chip { padding-right:24px; }
+.praxis-chip--on { border-color:var(--accent); color:var(--accent); background:var(--accent-light); }
+.praxis-chip--recent { border-style:dashed; }
+.praxis-chip-sub { font-size:9px; color:var(--text-secondary); overflow:hidden; text-overflow:ellipsis; white-space:nowrap; max-width:160px; }
+.cx { position:absolute; top:0; right:0; width:20px; height:20px; padding:0; border:0; background:transparent; color:var(--text-secondary); font-size:12px; line-height:1; }
+.cx:hover { color:var(--danger); }
+.csave { margin-left:-1px; border:1px dashed var(--border-color); background:transparent; color:var(--text-secondary); font-size:9px; text-transform:uppercase; padding:0 6px; }
+.csave:hover { color:var(--accent); border-color:var(--accent); }
+.cdiv { flex-basis:100%; font-size:9px; text-transform:uppercase; letter-spacing:.1em; color:var(--text-secondary); border-top:1px solid var(--border-color); padding-top:4px; margin-top:4px; }
+.praxis-field-note { margin:6px 0 0; font-size:11px; font-weight:400; color:var(--text-secondary); }
+.praxis-field-note button { background:none; border:0; padding:0; color:var(--accent); text-decoration:underline; font-size:11px; }
+.praxis-actions { display:flex; justify-content:flex-end; gap:8px; margin-top:22px; }
+.praxis-actions button { padding:10px 16px; font-size:13px; font-weight:600; border:1px solid var(--border-color); background:transparent; color:var(--text-primary); }
+.praxis-actions .go { background:var(--accent); border-color:var(--accent); color:var(--on-accent); }
+@media (prefers-reduced-motion: reduce) { *, *::before, *::after { transition:none !important; animation:none !important; scroll-behavior:auto !important; } }
+</style>
+</head>
+<body>
+<div class="wrap">
+<header>
+  <h1>Send to Praxis — remember picked projects</h1>
+  <p class="lead">AUG-171 · Rodion's Bug Fix 2: a project picked by folder is not kept, so the path is re-entered every time. Pick an option below.</p>
+</header>
+
+<div class="bar">
+  <div class="grp"><span>Theme</span>
+    <div class="seg" id="segTheme">
+      <button type="button" data-v="auto" aria-pressed="true">Auto</button>
+      <button type="button" data-v="light" aria-pressed="false">Light</button>
+      <button type="button" data-v="dark" aria-pressed="false">Dark</button>
+    </div></div>
+  <div class="grp"><span>Show</span>
+    <div class="seg" id="segShow">
+      <button type="button" data-v="a" aria-pressed="false">A</button>
+      <button type="button" data-v="b" aria-pressed="false">B</button>
+      <button type="button" data-v="c" aria-pressed="false">C</button>
+      <button type="button" data-v="all" aria-pressed="true">All side by side</button>
+    </div></div>
+</div>
+
+<section>
+  <h2>Current flow</h2>
+  <div class="card cur"><ul>
+    <li><code>PraxisModal.tsx:80,102-126</code> — on open the modal reads the last path from <code>localStorage['august-praxis-project-path']</code>; a match selects that chip, otherwise fills "Other…" + path.</li>
+    <li><code>PraxisModal.tsx:186-199</code> — the path is written to localStorage only after a successful send.</li>
+    <li><code>PraxisModal.tsx:142-155</code> — "Open" (folder picker, <code>POST /api/praxis/browse</code>) only fills the path field; it never registers a project.</li>
+    <li><code>electron/src/main.ts:195,610</code> — the packaged app starts the server on port 0, so the page origin <code>http://127.0.0.1:&lt;port&gt;</code> changes every launch and localStorage starts empty. <span class="tag bug">root cause</span></li>
+    <li><code>praxisProjects</code> preference (path, name, isDefault, prompt) is the only registered list; edited on Settings → Projects; <code>sanitizePraxisProjects</code> dedupes by resolved path, case-insensitive.</li>
+  </ul></div>
+</section>
+
+<section>
+  <h2>Options</h2>
+  <p class="pitch">Dialogs below are live mocks: click chips, ×, Save and Undo. Sample projects: August (default) and squarefi-crm; picked folder: <code>D:\Проекты\Rodion-notes</code>.</p>
+  <div class="cols" id="cols">
+    <div class="opt" data-opt="a">
+      <h3>A — Remember the last path</h3>
+      <p class="pitch">Store the last sent path in server preferences (praxisLastPath) instead of localStorage, so it survives restarts.</p>
+      <div data-dlg="a"></div>
+      <div class="pc">
+        <div class="pro"><h4>Pros</h4><ul><li>Fixes the root cause</li><li>Zero list growth</li><li>Tiny change (one pref key + modal init)</li></ul></div>
+        <div class="con"><h4>Cons</h4><ul><li>Only one path; switching between two unregistered folders still needs re-picking</li><li>Not visible in the Project list (Rodion asked for that)</li></ul></div>
+      </div>
+    </div>
+    <div class="opt" data-opt="b">
+      <h3>B — Auto-add to Projects with [x]</h3>
+      <p class="pitch">After a successful send, an unregistered path is appended to praxisProjects (named after the folder).</p>
+      <div data-dlg="b"></div>
+      <div class="pc">
+        <div class="pro"><h4>Pros</h4><ul><li>Exactly what Rodion asked</li><li>One list everywhere (Settings → Projects shows it too)</li></ul></div>
+        <div class="con"><h4>Cons</h4><ul><li>Wrong-but-valid picks pollute the registered list (Vlad's "15 projects" concern)</li><li>Past 5 projects the chips turn into a dropdown, so [x] also has to live in dropdown rows</li><li>× next to a chip is an easy misclick (needs Undo)</li></ul></div>
+      </div>
+    </div>
+    <div class="opt" data-opt="c">
+      <h3>C — Recent picks, capped at 3 <span class="tag rec">recommended</span></h3>
+      <p class="pitch">Successful sends to unregistered paths go into a separate praxisRecentPaths list (max 3, newest first, server preference). Registered Projects stay curated; recents expire on their own.</p>
+      <div data-dlg="c"></div>
+      <div class="pc">
+        <div class="pro"><h4>Pros</h4><ul><li>One-click reuse of picked folders</li><li>Junk self-limits (cap 3) plus ×</li><li>Settings → Projects stays clean; "Save" promotes a keeper</li></ul></div>
+        <div class="con"><h4>Cons</h4><ul><li>Two kinds of chips to explain</li><li>A bit more code than A (new pref key + sanitizer + UI)</li></ul></div>
+      </div>
+    </div>
+  </div>
+</section>
+
+<section>
+  <h2>Comparison</h2>
+  <div class="tblwrap"><table>
+    <thead><tr><th></th><th>A · Last path</th><th>B · Auto-add + ×</th><th>C · Recent, cap 3</th></tr></thead>
+    <tbody>
+      <tr><td>Survives restart</td><td>yes</td><td>yes</td><td>yes</td></tr>
+      <tr><td>Visible in Project list</td><td>no — path field only</td><td>yes</td><td>yes, as Recent</td></tr>
+      <tr><td>Junk control</td><td>n/a</td><td>manual × only</td><td>cap 3 + ×</td></tr>
+      <tr><td>Touches Settings → Projects</td><td>no</td><td>yes</td><td>no — only via Save</td></tr>
+      <tr><td>Effort</td><td>S</td><td>M</td><td>M</td></tr>
+      <tr><td>Matches Rodion's ask</td><td>partly</td><td>yes</td><td>yes</td></tr>
+    </tbody>
+  </table></div>
+</section>
+
+<section>
+  <h2>Recommendation</h2>
+  <div class="card reco">
+    <p><strong>C — Recent picks, capped at 3.</strong> It keeps Rodion's one-click reuse, answers Vlad's junk concern without discipline (the list cannot grow past 3), and keeps registered Projects curated. A is a subset of C: C also restores the last path after restart.</p>
+    <strong>Shared rules for any option</strong>
+    <ul class="rules">
+      <li>Only add a path after the task is created (a validated <code>.praxis/</code> folder) — failed sends never get remembered.</li>
+      <li>Store in server preferences, not localStorage (origin port changes per launch).</li>
+      <li>Dedupe by resolved path, case-insensitively (same as <code>sanitizePraxisProjects</code>).</li>
+      <li>Store the path exactly as entered/picked — never the 8.3 short form. Non-ASCII paths (Cyrillic) must round-trip on Windows and macOS.</li>
+      <li>A path that later loses its <code>.praxis/</code> folder stays listed and fails with the existing validation error.</li>
+    </ul>
+  </div>
+</section>
+</div>
+
+<script>
+(function () {
+  function lsGet(k) { try { return window.localStorage.getItem(k); } catch (e) { return null; } }
+  function lsSet(k, v) { try { window.localStorage.setItem(k, v); } catch (e) {} }
+  function el(tag, cls, txt) { var n = document.createElement(tag); if (cls) n.className = cls; if (txt != null) n.textContent = txt; return n; }
+
+  var AUG = { name: 'August', sub: 'default', path: 'D:\\claude\\August', def: true };
+  var CRM = { name: 'squarefi-crm', sub: 'squarefi-crm', path: 'D:\\claude\\git\\squarefi-crm' };
+  var ROD = { name: 'Rodion-notes', sub: 'Rodion-notes', path: 'D:\\Проекты\\Rodion-notes' };
+  var DSG = { name: 'design-review', sub: 'D:\\work\\design-review', path: 'D:\\work\\design-review' };
+  function cp(o) { var r = {}; for (var k in o) r[k] = o[k]; return r; }
+
+  var S = {
+    a: { reg: [cp(AUG), cp(CRM)], recent: [], sel: 'other', path: ROD.path, note: 'Last used path \u00b7 remembered' },
+    b: { reg: [cp(AUG), cp(CRM), cp(ROD)], recent: [], sel: ROD.path, path: ROD.path, removable: true },
+    c: { reg: [cp(AUG), cp(CRM)], recent: [cp(ROD), cp(DSG)], sel: ROD.path, path: ROD.path, removable: true, cNote: true }
+  };
+  var undo = null, timer = null;
+  var shell = {};
+
+  function mount(id) {
+    var host = document.querySelector('[data-dlg="' + id + '"]');
+    var m = el('div', 'praxis-modal'); m.setAttribute('role', 'group'); m.setAttribute('aria-label', 'Send to Praxis dialog, option ' + id.toUpperCase());
+    var x = el('button', 'praxis-x', '\u2715'); x.type = 'button'; x.setAttribute('aria-label', 'Close'); m.appendChild(x);
+    m.appendChild(el('h4', 'praxis-modal-title', 'Send to Praxis'));
+    var l1 = el('label', 'praxis-label', 'Task name');
+    var inp = el('input', 'praxis-input'); inp.value = 'Process meeting: Weekly sync'; l1.appendChild(inp);
+    l1.appendChild(el('div', 'praxis-field-note', 'Also becomes the session name'));
+    m.appendChild(l1);
+    var l2 = el('div', 'praxis-label', 'Project');
+    var chips = el('div', 'praxis-chips'); l2.appendChild(chips);
+    var undoNote = el('div', 'praxis-field-note'); undoNote.hidden = true; undoNote.setAttribute('role', 'status'); l2.appendChild(undoNote);
+    m.appendChild(l2);
+    var l3 = el('label', 'praxis-label', 'Project path');
+    var row = el('div', 'praxis-input-row');
+    var pin = el('input', 'praxis-input'); pin.spellcheck = false; row.appendChild(pin);
+    var open = el('button', 'praxis-btn--browse', 'Open'); open.type = 'button'; row.appendChild(open);
+    l3.appendChild(row);
+    var pnote = el('div', 'praxis-field-note'); l3.appendChild(pnote);
+    m.appendChild(l3);
+    var act = el('div', 'praxis-actions');
+    var c = el('button', null, 'Cancel'); c.type = 'button';
+    var g = el('button', 'go', 'Create Task'); g.type = 'button';
+    act.appendChild(c); act.appendChild(g); m.appendChild(act);
+    host.appendChild(m);
+    shell[id] = { chips: chips, pin: pin, pnote: pnote, undoNote: undoNote };
+    pin.addEventListener('input', function () { S[id].path = pin.value; });
+    open.addEventListener('click', function () { S[id].sel = 'other'; S[id].path = 'D:\\Проекты\\Another-folder'; render(id); });
+  }
+
+  function chipEl(id, p, recent) {
+    var st = S[id], on = st.sel === p.path;
+    var cw = el('div', 'cw' + (st.removable && !p.def ? ' has-x' : ''));
+    var b = el('button', 'praxis-chip' + (on ? ' praxis-chip--on' : '') + (recent ? ' praxis-chip--recent' : ''));
+    b.type = 'button'; b.setAttribute('aria-pressed', on ? 'true' : 'false');
+    b.appendChild(el('span', null, p.name));
+    var sub = el('span', 'praxis-chip-sub', p.sub); sub.title = p.path; b.appendChild(sub);
+    b.addEventListener('click', function () { st.sel = p.path; st.path = p.path; render(id); });
+    cw.appendChild(b);
+    if (st.removable && !p.def) {
+      var x = el('button', 'cx', '\u00d7'); x.type = 'button'; x.setAttribute('aria-label', 'Remove project');
+      x.addEventListener('click', function () { removeChip(id, p, recent); });
+      cw.appendChild(x);
+    }
+    if (recent) {
+      var sv = el('button', 'csave', 'Save'); sv.type = 'button'; sv.setAttribute('aria-label', 'Save to Projects');
+      sv.addEventListener('click', function () {
+        st.recent = st.recent.filter(function (r) { return r !== p; });
+        st.reg.push(p); render(id);
+      });
+      cw.appendChild(sv);
+    }
+    return cw;
+  }
+
+  function removeChip(id, p, recent) {
+    var st = S[id], list = recent ? st.recent : st.reg, i = list.indexOf(p);
+    if (i < 0) return;
+    list.splice(i, 1);
+    if (st.sel === p.path) { st.sel = st.reg[0].path; st.path = st.reg[0].path; }
+    if (id === 'b') {
+      undo = { p: p, i: i };
+      clearTimeout(timer);
+      timer = setTimeout(function () { undo = null; render('b'); }, 5000);
+    }
+    render(id);
+  }
+
+  function render(id) {
+    var st = S[id], sh = shell[id];
+    sh.chips.textContent = '';
+    st.reg.forEach(function (p) { sh.chips.appendChild(chipEl(id, p, false)); });
+    if (st.recent.length) {
+      sh.chips.appendChild(el('div', 'cdiv', 'Recent'));
+      st.recent.forEach(function (p) { sh.chips.appendChild(chipEl(id, p, true)); });
+    }
+    var o = el('div', 'cw');
+    var ob = el('button', 'praxis-chip' + (st.sel === 'other' ? ' praxis-chip--on' : '')); ob.type = 'button';
+    ob.setAttribute('aria-pressed', st.sel === 'other' ? 'true' : 'false');
+    ob.appendChild(el('span', null, 'Other\u2026')); ob.appendChild(el('span', 'praxis-chip-sub', 'any folder'));
+    ob.addEventListener('click', function () { st.sel = 'other'; st.path = ''; render(id); sh.pin.focus(); });
+    o.appendChild(ob); sh.chips.appendChild(o);
+    sh.pin.value = st.path;
+    var isRecent = st.cNote && st.recent.some(function (r) { return r.path === st.sel; });
+    sh.pnote.textContent = st.note || (isRecent ? 'Recent \u00b7 last 3 sent, oldest drops off' : 'Prompt: default \u00b7 built-in');
+    var un = sh.undoNote;
+    if (id === 'b' && undo) {
+      un.hidden = false; un.textContent = 'Removed \u00b7 ';
+      var ub = el('button', null, 'Undo'); ub.type = 'button';
+      ub.addEventListener('click', function () {
+        S.b.reg.splice(undo.i, 0, undo.p); S.b.sel = undo.p.path; S.b.path = undo.p.path;
+        undo = null; clearTimeout(timer); render('b');
+      });
+      un.appendChild(ub);
+    } else { un.hidden = true; un.textContent = ''; }
+  }
+
+  ['a', 'b', 'c'].forEach(function (id) { mount(id); render(id); });
+
+  function seg(id, fn) {
+    var e = document.getElementById(id);
+    e.addEventListener('click', function (ev) {
+      var b = ev.target.closest('button'); if (!b) return;
+      Array.prototype.forEach.call(e.children, function (c) { c.setAttribute('aria-pressed', c === b ? 'true' : 'false'); });
+      fn(b.getAttribute('data-v'));
+    });
+  }
+  seg('segTheme', function (v) {
+    var root = document.documentElement;
+    if (v === 'auto') root.removeAttribute('data-theme'); else root.setAttribute('data-theme', v);
+    lsSet('aug171-theme', v);
+  });
+  seg('segShow', function (v) {
+    Array.prototype.forEach.call(document.querySelectorAll('#cols > .opt'), function (c) {
+      c.hidden = !(v === 'all' || c.getAttribute('data-opt') === v);
+    });
+  });
+  var saved = lsGet('aug171-theme');
+  if (saved === 'light' || saved === 'dark') {
+    document.documentElement.setAttribute('data-theme', saved);
+    Array.prototype.forEach.call(document.getElementById('segTheme').children, function (c) {
+      c.setAttribute('aria-pressed', c.getAttribute('data-v') === saved ? 'true' : 'false');
+    });
+  }
+})();
+</script>
+</body>
+</html>
