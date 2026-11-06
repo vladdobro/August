@@ -216,12 +216,52 @@ export function createManualItem(raw: { text?: unknown; owner?: unknown }): Acti
   return { id: newItemId(), text, owner, source: 'Me', createdAt: new Date().toISOString(), manual: true, locked: { text: true, owner: true } };
 }
 
+export type AssistantItemResult = { status: 'created' | 'duplicate'; id: string };
+
+/// AUG-199: item added by the meeting assistant (MCP tool, REST mirror, "→ Action item"). Duplicate = exact normalized text or similar wording; a duplicate with praxisTaskId gets that task attached. Pure: mutates `items` in place and reports whether it changed.
+export function addAssistantItemToList(
+  items: ActionItem[],
+  raw: { text?: unknown; owner?: unknown; praxisTaskId?: unknown; projectPath?: unknown },
+  now: Date = new Date(),
+): { result: AssistantItemResult | null; changed: boolean } {
+  if (typeof raw.text !== 'string') return { result: null, changed: false };
+  const text = raw.text.trim();
+  if (text.length < 1 || text.length > MAX_TEXT) return { result: null, changed: false };
+  const owner = raw.owner === 'Me' || raw.owner === 'Them' ? raw.owner : 'Me';
+  const projectPath = typeof raw.projectPath === 'string' ? raw.projectPath : '';
+  const taskId = typeof raw.praxisTaskId === 'string' && raw.praxisTaskId.length > 0 && raw.praxisTaskId.length <= 64 ? raw.praxisTaskId : null;
+  const at = now.toISOString();
+
+  const key = normalizeForCompare(text);
+  const dup = items.find((i) => normalizeForCompare(i.text) === key || actionTextSimilarity(i.text, text) >= ACTION_MERGE_MIN_SIMILARITY);
+  if (dup) {
+    if (taskId) {
+      dup.praxis = { taskId, projectPath, sentAt: at };
+      return { result: { status: 'duplicate', id: dup.id }, changed: true };
+    }
+    return { result: { status: 'duplicate', id: dup.id }, changed: false };
+  }
+  const item: ActionItem = {
+    id: newItemId(),
+    text,
+    owner,
+    source: 'Me',
+    createdAt: at,
+    manual: true,
+    locked: { text: true, owner: true },
+    assistant: { projectPath, at },
+  };
+  if (taskId) item.praxis = { taskId, projectPath, sentAt: at };
+  items.push(item);
+  return { result: { status: 'created', id: item.id }, changed: true };
+}
+
 function emptyFile(): ActionItemsFile {
   return { version: 1, participants: { me: '', them: '' }, items: [], updatedAt: new Date().toISOString() };
 }
 
 /// Tolerant reader: keeps valid items only.
-function sanitizeFile(raw: unknown): ActionItemsFile {
+export function sanitizeActionItemsFile(raw: unknown): ActionItemsFile {
   const file = emptyFile();
   if (!raw || typeof raw !== 'object') return file;
   const o = raw as Record<string, unknown>;
@@ -248,6 +288,10 @@ function sanitizeFile(raw: unknown): ActionItemsFile {
       if (px && typeof px.taskId === 'string' && typeof px.projectPath === 'string' && typeof px.sentAt === 'string') {
         item.praxis = { taskId: px.taskId, projectPath: px.projectPath, sentAt: px.sentAt };
       }
+      const as = i.assistant && typeof i.assistant === 'object' ? (i.assistant as Record<string, unknown>) : null;
+      if (as && typeof as.projectPath === 'string' && typeof as.at === 'string') {
+        item.assistant = { projectPath: as.projectPath, at: as.at };
+      }
       file.items.push(item);
     }
   }
@@ -263,7 +307,7 @@ async function writeJsonAtomic(filePath: string, data: unknown): Promise<void> {
 
 async function readFileIfExists(filePath: string): Promise<ActionItemsFile | null> {
   try {
-    return sanitizeFile(JSON.parse(await fs.readFile(filePath, 'utf-8')));
+    return sanitizeActionItemsFile(JSON.parse(await fs.readFile(filePath, 'utf-8')));
   } catch (err) {
     if ((err as NodeJS.ErrnoException)?.code === 'ENOENT') return null;
     if (err instanceof SyntaxError) return null;
@@ -330,6 +374,12 @@ export class LiveActionItemsStore {
     this.file.items.push(item);
     this.changed();
     return item;
+  }
+
+  addAssistantItem(raw: { text?: unknown; owner?: unknown; praxisTaskId?: unknown; projectPath?: unknown }): AssistantItemResult | null {
+    const { result, changed } = addAssistantItemToList(this.file.items, raw);
+    if (changed) this.changed();
+    return result;
   }
 
   applyOps(ops: DedupOp[]): { applied: number; rejected: number } {
@@ -435,6 +485,11 @@ export async function openLiveActionItems(liveKey: string): Promise<LiveActionIt
   const store = new LiveActionItemsStore(liveKey, file, pendingPath(liveKey));
   registry.set(liveKey, { store, refs: 1 });
   return store;
+}
+
+/// AUG-199: the open store of a live recording (no refcount change), or null.
+export function getOpenLiveActionItems(liveKey: string): LiveActionItemsStore | null {
+  return registry.get(liveKey)?.store ?? null;
 }
 
 export function releaseLiveActionItems(liveKey: string): void {

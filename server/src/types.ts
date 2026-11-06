@@ -184,6 +184,7 @@ export interface ActionItem {
   locked?: ActionItemLock; // fields edited by the user - no model operation may change/remove them
   manual?: true; // AUG-165: added by the user by hand; always fully locked
   praxis?: ActionItemPraxisRef; // AUG-166: set when the item was sent to Praxis (last send wins)
+  assistant?: { projectPath: string; at: string }; // AUG-199: set on items created by the meeting assistant
 }
 export interface Participants { me: string; them: string }
 export interface ActionItemsFile { version: 1; participants: Participants; items: ActionItem[]; updatedAt: string }

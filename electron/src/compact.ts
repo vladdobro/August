@@ -15,7 +15,8 @@ import {
   type GhostDisplay,
   type GhostWindowState,
 } from './ghostGeometry.js';
-import { readGhostState, writeGhostState } from './windowState.js';
+import { clampInto, rectsOverlap, resolveOverlap, snapRect, type Rect } from './panelGeometry.js';
+import { readGhostState, readPanelState, writeGhostState, writePanelState, type PanelKind, type PanelState } from './windowState.js';
 
 export type CompactShape = 'none' | 'strip' | 'square' | 'caption' | 'coin';
 export interface CompactRequest {
@@ -51,6 +52,23 @@ const CAPTION_MARGIN = 24;
 // Must equal createWindow's minWidth/minHeight in main.ts.
 const FULL_MIN_W = 960;
 const FULL_MIN_H = 600;
+
+// AUG-199: compact Copilot / Assistant windows.
+const PANEL_KINDS: readonly PanelKind[] = ['copilot', 'assistant'];
+const PANEL_DEFAULT: Record<PanelKind, { width: number; height: number }> = {
+  copilot: { width: 340, height: 220 },
+  assistant: { width: 360, height: 420 },
+};
+const PANEL_MIN: Record<PanelKind, { width: number; height: number }> = {
+  copilot: { width: 260, height: 140 },
+  assistant: { width: 280, height: 240 },
+};
+const PANEL_GAP = 12;
+const PANEL_SETTLE_MS = 250;
+
+export function isPanelKind(value: unknown): value is PanelKind {
+  return value === 'copilot' || value === 'assistant';
+}
 
 const SHAPES: readonly string[] = ['none', 'strip', 'square', 'caption', 'coin'];
 
@@ -111,6 +129,8 @@ export interface CompactControllerOptions {
   userDataDir: string;
   onShapeChange(shape: CompactShape): void;
   sendEvent(event: CompactEvent): void;
+  /// Which compact panels are visible now (AUG-199); main forwards it to the renderers.
+  onPanelsChange?(state: { copilot: boolean; assistant: boolean }): void;
 }
 
 export interface CompactResult {
@@ -137,11 +157,19 @@ export class CompactController {
     fixed: 'top' | 'bottom';
     minHeight: number;
   } | null = null;
-  private readonly onDisplaysChanged = (): void => this.reclampGhost();
+  private panels: Partial<Record<PanelKind, BrowserWindow>> = {};
+  private panelOn: Record<PanelKind, boolean> = { copilot: false, assistant: false };
+  private savedPanels: PanelState; // saved bounds per panel (AUG-199), loaded from window-state.json
+  private panelTimers: Partial<Record<PanelKind, ReturnType<typeof setTimeout>>> = {};
+  private readonly onDisplaysChanged = (): void => {
+    this.reclampGhost();
+    this.reclampPanels();
+  };
 
   constructor(private readonly opts: CompactControllerOptions) {
     const win = opts.window;
     this.saved = readGhostState(opts.userDataDir);
+    this.savedPanels = readPanelState(opts.userDataDir);
     win.on('resized', () => this.onUserResize());
     win.on('maximize', () => this.onUserResize());
     screen.on('display-removed', this.onDisplaysChanged);
@@ -159,6 +187,48 @@ export class CompactController {
 
   isGhostSender(wc: WebContents): boolean {
     return this.ghost !== null && !this.ghost.isDestroyed() && this.ghost.webContents === wc;
+  }
+
+  isPanelSender(wc: WebContents): boolean {
+    return PANEL_KINDS.some((k) => {
+      const w = this.panels[k];
+      return !!w && !w.isDestroyed() && w.webContents === wc;
+    });
+  }
+
+  /// Web contents of the ghost window and the panel windows, for broadcasting panel state.
+  auxContents(): WebContents[] {
+    const out: WebContents[] = [];
+    if (this.ghost && !this.ghost.isDestroyed()) out.push(this.ghost.webContents);
+    for (const k of PANEL_KINDS) {
+      const w = this.panels[k];
+      if (w && !w.isDestroyed()) out.push(w.webContents);
+    }
+    return out;
+  }
+
+  panelState(): { copilot: boolean; assistant: boolean } {
+    return { copilot: this.panelVisible('copilot'), assistant: this.panelVisible('assistant') };
+  }
+
+  /// Shows or hides a compact panel window; only while compact. Hidden panels are kept (bounds and page state).
+  setPanel(kind: PanelKind, visible: boolean): void {
+    if (this.current === 'none') return;
+    const existing = this.panels[kind];
+    if (!visible) {
+      if (existing && !existing.isDestroyed()) existing.hide();
+      this.panelOn[kind] = false;
+      this.notifyPanels();
+      return;
+    }
+    this.panelOn[kind] = true;
+    if (existing && !existing.isDestroyed()) {
+      this.guarded(() => existing.setBounds(this.placePanel(kind, existing.getBounds())));
+      existing.showInactive();
+    } else {
+      this.createPanel(kind);
+    }
+    this.notifyPanels();
   }
 
   apply(req: CompactRequest): CompactResult {
@@ -230,6 +300,7 @@ export class CompactController {
         this.current = req.shape;
         this.opts.onShapeChange(this.current);
       }
+      if (this.current !== 'none') this.relayoutPanels();
       return { ok: true, shape: this.current };
     } catch (err) {
       return { ok: false, shape: this.current, error: err instanceof Error ? err.message : String(err) };
@@ -376,11 +447,15 @@ export class CompactController {
     screen.removeListener('display-removed', this.onDisplaysChanged);
     screen.removeListener('display-metrics-changed', this.onDisplaysChanged);
     this.destroyGhost();
+    this.destroyPanels();
   }
 
   private restore(): void {
     const win = this.opts.window;
     this.destroyGhost();
+    const hadPanels = this.panelOn.copilot || this.panelOn.assistant;
+    this.destroyPanels();
+    if (hadPanels) this.notifyPanels();
     applyOnTop(win, false);
     win.setResizable(true);
     win.setMinimumSize(FULL_MIN_W, FULL_MIN_H);
@@ -535,6 +610,193 @@ export class CompactController {
     if (shape === 'caption') this.ghost.setIgnoreMouseEvents(true, { forward: true });
     else this.ghost.setIgnoreMouseEvents(false);
     this.ghostShape = shape;
+  }
+
+  private panelVisible(kind: PanelKind): boolean {
+    const w = this.panels[kind];
+    return this.panelOn[kind] && !!w && !w.isDestroyed();
+  }
+
+  private notifyPanels(): void {
+    this.opts.onPanelsChange?.(this.panelState());
+  }
+
+  /// Bounds of the other compact surfaces a panel must not cover: the dock window (strip / square), the ghost
+  /// widget (caption / coin) and the other visible panel.
+  private panelObstacles(except: PanelKind): Rect[] {
+    const out: Rect[] = [];
+    const main = this.opts.window;
+    if ((this.current === 'strip' || this.current === 'square') && !main.isDestroyed() && main.isVisible()) {
+      out.push(main.getBounds());
+    }
+    if ((this.current === 'caption' || this.current === 'coin') && this.ghost && !this.ghost.isDestroyed()) {
+      out.push(this.ghost.getBounds());
+    }
+    for (const k of PANEL_KINDS) {
+      const w = this.panels[k];
+      if (k !== except && w && !w.isDestroyed() && this.panelOn[k]) out.push(w.getBounds());
+    }
+    return out;
+  }
+
+  /// The dock / ghost window the default panel spots are laid out around.
+  private panelAnchor(): Rectangle | null {
+    const main = this.opts.window;
+    if ((this.current === 'strip' || this.current === 'square') && !main.isDestroyed()) return main.getBounds();
+    if (this.ghost && !this.ghost.isDestroyed()) return this.ghost.getBounds();
+    return main.isDestroyed() ? null : (this.snapshot?.bounds ?? main.getBounds());
+  }
+
+  /// Default spot: left of the dock (assistant at the top of the work area, copilot below it); above the caption / coin.
+  private defaultPanelRect(kind: PanelKind): Rect {
+    const anchor = this.panelAnchor();
+    const wa = (anchor ? screen.getDisplayMatching(anchor) : screen.getPrimaryDisplay()).workArea;
+    const a = PANEL_DEFAULT.assistant;
+    const c = PANEL_DEFAULT.copilot;
+    const ghosted = this.current === 'caption' || this.current === 'coin';
+    const assistant: Rect = ghosted
+      ? {
+          x: anchor ? anchor.x : wa.x + wa.width - a.width,
+          y: (anchor ? anchor.y : wa.y + wa.height) - PANEL_GAP - a.height,
+          width: a.width,
+          height: a.height,
+        }
+      : { x: (anchor ? anchor.x : wa.x + wa.width) - PANEL_GAP - a.width, y: wa.y, width: a.width, height: a.height };
+    if (kind === 'assistant') return clampInto(assistant, wa);
+    const copilot: Rect = ghosted
+      ? { x: assistant.x - PANEL_GAP - c.width, y: assistant.y, width: c.width, height: c.height }
+      : { x: assistant.x, y: assistant.y + assistant.height + PANEL_GAP, width: c.width, height: c.height };
+    return clampInto(copilot, wa);
+  }
+
+  /// Saved bounds (clamped into the display they are on) or the default spot, moved off any overlapped window.
+  private placePanel(kind: PanelKind, preferred?: Rect): Rect {
+    let r: Rect = preferred ?? this.savedPanels[kind] ?? this.defaultPanelRect(kind);
+    const min = PANEL_MIN[kind];
+    r = { ...r, width: Math.max(min.width, r.width), height: Math.max(min.height, r.height) };
+    const wa = screen.getDisplayMatching(r).workArea;
+    r = clampInto(r, wa);
+    return resolveOverlap(r, this.panelObstacles(kind), wa);
+  }
+
+  private createPanel(kind: PanelKind): void {
+    const bounds = this.placePanel(kind);
+    const min = PANEL_MIN[kind];
+    const win = new BrowserWindow({
+      ...bounds,
+      frame: false,
+      transparent: false, // Windows cannot resize a transparent window
+      backgroundColor: '#0a110d',
+      resizable: true,
+      movable: true,
+      minimizable: false,
+      maximizable: false,
+      fullscreenable: false,
+      skipTaskbar: true,
+      show: false,
+      alwaysOnTop: true,
+      minWidth: min.width,
+      minHeight: min.height,
+      title: 'August',
+      webPreferences: {
+        preload: this.opts.preloadPath,
+        contextIsolation: true,
+        nodeIntegration: false,
+        sandbox: true,
+        backgroundThrottling: false,
+        spellcheck: false,
+        webgl: false,
+        plugins: false,
+        enableWebSQL: false,
+        devTools: this.opts.devTools,
+      },
+    });
+    this.panels[kind] = win;
+    applyOnTop(win, true);
+    win.webContents.setWindowOpenHandler(() => ({ action: 'deny' }));
+    win.webContents.on('will-navigate', (e) => e.preventDefault());
+    // showInactive: never steal focus from the call the user is in.
+    win.once('ready-to-show', () => {
+      if (this.panels[kind] === win && this.panelOn[kind]) win.showInactive();
+    });
+    const settle = (): void => this.schedulePanelSettle(kind);
+    win.on('moved', settle);
+    win.on('resized', settle);
+    win.on('closed', () => {
+      if (this.panels[kind] === win) {
+        delete this.panels[kind];
+        this.panelOn[kind] = false;
+        this.notifyPanels();
+      }
+    });
+    const u = new URL(this.opts.appUrl);
+    u.searchParams.set('panel', kind);
+    void win.loadURL(u.toString());
+  }
+
+  /// 'moved' fires continuously while dragging on macOS: settle once the window has been still for a moment.
+  private schedulePanelSettle(kind: PanelKind): void {
+    if (this.applying) return;
+    const prev = this.panelTimers[kind];
+    if (prev) clearTimeout(prev);
+    this.panelTimers[kind] = setTimeout(() => {
+      delete this.panelTimers[kind];
+      this.settlePanel(kind);
+    }, PANEL_SETTLE_MS);
+  }
+
+  /// After a user move / resize: snap to near edges, move off any overlapped window, save the bounds.
+  private settlePanel(kind: PanelKind): void {
+    const win = this.panels[kind];
+    if (!win || win.isDestroyed() || this.applying) return;
+    const cur = win.getBounds();
+    const wa = screen.getDisplayMatching(cur).workArea;
+    const others = this.panelObstacles(kind);
+    let r = snapRect(cur, others, wa);
+    if (others.some((o) => rectsOverlap(r, o))) r = resolveOverlap(r, others, wa);
+    if (r.x !== cur.x || r.y !== cur.y || r.width !== cur.width || r.height !== cur.height) {
+      this.guarded(() => win.setBounds(r));
+    }
+    this.savedPanels = { ...this.savedPanels, [kind]: r };
+    writePanelState(this.opts.userDataDir, this.savedPanels);
+  }
+
+  /// The dock / ghost changed shape: move visible panels off whatever now overlaps them. Not persisted.
+  private relayoutPanels(): void {
+    for (const kind of PANEL_KINDS) {
+      const win = this.panels[kind];
+      if (!win || win.isDestroyed() || !this.panelOn[kind]) continue;
+      const cur = win.getBounds();
+      const r = this.placePanel(kind, cur);
+      if (r.x !== cur.x || r.y !== cur.y || r.width !== cur.width || r.height !== cur.height) {
+        this.guarded(() => win.setBounds(r));
+      }
+    }
+  }
+
+  /// A display was removed or changed resolution: pull the panels back inside their work area. Not persisted.
+  private reclampPanels(): void {
+    for (const kind of PANEL_KINDS) {
+      const win = this.panels[kind];
+      if (!win || win.isDestroyed()) continue;
+      const cur = win.getBounds();
+      const r = clampInto(cur, screen.getDisplayMatching(cur).workArea);
+      if (r.x !== cur.x || r.y !== cur.y || r.width !== cur.width || r.height !== cur.height) {
+        this.guarded(() => win.setBounds(r));
+      }
+    }
+  }
+
+  private destroyPanels(): void {
+    for (const kind of PANEL_KINDS) {
+      const timer = this.panelTimers[kind];
+      if (timer) clearTimeout(timer);
+      delete this.panelTimers[kind];
+      const win = this.panels[kind];
+      delete this.panels[kind];
+      this.panelOn[kind] = false;
+      if (win && !win.isDestroyed()) win.destroy();
+    }
   }
 
   private destroyGhost(): void {

@@ -2,7 +2,7 @@ import { describe, test, expect, beforeEach, afterEach } from 'vitest';
 import fs from 'node:fs/promises';
 import os from 'node:os';
 import path from 'node:path';
-import { migrateLegacyPreferences, migratePraxisProjects, sanitizePraxisProjects, sanitizeCompactPreferences } from './preferencesStore.js';
+import { migrateLegacyPreferences, migratePraxisProjects, sanitizePraxisProjects, sanitizeCompactPreferences, sanitizeAssistantPreferences } from './preferencesStore.js';
 
 let root: string;
 let legacyPath: string;
@@ -171,5 +171,31 @@ describe('sanitizeCompactPreferences', () => {
 
   test('unrelated keys pass through untouched', () => {
     expect(sanitizeCompactPreferences({ language: 'en' })).toEqual({ language: 'en' });
+  });
+});
+
+describe('sanitizeAssistantPreferences', () => {
+  test('model enums: invalid dropped, valid kept', () => {
+    expect(sanitizeAssistantPreferences({ aiModel: 'gpt', aiCopilotModel: 'opus' })).toEqual({ aiCopilotModel: 'opus' });
+  });
+  test('budgets', () => {
+    const f = (v: unknown) => sanitizeAssistantPreferences({ aiSessionBudgetUsd: v }).aiSessionBudgetUsd;
+    expect(f('3.456')).toBe(3.46);
+    expect(f(-1)).toBeUndefined();
+    expect(f('abc')).toBeUndefined();
+    expect(f('')).toBeUndefined();
+    expect(f(5000)).toBe(1000);
+    expect(f(0)).toBe(0);
+    expect(sanitizeAssistantPreferences({ aiCopilotAlwaysBudgetUsd: 7 }).aiCopilotAlwaysBudgetUsd).toBe(7);
+  });
+  test('transcript window snaps to 2/5/10/15', () => {
+    const f = (v: unknown) => sanitizeAssistantPreferences({ aiTranscriptWindowMin: v }).aiTranscriptWindowMin;
+    expect(f(7)).toBe(5);
+    expect(f(12)).toBe(10);
+    expect(f(100)).toBe(15);
+    expect(f('x')).toBeUndefined();
+  });
+  test('unrelated keys untouched', () => {
+    expect(sanitizeAssistantPreferences({ language: 'en', aiModel: 'haiku' })).toEqual({ language: 'en', aiModel: 'haiku' });
   });
 });

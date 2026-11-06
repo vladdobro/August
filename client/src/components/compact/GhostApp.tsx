@@ -1,7 +1,7 @@
 import React, { useCallback, useEffect, useLayoutEffect, useRef, useState } from 'react';
 import { formatClock } from '../../services/compact';
 import ActionItemsPanel from '../ActionItemsPanel';
-import { MicGlyph } from './DockWidgets';
+import { MicGlyph, useCtxBadge } from './DockWidgets';
 import HoldToStopButton from '../HoldToStopButton';
 import { GHOST_CHANNEL, statusTag, type GhostAction, type GhostCommand, type GhostMessage, type GhostState, type GhostWidget } from './ghostProtocol';
 
@@ -303,7 +303,7 @@ const GhostCaption: React.FC<GhostCaptionProps> = ({ state, send, sendAction }) 
           </div>
         ))}
         <div className="ghost-caption-lines" ref={linesRef}>
-          {lines.length === 0 && !done && <div className="ghost-line ghost-line--empty">Waiting for speech…</div>}
+          {lines.length === 0 && !done && <div className="ghost-line ghost-line--empty">{state.live ? 'Waiting for speech…' : 'Live text is off'}</div>}
           {lines.map((line, i) => (
             <div
               key={`${state.lineCount - lines.length + i}`}
@@ -315,7 +315,7 @@ const GhostCaption: React.FC<GhostCaptionProps> = ({ state, send, sendAction }) 
         </div>
       </div>
 
-      {state.live && !done && (
+      {(state.live || state.meeting) && !done && (
         <div
           className="ghost-caption-actions"
           onMouseEnter={() => setActionsHover(true)}
@@ -347,6 +347,7 @@ const GhostCoin: React.FC<GhostViewProps> = ({ state, send }) => {
   const [faceSide, setFaceSide] = useState<'left' | 'right'>('right');
   const dragRef = useRef<{ x: number; y: number; active: boolean } | null>(null);
   const movedRef = useRef(false);
+  const ctx = useCtxBadge(); // AUG-199
 
   const paused = state.liveStatus === 'paused';
   const done = state.phase === 'done';
@@ -447,6 +448,9 @@ const GhostCoin: React.FC<GhostViewProps> = ({ state, send }) => {
       {expanded && (
       <div className="ghost-coin-actions">
           <>
+            {ctx.count > 0 && !done && !lost && (
+              <button type="button" className="ghost-btn ghost-btn--accent" onClick={ctx.show} title="Show Copilot in the full window">[ CTX {ctx.count} ]</button>
+            )}
             {state.live && !done && !lost && (
               <button
                 type="button"
@@ -469,7 +473,7 @@ const GhostCoin: React.FC<GhostViewProps> = ({ state, send }) => {
               </button>
             )}
             {!done && !lost && <HoldToStopButton className="ghost-btn ghost-btn--end" onComplete={() => send('end')} title="Hold 1.5 s to end the meeting" ariaLabel="End Meeting (hold 1.5 seconds)" hint="[ HOLD ]">[ END MEETING ]</HoldToStopButton>}
-            {state.live && !done && !lost && (
+            {(state.live || state.meeting) && !done && !lost && (
               <button type="button" className="ghost-btn" onClick={() => send('switch')} title="Switch to Ghost Caption" aria-label="Switch to Ghost Caption">[ ⇄ ]</button>
             )}
             <button type="button" className={`ghost-btn${lost || done ? ' ghost-btn--accent' : ''}`} onClick={() => send('expand')}>[ OPEN ]</button>
@@ -495,6 +499,7 @@ const PLACEHOLDER = (widget: GhostWidget): GhostState => ({
   participants: { me: '', them: '' },
   actionEnabled: null,
   actionOffReason: null,
+  meeting: false,
   micMuted: false,
   mutedHint: false,
   skipClearConfirmation: false,

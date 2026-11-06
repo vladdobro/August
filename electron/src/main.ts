@@ -1,4 +1,5 @@
 import fs from 'node:fs';
+import os from 'node:os';
 import path from 'node:path';
 import { fileURLToPath, pathToFileURL } from 'node:url';
 import {
@@ -17,7 +18,7 @@ import {
   shell,
 } from 'electron';
 
-import { CompactController, parseCompactRequest, type CompactEvent } from './compact.js';
+import { CompactController, isPanelKind, parseCompactRequest, type CompactEvent } from './compact.js';
 import { applyMuteHotkey, applyRecordHotkey } from './hotkey.js';
 import { installFileLogger } from './log.js';
 import { startSessionWatcher } from './sessionWatcher.js';
@@ -83,7 +84,8 @@ function whisperPlatformDir(): string | null {
 function ensureToolPaths(): void {
   if (process.platform !== 'darwin') return;
   const current = (process.env.PATH ?? '').split(':').filter(Boolean);
-  const extra = ['/opt/homebrew/bin', '/usr/local/bin'].filter((p) => !current.includes(p));
+  // AUG-198: ~/.local/bin is where the Claude Code native installer puts `claude`.
+  const extra = ['/opt/homebrew/bin', '/usr/local/bin', path.join(os.homedir(), '.local', 'bin')].filter((p) => !current.includes(p));
   process.env.PATH = [...current, ...extra].join(':');
 }
 
@@ -215,6 +217,14 @@ let trayTicker: ReturnType<typeof setInterval> | null = null;
 
 function sendCompactEvent(event: CompactEvent): void {
   mainWindow?.webContents.send('august:compact-event', event);
+}
+
+/// AUG-199: tells the main window, the ghost and the compact panels which panels are open.
+function sendCompactPanels(state: { copilot: boolean; assistant: boolean }): void {
+  if (mainWindow && !mainWindow.isDestroyed()) mainWindow.webContents.send('august:compact-panels', state);
+  for (const wc of compact?.auxContents() ?? []) {
+    if (!wc.isDestroyed()) wc.send('august:compact-panels', state);
+  }
 }
 
 /// Ticks the tray tooltip once a second while compact and recording; otherwise stops.
@@ -521,6 +531,17 @@ function registerIpc(): void {
     return compact.apply(req);
   });
 
+  // AUG-199: show / hide the compact Copilot / Assistant windows. Sent by the main window (Dock Strip toggles),
+  // the ghost, or a panel itself (its × button).
+  ipcMain.on('august:compact-panel', (e, payload: unknown) => {
+    if (!compact) return;
+    const fromMain = !!mainWindow && e.sender === mainWindow.webContents;
+    if (!fromMain && !compact.isGhostSender(e.sender) && !compact.isPanelSender(e.sender)) return;
+    const rec = payload as { kind?: unknown; visible?: unknown } | null;
+    if (!rec || !isPanelKind(rec.kind) || typeof rec.visible !== 'boolean') return;
+    compact.setPanel(rec.kind, rec.visible);
+  });
+
   ipcMain.on('august:compact-issue', (_e, issue: unknown) => {
     if (!mainWindow || mainWindow.isVisible()) return;
     if (issue === 'interrupted') {
@@ -623,6 +644,7 @@ async function main(): Promise<void> {
       updateTrayTicker();
     },
     sendEvent: sendCompactEvent,
+    onPanelsChange: sendCompactPanels,
   });
   // A reload or renderer crash loses the compact UI — put the window back so the user is never left with a strip.
   mainWindow.webContents.on('did-start-loading', () => {

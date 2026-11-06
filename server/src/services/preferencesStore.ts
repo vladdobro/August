@@ -201,3 +201,54 @@ export async function readPreferencesMigrated(prefsPath: string = PREFS_PATH): P
   if (migrated !== prefs) await writePreferences(migrated, prefsPath);
   return migrated;
 }
+
+/// AUG-198: AI assistants (Meeting Copilot + Active session). Spec docs/mockups/AUG-194/findings.md §3.1.
+export const AI_MODELS = ['haiku', 'sonnet', 'opus'] as const;
+export type AiModel = (typeof AI_MODELS)[number];
+export const AI_TRANSCRIPT_WINDOWS = [2, 5, 10, 15] as const;
+export const AI_BUDGET_MAX_USD = 1000;
+export const AI_DEFAULTS = { model: 'sonnet' as AiModel, budgetUsd: 2, transcriptWindowMin: 5 };
+
+/// USD spending limit: Number(); empty string, non-number types, non-finite or negative → null (caller drops the key);
+/// rounded to cents, capped at AI_BUDGET_MAX_USD. 0 = no limit.
+export function sanitizeBudgetUsd(value: unknown): number | null {
+  if (typeof value !== 'number' && typeof value !== 'string') return null;
+  if (typeof value === 'string' && value.trim() === '') return null;
+  const n = Number(value);
+  if (!Number.isFinite(n) || n < 0) return null;
+  return Math.min(AI_BUDGET_MAX_USD, Math.round(n * 100) / 100);
+}
+
+export function sanitizeAiModel(value: unknown): AiModel | null {
+  return typeof value === 'string' && (AI_MODELS as readonly string[]).includes(value) ? (value as AiModel) : null;
+}
+
+/// Snaps to the nearest of 2/5/10/15 (ties go to the smaller); non-finite → null.
+export function sanitizeTranscriptWindow(value: unknown): number | null {
+  if (typeof value !== 'number' && typeof value !== 'string') return null;
+  if (typeof value === 'string' && value.trim() === '') return null;
+  const n = Number(value);
+  if (!Number.isFinite(n)) return null;
+  return AI_TRANSCRIPT_WINDOWS.reduce<number>((best, v) => (Math.abs(v - n) < Math.abs(best - n) ? v : best), AI_TRANSCRIPT_WINDOWS[0]);
+}
+
+/// Same shape as sanitizeCompactPreferences: invalid values drop the key from the patch. The server-only keys
+/// (aiCopilotMode, aiCopilotConsent, aiCopilotAlwaysAck, aiSessionEnabled, aiConsent) are not in ALLOWED_KEYS and never reach here.
+export function sanitizeAssistantPreferences(patch: PreferencesRecord): PreferencesRecord {
+  const out: PreferencesRecord = { ...patch };
+  for (const key of ['aiCopilotModel', 'aiModel']) {
+    if (!(key in out)) continue;
+    const v = sanitizeAiModel(out[key]);
+    if (v === null) delete out[key]; else out[key] = v;
+  }
+  for (const key of ['aiCopilotAlwaysBudgetUsd', 'aiSessionBudgetUsd']) {
+    if (!(key in out)) continue;
+    const v = sanitizeBudgetUsd(out[key]);
+    if (v === null) delete out[key]; else out[key] = v;
+  }
+  if ('aiTranscriptWindowMin' in out) {
+    const v = sanitizeTranscriptWindow(out.aiTranscriptWindowMin);
+    if (v === null) delete out.aiTranscriptWindowMin; else out.aiTranscriptWindowMin = v;
+  }
+  return out;
+}

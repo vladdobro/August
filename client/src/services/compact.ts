@@ -53,11 +53,12 @@ export function isTranscriptWidget(w: CompactWidget | null): boolean {
 
 /// AUG-188: the in-place switch is a per-recording override within the variant (Dock or Ghost); the transcript widget is
 /// unavailable while Live is off, so it falls back to its indicator pair.
-export function pickCompactWidget(p: UserPreferences, liveActive: boolean, override: CompactWidget | null): CompactWidget | null {
+/// AUG-200: the Strip / Caption are also allowed on the meeting-only socket (transcriptWidgetOk) because they carry the action items; the automatic choice still follows Live.
+export function pickCompactWidget(p: UserPreferences, liveActive: boolean, override: CompactWidget | null, transcriptWidgetOk: boolean = liveActive): CompactWidget | null {
   const kind = resolveCompactKind(p, liveActive);
   if (!kind) return null;
   if (!override) return resolveCompactWidget(p, kind);
-  if (isTranscriptWidget(override) && !liveActive) return pairWidget(override);
+  if (isTranscriptWidget(override) && !transcriptWidgetOk) return pairWidget(override);
   return override;
 }
 

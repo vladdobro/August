@@ -38,11 +38,16 @@ interface LiveTranscriptPanelProps {
   onEndRecording: () => void;
   // Compact Mode (AUG-156): shrink August to a widget. Set only on the desktop shell.
   onCompact?: () => void;
-  aside?: React.ReactNode; // AUG-165: Action items column next to the transcript
+  aside?: React.ReactNode; // AUG-165: Action items column next to the transcript (alias of columns)
+  columns?: React.ReactNode; // AUG-199: side columns (action items / copilot / assistant) after the transcript canvas
+  ctxCount?: number; // AUG-199: `CTX n` badge in the top bar
+  onCtx?: () => void;
   // AUG-181: mute the mic in August's recording
   micMuted?: boolean;
   onToggleMute?: () => void;
   mutedHint?: boolean;
+  mode?: 'live' | 'meeting'; // AUG-200: 'meeting' = recording without Live Text (action items + assistant only)
+  onStartLive?: () => void;
 }
 
 const STATUS_LABEL: Record<LiveStatus, string> = {
@@ -54,7 +59,7 @@ const STATUS_LABEL: Record<LiveStatus, string> = {
 };
 
 const LiveTranscriptPanel: React.FC<LiveTranscriptPanelProps> = ({
-  lines, status, error, warning, micUnavailable, onPause, onResume, onCopyAll, onCopyAndClear, skipClearConfirmation, onClose, onStop, onClearAll, elapsed, onEndRecording, onCompact, aside, micMuted, onToggleMute, mutedHint,
+  lines, status, error, warning, micUnavailable, onPause, onResume, onCopyAll, onCopyAndClear, skipClearConfirmation, onClose, onStop, onClearAll, elapsed, onEndRecording, onCompact, aside, columns, ctxCount, onCtx, micMuted, onToggleMute, mutedHint, mode = 'live', onStartLive,
 }) => {
   const bodyRef = useRef<HTMLDivElement>(null);
   const [autoScroll, setAutoScroll] = useState(true);
@@ -92,37 +97,51 @@ const LiveTranscriptPanel: React.FC<LiveTranscriptPanelProps> = ({
 
   const isPaused = status === 'paused';
   const isDone = status === 'interrupted' || status === 'stopped';
+  const meeting = mode === 'meeting'; // AUG-200
 
   return (
-    <section className="live-panel" aria-label="Live transcript">
+    <section className="live-panel" aria-label={meeting ? 'Meeting' : 'Live transcript'}>
       <div className="live-topbar">
         <span className="live-topbar-rec">
           <span className="recording-dot" aria-hidden="true" />
           <span className="live-topbar-timer">{elapsed}</span>
         </span>
-        <span className={`live-panel-status live-panel-status--${status}`}>
-          {status === 'listening' && <span className="live-panel-dot" aria-hidden="true" />}
-          {STATUS_LABEL[status]}
-        </span>
+        {meeting ? (
+          <span className="live-panel-status live-panel-status--stopped">Live text off</span>
+        ) : (
+          <span className={`live-panel-status live-panel-status--${status}`}>
+            {status === 'listening' && <span className="live-panel-dot" aria-hidden="true" />}
+            {STATUS_LABEL[status]}
+          </span>
+        )}
+        {!meeting && ctxCount !== undefined && ctxCount > 0 && (
+          <button type="button" className="live-ctx-badge" onClick={onCtx} aria-label={`${ctxCount} hint, show COPILOT`}>CTX {ctxCount}</button>
+        )}
         <div className="live-topbar-actions">
-          <button type="button" className="live-panel-btn live-panel-btn--pause" onClick={isPaused ? onResume : onPause} disabled={isDone}>{isPaused ? 'Resume' : 'Pause'}</button>
+          {!meeting && <button type="button" className="live-panel-btn live-panel-btn--pause" onClick={isPaused ? onResume : onPause} disabled={isDone}>{isPaused ? 'Resume' : 'Pause'}</button>}
           {onToggleMute && (
             <button type="button" className={`live-panel-btn live-panel-btn--mute${micMuted ? ' live-panel-btn--mute-on' : ''}`} onClick={onToggleMute} aria-pressed={micMuted} title="Mute in August's recording">
               <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" aria-hidden="true"><rect x="9" y="3" width="6" height="12"/><path d={micMuted ? 'M5 11a7 7 0 0 0 14 0M12 18v3M3 3l18 18' : 'M5 11a7 7 0 0 0 14 0M12 18v3'}/></svg>
               {' '}{micMuted ? 'Unmute mic' : 'Mute mic'}
             </button>
           )}
-          <button type="button" className="live-panel-btn live-panel-btn--copy" onClick={onCopyAll} disabled={lines.length === 0}>Copy All</button>
-          <button type="button" className="live-panel-btn live-panel-btn--copy" onClick={onCopyAndClear} disabled={lines.length === 0} title="Copy the live transcript and clear the window">Copy &amp; Clear</button>
-          <button type="button" className="live-panel-btn live-panel-btn--clear" onClick={handleClear} disabled={lines.length === 0} title="Clear the live window; recording continues">Clear</button>
-          <HoldToStopButton className="live-panel-btn live-panel-btn--stop" onComplete={onStop} disabled={isDone} title="Hold 1.5 s to stop live text. Recording continues." ariaLabel="Stop Live Text (hold 1.5 seconds)">Stop Live Text</HoldToStopButton>
+          {meeting ? (
+            <button type="button" className="live-panel-btn live-panel-btn--start" onClick={onStartLive} title="Start live text. Recording continues.">▶&#xFE0E; Start Live Text</button>
+          ) : (
+            <>
+              <button type="button" className="live-panel-btn live-panel-btn--copy" onClick={onCopyAll} disabled={lines.length === 0}>Copy All</button>
+              <button type="button" className="live-panel-btn live-panel-btn--copy" onClick={onCopyAndClear} disabled={lines.length === 0} title="Copy the live transcript and clear the window">Copy &amp; Clear</button>
+              <button type="button" className="live-panel-btn live-panel-btn--clear" onClick={handleClear} disabled={lines.length === 0} title="Clear the live window; recording continues">Clear</button>
+              <HoldToStopButton className="live-panel-btn live-panel-btn--stop" onComplete={onStop} disabled={isDone} title="Hold 1.5 s to stop live text. Recording continues." ariaLabel="Stop Live Text (hold 1.5 seconds)">Stop Live Text</HoldToStopButton>
+            </>
+          )}
           <HoldToStopButton className="live-panel-btn live-panel-btn--end" onComplete={onEndRecording} title="Hold 1.5 s to end the meeting: recording stops and the final transcript is made." ariaLabel="End Meeting (hold 1.5 seconds)">End Meeting</HoldToStopButton>
         </div>
         <span className="live-topbar-spacer" />
         {onCompact && (
           <button type="button" className="live-panel-btn live-panel-btn--compact" onClick={onCompact} title="Shrink August to a widget (Ctrl/Cmd+Shift+C)">⤡ Compact</button>
         )}
-        <button type="button" className="live-panel-close" onClick={onClose} aria-label="Hide live transcript" title="Hide live transcript">×</button>
+        <button type="button" className="live-panel-close" onClick={onClose} aria-label={meeting ? 'Hide meeting panel' : 'Hide live transcript'} title={meeting ? 'Hide meeting panel' : 'Hide live transcript'}>×</button>
       </div>
       {confirmAction && (
         <div className="live-panel-confirm">
@@ -138,11 +157,11 @@ const LiveTranscriptPanel: React.FC<LiveTranscriptPanelProps> = ({
         </div>
       )}
 
-      {(micUnavailable || error || warning || mutedHint) && (
+      {(meeting ? mutedHint : (micUnavailable || error || warning || mutedHint)) && (
         <div className="live-panel-notices">
-          {micUnavailable && <div className="live-panel-notice">Microphone unavailable — showing Them only</div>}
-          {error && <div className="live-panel-warning">{error}</div>}
-          {warning && <div className="live-panel-notice">{warning}</div>}
+          {!meeting && micUnavailable && <div className="live-panel-notice">Microphone unavailable — showing Them only</div>}
+          {!meeting && error && <div className="live-panel-warning">{error}</div>}
+          {!meeting && warning && <div className="live-panel-notice">{warning}</div>}
           {mutedHint && <div className="live-panel-notice live-panel-notice--muted">You're muted in August</div>}
         </div>
       )}
@@ -157,6 +176,17 @@ const LiveTranscriptPanel: React.FC<LiveTranscriptPanelProps> = ({
             </defs>
             <rect width="100%" height="100%" fill="url(#live-hex-grid)"/>
           </svg>
+          {meeting ? (
+            <div className="live-panel-body">
+              <div className="live-panel-empty live-panel-empty--meeting">
+                Live text is off. The recording continues; the full transcript is made after End Meeting.<br />
+                Add action items by hand or ask the assistant.
+                <div className="live-panel-empty-acts">
+                  <button type="button" className="live-panel-btn live-panel-btn--start" onClick={onStartLive}>▶&#xFE0E; Start Live Text</button>
+                </div>
+              </div>
+            </div>
+          ) : (
           <div className="live-panel-body" ref={bodyRef} onScroll={handleScroll}>
             {lines.length === 0 && (status === 'listening' || status === 'connecting') && (
               <div className="live-panel-empty">Waiting for speech…</div>
@@ -186,12 +216,14 @@ const LiveTranscriptPanel: React.FC<LiveTranscriptPanelProps> = ({
               </div>
             ))}
           </div>
-          {!autoScroll && (
+          )}
+          {!meeting && !autoScroll && (
             <button type="button" className="live-panel-jump" onClick={jumpToLive} aria-label="Jump to latest">
               ↓ Live
             </button>
           )}
         </div>
+        {columns}
         {aside}
       </div>
     </section>

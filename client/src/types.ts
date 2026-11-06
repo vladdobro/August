@@ -185,6 +185,60 @@ export interface ActionItem {
   locked?: ActionItemLock; // fields edited by the user - no model operation may change/remove them
   manual?: true; // AUG-165: added by the user by hand; always fully locked
   praxis?: ActionItemPraxisRef; // AUG-166: set when the item was sent to Praxis (last send wins)
+  assistant?: { projectPath: string; at: string }; // AUG-199: created by the meeting assistant (AI tag)
 }
 export interface Participants { me: string; them: string }
 export interface ActionItemsFile { version: 1; participants: Participants; items: ActionItem[]; updatedAt: string }
+
+export type AiModel = 'haiku' | 'sonnet' | 'opus';
+export type CopilotMode = 'off' | 'local' | 'claude' | 'always';
+/// AUG-198: GET /api/assistant/status. Never carries paths, e-mail or plan.
+export interface AssistantStatus {
+  claude: { found: boolean; signedIn: boolean; version: string | null; tooOld: boolean; checkedAt: string };
+  praxis: { reachable: boolean };
+  copilot: { mode: CopilotMode; consentStale: boolean; model: AiModel; alwaysBudgetUsd: number };
+  session: { enabled: boolean; consentStale: boolean; consentAt: string | null; model: AiModel; budgetUsd: number; transcriptWindowMin: number };
+}
+
+/// AUG-199: frames the server sends on /api/live-transcribe for the meeting assistant. spentUsd / limitUsd are never rendered.
+export type AssistantState = 'none' | 'starting' | 'ready' | 'busy' | 'idle' | 'restarting' | 'error' | 'budget-reached' | 'limit' | 'claude-unavailable' | 'session-off';
+export type AssistantUnavailableReason = 'missing' | 'signed-out' | 'too-old' | 'unsupported';
+export type AssistantErrorReason = 'crashed' | 'timeout' | 'budget' | 'claude' | 'busy' | 'limit' | 'session-off';
+export type AssistantToolState = 'running' | 'done' | 'failed';
+export type AssistantServerFrame =
+  | { type: 'assistant-status'; projectPath: string; state: AssistantState; reason?: AssistantUnavailableReason; praxis: boolean; spentUsd?: number; limitUsd?: number }
+  | { type: 'assistant-delta'; projectPath: string; askId: string; text: string }
+  | { type: 'assistant-tool'; projectPath: string; askId: string; label: string; state: AssistantToolState; toolIndex?: number }
+  | { type: 'assistant-message'; projectPath: string; askId: string; text: string; tools: string[] }
+  | { type: 'assistant-error'; projectPath: string; askId: string; reason: AssistantErrorReason }
+  | { type: 'assistant-task-done'; projectPath: string; messageId: string; taskId: string; direct: boolean }
+  | { type: 'assistant-task-failed'; projectPath: string; messageId: string }
+  | { type: 'assistant-item'; projectPath: string; messageId: string; status: 'created' | 'duplicate'; id: string };
+
+/// AUG-197: Meeting Copilot frames on /api/live-transcribe. Never carry model names, prices or token counts.
+export type CopilotHintState = 'searching' | 'found' | 'explained' | 'removed';
+export interface CopilotHintFrame {
+  type: 'copilot-hint';
+  hintId: string;
+  projectPath: string;
+  at: number;
+  clock: string;
+  state: CopilotHintState;
+  route?: string;
+  taskId?: string;
+  title?: string;
+  lines?: Array<{ n: number; text: string }>;
+  text?: string;
+  source?: string;
+  note?: 'claude-off' | 'claude-unavailable' | 'local';
+}
+export interface CopilotStatusFrame {
+  type: 'copilot-status';
+  projectPath: string;
+  mode: CopilotMode;
+  savedMode: CopilotMode;
+  model: AiModel;
+  state: 'ok' | 'praxis-off' | 'claude-unavailable' | 'budget-reached' | 'limit' | 'paused';
+  counts: { shown: number; silent: number; dismissed: number };
+}
+export type CopilotServerFrame = CopilotHintFrame | CopilotStatusFrame;

@@ -15,7 +15,8 @@ export interface CompactSnapshot {
   actionItems: ActionItem[]; // AUG-165
   participants: Participants;
   actionEnabled: boolean | null;
-  actionOffReason: 'groq' | 'items' | null;
+  actionOffReason: 'groq' | 'items' | 'manual' | null;
+  meeting: boolean; // AUG-200: meeting-only socket (action items without Live Text)
   micMuted: boolean; // AUG-181
   mutedHint: boolean; // AUG-181: speaking while muted
 }
@@ -59,6 +60,7 @@ let snapshot: CompactSnapshot = {
   participants: { me: '', them: '' },
   actionEnabled: null,
   actionOffReason: null,
+  meeting: false,
   micMuted: false,
   mutedHint: false,
 };
@@ -89,5 +91,9 @@ export const compactStore = {
   },
   requestCompact(): void {
     controller?.enter();
+  },
+  /// AUG-199: a compact window asked for the full window (CTX badge).
+  requestExpand(): void {
+    controller?.expand();
   },
 };

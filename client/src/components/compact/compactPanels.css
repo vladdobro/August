@@ -1,0 +1,64 @@
+/* AUG-199 compact Copilot / Assistant windows (?panel=...) and the CTX badge. Colors come from the app tokens in
+   App.css: green (--accent) = primary, yellow (--status-uploading) = attention, red (--status-failed) = stop only. */
+html.panel-root, html.panel-root body, html.panel-root #root { height: 100%; margin: 0; overflow: hidden; background: var(--main-bg); }
+
+.panel-win, .panel-win * { box-sizing: border-box; border-radius: 0; }
+.panel-win {
+  --pw-line: var(--border-color);
+  --pw-muted: var(--text-secondary);
+  --pw-fg: var(--text-primary);
+  --pw-mono: var(--font-terminal);
+  --pw-pause: var(--status-uploading);
+  --pw-danger: var(--status-failed);
+  --pw-sans: system-ui, -apple-system, "Segoe UI", sans-serif;
+  color: var(--pw-fg);
+  font-family: var(--pw-mono);
+}
+.panel-win.kbox { background: var(--main-bg); border: 1px solid var(--pw-line); display: flex; flex-direction: column; height: 100vh; width: 100vw; min-height: 0; }
+
+.panel-win .kh { flex: none; display: flex; align-items: center; gap: 8px; min-height: 28px; padding: 2px 6px 2px 8px; border-bottom: 1px solid var(--pw-line); font-size: 10px; letter-spacing: .08em; text-transform: uppercase; -webkit-app-region: drag; user-select: none; }
+.panel-win .kh .sp { flex: 1; }
+.panel-win .kh b { color: var(--accent); }
+.panel-win button, .panel-win select, .panel-win input { -webkit-app-region: no-drag; font-family: var(--pw-mono); }
+
+.panel-win .kb { flex: none; padding: 2px 6px; font: 700 10px var(--pw-mono); letter-spacing: .06em; text-transform: uppercase; color: var(--pw-fg); background: transparent; border: 1px solid var(--pw-line); white-space: nowrap; cursor: pointer; }
+.panel-win .kb:hover:not(:disabled) { color: var(--accent); border-color: var(--accent); }
+.panel-win .kb.ic { border-color: transparent; font-size: 13px; line-height: 1; }
+.panel-win .kb.s { background: var(--accent); color: var(--main-bg); border-color: var(--accent); }
+.panel-win .kb.s:hover:not(:disabled) { background: var(--accent-hover); color: var(--main-bg); }
+.panel-win .kb.r { color: var(--pw-danger); border-color: var(--pw-danger); }
+.panel-win .kb:disabled, .panel-win input:disabled { opacity: .4; cursor: not-allowed; }
+.panel-win button:focus-visible, .panel-win select:focus-visible, .panel-win input:focus-visible { outline: 2px solid var(--accent); outline-offset: 1px; }
+
+.panel-win .kdh { flex: none; display: flex; justify-content: space-between; align-items: center; gap: 6px; padding: 4px 10px; border-bottom: 1px solid var(--pw-line); font: 10px var(--pw-mono); color: var(--pw-muted); text-transform: uppercase; letter-spacing: .06em; }
+.panel-win .kdh select { min-width: 0; max-width: 70%; font-size: 10px; color: var(--pw-fg); background: transparent; border: 1px solid var(--pw-line); padding: 1px 4px; }
+.panel-win .kdh select option { background: var(--main-bg); color: var(--pw-fg); }
+
+.panel-win .kbody { flex: 1; min-height: 0; overflow: auto; padding: 8px 10px; display: flex; flex-direction: column; gap: 6px; font: 12px/1.4 var(--pw-sans); }
+.panel-win .kq { font: 11px/1.4 var(--pw-sans); color: var(--pw-muted); }
+.panel-win .kq b { font: 700 9px var(--pw-mono); letter-spacing: .06em; margin-right: 6px; color: var(--accent); }
+.panel-win .kan { border-left: 3px solid var(--accent); padding: 3px 0 3px 8px; font: 11px/1.45 var(--pw-sans); background: var(--accent-light); color: var(--pw-fg); }
+.panel-win .kan--hint { border-left-color: var(--pw-pause); background: var(--card-bg); }
+.panel-win .kan-t { color: var(--pw-pause); font: 700 10px var(--pw-mono); letter-spacing: .04em; margin-bottom: 2px; word-break: break-all; }
+.panel-win .kan-acts { display: flex; flex-wrap: wrap; gap: 6px; margin-top: 4px; }
+.panel-win .kmore { border: 0; background: transparent; padding: 0; color: var(--accent); font: 10px var(--pw-mono); text-decoration: underline; text-underline-offset: 2px; cursor: pointer; text-align: left; }
+.panel-win .kan p { margin: 0 0 4px; }
+.panel-win .kan ul { margin: 0 0 4px; padding-left: 16px; }
+.panel-win .cp-caret { color: var(--accent); }
+.panel-win .ktools { display: flex; flex-wrap: wrap; gap: 3px; margin-bottom: 3px; }
+.panel-win .tchip { border: 1px solid var(--pw-line); color: var(--pw-muted); font: 9px var(--pw-mono); padding: 0 4px; }
+.panel-win .tchip.prog { border-style: dashed; color: var(--pw-fg); }
+.panel-win .macts { display: flex; flex-wrap: wrap; gap: 6px; margin-top: 2px; }
+.panel-win .macts .btn { font: 9px var(--pw-mono); padding: 1px 6px; color: var(--pw-fg); background: transparent; border: 1px solid var(--pw-line); cursor: pointer; }
+.panel-win .macts .btn:hover:not(:disabled) { color: var(--accent); border-color: var(--accent); }
+.panel-win .macts .btn:disabled { opacity: .6; cursor: default; }
+
+.panel-win .kin { flex: none; display: flex; gap: 4px; padding: 6px 8px; border-top: 1px solid var(--pw-line); }
+.panel-win .kin input { flex: 1; min-width: 0; font: 11px var(--pw-mono); background: transparent; border: 1px solid var(--pw-line); color: var(--pw-fg); padding: 3px 6px; }
+.panel-win .kmsg { flex: none; padding: 6px 10px; border-top: 1px solid var(--pw-pause); color: var(--pw-pause); font: 10px/1.4 var(--pw-mono); }
+.panel-win .kemp { border: 1px dashed var(--pw-line); padding: 8px; color: var(--pw-muted); font: 10px/1.4 var(--pw-mono); text-align: center; }
+
+/* CTX n badge in Dock Square / Ghost Coin (only rendered when a hint is waiting) */
+.cp-ctx { flex: none; border: 1px solid var(--accent); color: var(--accent); background: transparent; font: 700 10px var(--font-terminal); letter-spacing: .06em; padding: 1px 6px; white-space: nowrap; cursor: pointer; border-radius: 0; }
+.cp-ctx:hover { background: var(--accent-light); }
+.cp-panel-toggle[aria-pressed="true"] { color: var(--accent); border-color: var(--accent); }

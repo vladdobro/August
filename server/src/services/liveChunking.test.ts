@@ -178,3 +178,38 @@ describe('LivePcmFeeder', () => {
     expect(fresh.flush()).toBe(false);
   });
 });
+
+describe('parseLiveControlFrame copilot frames', () => {
+  const parse = (o: unknown) => parseLiveControlFrame(JSON.stringify(o));
+  test('copilot-open / copilot-close', () => {
+    expect(parse({ type: 'copilot-open', projectPath: 'D:\p' })).toEqual({ type: 'copilot-open', projectPath: 'D:\p' });
+    expect(parse({ type: 'copilot-close', projectPath: '/p' })).toEqual({ type: 'copilot-close', projectPath: '/p' });
+    expect(parse({ type: 'copilot-open' })).toBeNull();
+    expect(parse({ type: 'copilot-close', projectPath: '' })).toBeNull();
+    expect(parse({ type: 'copilot-open', projectPath: 'x'.repeat(1025) })).toBeNull();
+  });
+  test('copilot-dismiss', () => {
+    expect(parse({ type: 'copilot-dismiss', projectPath: '/p', hintId: 'h_1' })).toEqual({ type: 'copilot-dismiss', projectPath: '/p', hintId: 'h_1' });
+    expect(parse({ type: 'copilot-dismiss', projectPath: '/p', hintId: 'h_1', undo: true })).toEqual({ type: 'copilot-dismiss', projectPath: '/p', hintId: 'h_1', undo: true });
+    expect(parse({ type: 'copilot-dismiss', projectPath: '/p', hintId: 'bad id!' })).toBeNull();
+    expect(parse({ type: 'copilot-dismiss', projectPath: '/p' })).toBeNull();
+    expect(parse({ type: 'copilot-dismiss', hintId: 'h' })).toBeNull();
+  });
+  test('copilot-mode', () => {
+    expect(parse({ type: 'copilot-mode', mode: 'always' })).toEqual({ type: 'copilot-mode', mode: 'always' });
+    expect(parse({ type: 'copilot-mode', model: 'opus' })).toEqual({ type: 'copilot-mode', model: 'opus' });
+    expect(parse({ type: 'copilot-mode', mode: 'local', model: 'haiku' })).toEqual({ type: 'copilot-mode', mode: 'local', model: 'haiku' });
+    expect(parse({ type: 'copilot-mode', mode: 'turbo', model: 'opus' })).toEqual({ type: 'copilot-mode', model: 'opus' });
+    expect(parse({ type: 'copilot-mode', mode: 'turbo' })).toBeNull();
+    expect(parse({ type: 'copilot-mode' })).toBeNull();
+  });
+});
+
+describe('parseLiveControlFrame meetingOnly (AUG-200)', () => {
+  test('passes meetingOnly through action-items-init', () => {
+    expect(parseLiveControlFrame('{"type":"action-items-init","liveKey":"abcd1234-ef","meetingOnly":true}')).toEqual({ type: 'action-items-init', liveKey: 'abcd1234-ef', participants: null, meetingOnly: true });
+  });
+  test('omits meetingOnly when absent', () => {
+    expect(parseLiveControlFrame('{"type":"action-items-init","liveKey":"abcd1234-ef"}')).not.toHaveProperty('meetingOnly');
+  });
+});

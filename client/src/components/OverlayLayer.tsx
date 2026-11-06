@@ -9,11 +9,13 @@ interface OverlayLayerProps {
   onClose: () => void;
   sessions: React.ReactNode;
   controls: React.ReactNode;
+  /// AUG-199: extra pin-bar toggles (live columns), rendered after Controls.
+  extra?: React.ReactNode;
 }
 
 const EDGE_HOVER_DELAY_MS = 200;
 
-const OverlayLayer: React.FC<OverlayLayerProps> = ({ open, onOpen, onToggle, onClose, sessions, controls }) => {
+const OverlayLayer: React.FC<OverlayLayerProps> = ({ open, onOpen, onToggle, onClose, sessions, controls, extra }) => {
   const hoverTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
 
   const clearHover = () => {
@@ -97,6 +99,7 @@ const OverlayLayer: React.FC<OverlayLayerProps> = ({ open, onOpen, onToggle, onC
         >
           Controls ]
         </button>
+        {extra}
       </nav>
     </>
   );

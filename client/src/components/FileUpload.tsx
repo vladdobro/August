@@ -7,12 +7,17 @@ import LanguagePicker from './LanguagePicker';
 import MicPicker from './MicPicker';
 import ActionItemsPanel from './ActionItemsPanel';
 import PraxisModal from './PraxisModal';
+import LiveColumns from './live/LiveColumns';
+import { isMacPlatform } from './live/platform';
+import { assistantStore, useCopilotHintCount, type AssistantTransport } from '../services/assistantStore';
+import { liveColumnsStore } from '../services/liveColumnsStore';
 import LiveTranscriptPanel, { type LiveLine, type LiveStatus } from './LiveTranscriptPanel';
-import { LiveTranscriptionClient, type LiveEngine } from '../services/liveTranscriptionClient';
+import { LiveTranscriptionClient, type LiveActionItemsState, type LiveEngine } from '../services/liveTranscriptionClient';
 import { saveRecordingProgress, getRecoveredRecording, clearRecoveredRecording, type RecoveredRecording } from '../services/recordingRecovery';
 import { DEFAULT_PREFERENCES, resolveSystemAudioSource, type UserPreferences } from '../services/preferences';
 import { shouldAutoEnableLive } from '../services/compact';
 import { compactStore } from '../services/compactStore';
+import { writeClipboard } from '../services/clipboard';
 import { useHoldToStop } from './HoldToStopButton';
 import { isVideoFile, probeVideoHasAudio, NO_AUDIO_MESSAGE } from '../services/videoAudioProbe';
 
@@ -22,17 +27,6 @@ const ACCEPTED_EXTENSIONS = ['.wav', '.mp3', '.ogg', '.flac', '.m4a', '.mp4', '.
 const MAX_UPLOAD_BYTES = 2 * 1024 * 1024 * 1024;
 const AUDIO_BARS_COUNT = 12;
 
-// AUG-188: in Ghost Mode the main window is hidden and has no document focus, so navigator.clipboard rejects; the
-// desktop bridge writes the clipboard from the main process.
-async function writeClipboard(text: string): Promise<void> {
-  const bridge = window.august?.writeClipboard;
-  if (bridge) {
-    const r = await bridge(text);
-    if (!r.ok) throw new Error('clipboard write failed');
-    return;
-  }
-  await navigator.clipboard.writeText(text);
-}
 const BAR_BASE_HEIGHT = [14, 8, 12, 6, 15, 10, 7, 13, 6, 11, 9, 14];
 
 interface FileUploadProps {
@@ -46,7 +40,7 @@ interface FileUploadProps {
   captureCapabilities?: CaptureCapabilities | null;
   // A failed self-test is re-checked before a recording; the fresh result is reported back so Settings shows it too.
   onCaptureCapabilitiesChange?: (caps: CaptureCapabilities) => void;
-  onOpenSettings?: () => void;
+  onOpenSettings?: (tab?: 'assistants') => void;
   // Desktop shell: a timestamp per global-hotkey/tray toggle request; consumed once via onDesktopToggleHandled.
   desktopToggleRequest?: number | null;
   onDesktopToggleHandled?: () => void;
@@ -103,10 +97,27 @@ const FileUpload: React.FC<FileUploadProps> = ({ onUploaded, onRecordingChange, 
   const [recoveredRecording, setRecoveredRecording] = useState<RecoveredRecording | null>(null);
   const [showDefaultsInfo, setShowDefaultsInfo] = useState(false);
   const liveClientRef = useRef<LiveTranscriptionClient | null>(null);
+  // AUG-200: meeting-only socket (recording without Live Text): action items + ASSISTANT, no audio
+  const meetingClientRef = useRef<LiveTranscriptionClient | null>(null);
+  const [meetingActive, setMeetingActive] = useState(false);
+  const controlClient = () => liveClientRef.current ?? meetingClientRef.current;
+  // AUG-199: the assistant store talks to whichever live client is current.
+  const ctxHintCount = useCopilotHintCount();
+  const assistantTransportRef = useRef<AssistantTransport>({
+    open: (p) => controlClient()?.assistantOpen(p),
+    ask: (p, text, askId) => controlClient()?.assistantAsk(p, text, askId),
+    task: (p, askId, messageId) => controlClient()?.assistantTask(p, askId, messageId),
+    stop: (p, interrupt) => controlClient()?.assistantStop(p, interrupt),
+    addItem: (text, owner, assistant) => controlClient()?.addActionItem(text, owner, assistant),
+    copilotOpen: (p) => controlClient()?.copilotOpen(p),
+    copilotClose: (p) => controlClient()?.copilotClose(p),
+    copilotDismiss: (p, hintId, undo) => controlClient()?.copilotDismiss(p, hintId, undo),
+    copilotMode: (mode, model) => controlClient()?.copilotMode(mode, model),
+  });
   // AUG-165: action items + participants of the current live recording (persisted server-side by liveKey).
   const [liveActionItems, setLiveActionItems] = useState<ActionItem[]>([]);
   const [liveActionEnabled, setLiveActionEnabled] = useState<boolean | null>(null);
-  const [liveActionOffReason, setLiveActionOffReason] = useState<'groq' | 'items' | null>(null);
+  const [liveActionOffReason, setLiveActionOffReason] = useState<'groq' | 'items' | 'manual' | null>(null);
   const [liveParticipants, setLiveParticipants] = useState<Participants>({ me: '', them: '' });
   const liveParticipantsRef = useRef<Participants>({ me: '', them: '' });
   const liveKeyRef = useRef<string | null>(null);
@@ -295,9 +306,46 @@ const FileUpload: React.FC<FileUploadProps> = ({ onUploaded, onRecordingChange, 
     }
   }, [preferences?.micDeviceId, audioDevices]);
 
+  // AUG-200: one handler for the Live and the meeting-only socket.
+  const applyActionItems = useCallback((st: LiveActionItemsState) => {
+    setLiveActionItems(st.items);
+    setLiveActionEnabled(st.enabled);
+    setLiveActionOffReason(st.enabled ? null : st.manual ? 'manual' : st.groqText ? 'items' : 'groq');
+    setLiveParticipants(st.participants);
+    liveParticipantsRef.current = st.participants;
+  }, []);
+
+  const stopMeetingSocket = useCallback(() => {
+    meetingClientRef.current?.stop();
+    meetingClientRef.current = null;
+    setMeetingActive(false);
+  }, []);
+
+  const startMeetingSocket = useCallback(() => {
+    const key = liveKeyRef.current;
+    if (!key || meetingClientRef.current || liveClientRef.current) return;
+    const client = new LiveTranscriptionClient({
+      onTranscript: () => {},
+      onActionItems: applyActionItems,
+      onAssistant: (frame) => assistantStore.applyFrame(frame),
+      onSocketOpen: () => assistantStore.resync(),
+      onStatusChange: () => {},
+      onError: () => {},
+      onWarning: () => {},
+      onMicUnavailable: () => {},
+    });
+    meetingClientRef.current = client;
+    assistantStore.bind(assistantTransportRef.current);
+    assistantStore.setLive(true, false);
+    void assistantStore.refreshStatus();
+    client.startMeeting(key, liveParticipantsRef.current);
+    setMeetingActive(true);
+  }, [applyActionItems]);
+
   const startLiveTranscription = useCallback(
     (micStream: MediaStream | null, systemStream: MediaStream | null, engine: LiveEngine = 'local', captureId: string | null = null, keepLines = false) => {
-      if (!keepLines) { setLiveLines([]); setLiveActionItems([]); setLiveActionEnabled(null); setLiveActionOffReason(null); }
+      stopMeetingSocket(); // AUG-200: the Live socket takes over the same liveKey
+      if (!keepLines) { setLiveLines([]); setLiveActionEnabled(null); setLiveActionOffReason(null); } // items arrive from the server on subscribe
       setLiveError(null);
       setLiveWarning(null);
       setLiveMicUnavailable(false);
@@ -328,22 +376,23 @@ const FileUpload: React.FC<FileUploadProps> = ({ onUploaded, onRecordingChange, 
             return updated;
           });
         },
-        onActionItems: (st) => {
-          setLiveActionItems(st.items);
-          setLiveActionEnabled(st.enabled);
-          setLiveActionOffReason(st.enabled ? null : st.groqText ? 'items' : 'groq');
-          setLiveParticipants(st.participants);
-          liveParticipantsRef.current = st.participants;
-        },
+        onActionItems: applyActionItems,
+        // AUG-199: assistant frames feed the store; the tabs are (re)opened once the socket is ready.
+        onAssistant: (frame) => assistantStore.applyFrame(frame),
+        onCopilot: (frame) => assistantStore.applyCopilotFrame(frame),
+        onSocketOpen: () => assistantStore.resync(),
         onStatusChange: setLiveStatus,
         onError: setLiveError,
         onWarning: setLiveWarning,
         onMicUnavailable: () => setLiveMicUnavailable(true),
       });
       liveClientRef.current = client;
+      assistantStore.bind(assistantTransportRef.current);
+      assistantStore.setLive(true, true);
+      void assistantStore.refreshStatus();
       client.start(micStream, systemStream, language, engine, captureId, liveKeyRef.current, liveParticipantsRef.current);
     },
-    [language],
+    [language, stopMeetingSocket, applyActionItems],
   );
 
   const startRecording = useCallback(async (liveMode: boolean = false, engine: LiveEngine = 'local') => {
@@ -360,15 +409,15 @@ const FileUpload: React.FC<FileUploadProps> = ({ onUploaded, onRecordingChange, 
     const useLive = liveMode || autoLive;
     const liveEngine: LiveEngine = autoLive ? (preferences?.liveEngine === 'groq' && groqAvailable ? 'groq' : 'local') : engine;
     // AUG-165: one key per live recording; the upload carries it so the server moves the collected action items into the session.
-    const recordingLiveKey = useLive ? crypto.randomUUID() : null;
+    // AUG-200: every recording has a key: Default recordings keep manual / assistant items too.
+    const recordingLiveKey = crypto.randomUUID();
     liveKeyRef.current = recordingLiveKey;
     // A Default recording that starts Live later gets its key here, so the upload still attaches its action items.
     const liveKeyHolder = { key: recordingLiveKey };
     liveKeyHolderRef.current = liveKeyHolder;
-    if (useLive) {
-      liveParticipantsRef.current = { me: '', them: '' };
-      setLiveParticipants({ me: '', them: '' });
-    }
+    liveParticipantsRef.current = { me: '', them: '' };
+    setLiveParticipants({ me: '', them: '' });
+    setLiveActionItems([]);
     try {
       void clearRecoveredRecording();
       setRecoveredRecording(null);
@@ -700,7 +749,7 @@ const FileUpload: React.FC<FileUploadProps> = ({ onUploaded, onRecordingChange, 
       if (useLive) {
         liveStartArgsRef.current = { micStream: recordStream, systemStream: liveSystemStream, engine: liveEngine, captureId: serverCapture?.captureId ?? null };
         startLiveTranscription(recordStream, liveSystemStream, liveEngine, serverCapture?.captureId ?? null);
-      }
+      } else startMeetingSocket();
     } catch (err) {
       recordCtxRef.current?.close().catch(() => {});
       recordCtxRef.current = null;
@@ -708,7 +757,7 @@ const FileUpload: React.FC<FileUploadProps> = ({ onUploaded, onRecordingChange, 
         'Could not access audio device: ' + ((err as Error).message || 'unknown error'),
       );
     }
-  }, [language, onUploaded, selectedMicId, captureSystemAudio, startLiveTranscription, preferences?.systemAudioSource, captureCapabilities, onCaptureCapabilitiesChange, preferences?.compactEnabled, preferences?.compactMode, preferences?.liveEngine, groqAvailable]);
+  }, [language, onUploaded, selectedMicId, captureSystemAudio, startLiveTranscription, startMeetingSocket, preferences?.systemAudioSource, captureCapabilities, onCaptureCapabilitiesChange, preferences?.compactEnabled, preferences?.compactMode, preferences?.liveEngine, groqAvailable]);
 
   // AUG-181: stable toggle, refs only; ignored when not recording.
   const setMicMute = useCallback((next: boolean) => {
@@ -755,6 +804,10 @@ const FileUpload: React.FC<FileUploadProps> = ({ onUploaded, onRecordingChange, 
       liveClientRef.current.stop();
       liveClientRef.current = null;
     }
+    meetingClientRef.current?.stop();
+    meetingClientRef.current = null;
+    setMeetingActive(false);
+    assistantStore.reset(); // AUG-199: tabs and chats belong to one meeting
     liveKeyRef.current = null; // the recording's onstop closure keeps its own copy for the upload
     liveStartArgsRef.current = null;
     recordingLiveSourceRef.current = null;
@@ -791,8 +844,35 @@ const FileUpload: React.FC<FileUploadProps> = ({ onUploaded, onRecordingChange, 
   useEffect(() => {
     return () => {
       liveClientRef.current?.stop();
+      meetingClientRef.current?.stop();
+      assistantStore.setLive(false);
+      assistantStore.bind(null);
+      liveColumnsStore.setLiveVisible(false);
     };
   }, []);
+
+  // AUG-199: pin-bar toggles for the live columns exist only while the live panel is on screen.
+  const panelActive = liveActive || meetingActive; // AUG-200
+  const liveVisible = panelActive && !liveHidden;
+  useEffect(() => {
+    liveColumnsStore.setLiveVisible(liveVisible, liveActive);
+  }, [liveVisible, liveActive]);
+
+  // AUG-199: Ctrl/Cmd+3 toggles ASSISTANT, Ctrl/Cmd+4 toggles COPILOT (Cmd on macOS, Ctrl elsewhere); modifiers work inside inputs too.
+  useEffect(() => {
+    if (!liveVisible) return;
+    const onKey = (e: KeyboardEvent) => {
+      if (e.altKey || e.shiftKey) return;
+      const mod = isMacPlatform() ? e.metaKey && !e.ctrlKey : e.ctrlKey && !e.metaKey;
+      if (!mod) return;
+      const target = e.code === 'Digit3' || e.key === '3' ? 'as' : e.code === 'Digit4' || e.key === '4' ? 'cp' : null;
+      if (!target || (target === 'cp' && !liveActive)) return; // AUG-200: no COPILOT without a transcript
+      e.preventDefault();
+      liveColumnsStore.toggle(target);
+    };
+    window.addEventListener('keydown', onKey);
+    return () => window.removeEventListener('keydown', onKey);
+  }, [liveVisible, liveActive]);
 
   useEffect(() => {
     if (!isRecording) return;
@@ -900,6 +980,10 @@ const FileUpload: React.FC<FileUploadProps> = ({ onUploaded, onRecordingChange, 
   const handleLiveStop = useCallback(() => {
     liveClientRef.current?.stop();
     liveClientRef.current = null;
+    // AUG-200: the columns stay through a meeting-only socket
+    const rec = mediaRecorderRef.current;
+    if (rec && rec.state === 'recording') startMeetingSocket();
+    else { assistantStore.setLive(false); assistantStore.bind(null); }
     liveStartArgsRef.current = null;
     setLiveActive(false);
     setLiveHidden(false);
@@ -907,16 +991,16 @@ const FileUpload: React.FC<FileUploadProps> = ({ onUploaded, onRecordingChange, 
     setLiveError(null);
     setLiveWarning(null);
     setLiveMicUnavailable(false);
-  }, []);
+  }, [startMeetingSocket]);
 
   const handleActionParticipants = useCallback((p: Participants) => {
     liveParticipantsRef.current = p;
     setLiveParticipants(p);
-    liveClientRef.current?.setParticipants(p);
+    controlClient()?.setParticipants(p);
   }, []);
-  const handleActionEdit = useCallback((id: string, patch: { text?: string; owner?: string }) => liveClientRef.current?.editActionItem(id, patch), []);
-  const handleActionDelete = useCallback((id: string) => liveClientRef.current?.deleteActionItem(id), []);
-  const handleActionAdd = useCallback((text: string, owner: string) => liveClientRef.current?.addActionItem(text, owner || undefined), []);
+  const handleActionEdit = useCallback((id: string, patch: { text?: string; owner?: string }) => controlClient()?.editActionItem(id, patch), []);
+  const handleActionDelete = useCallback((id: string) => controlClient()?.deleteActionItem(id), []);
+  const handleActionAdd = useCallback((text: string, owner: string) => controlClient()?.addActionItem(text, owner || undefined), []);
 
   const handleLiveClearAll = useCallback(() => {
     setLiveLines([]);
@@ -965,10 +1049,11 @@ const FileUpload: React.FC<FileUploadProps> = ({ onUploaded, onRecordingChange, 
       participants: liveParticipants,
       actionEnabled: liveActionEnabled,
       actionOffReason: liveActionOffReason,
+      meeting: meetingActive,
       micMuted,
       mutedHint: mutedSpeechHint,
     });
-  }, [isRecording, liveActive, liveLines, liveStatus, liveError, captureLost, elapsedSeconds, audioLevels, captureSystemAudio, preferences?.skipClearConfirmation, liveActionItems, liveParticipants, liveActionEnabled, liveActionOffReason, micMuted, mutedSpeechHint]);
+  }, [isRecording, liveActive, liveLines, liveStatus, liveError, captureLost, elapsedSeconds, audioLevels, captureSystemAudio, preferences?.skipClearConfirmation, liveActionItems, liveParticipants, liveActionEnabled, liveActionOffReason, meetingActive, micMuted, mutedSpeechHint]);
 
   const compactActionsRef = useRef({ stopRecording, handleLivePause, handleLiveResume, handleLiveStop, handleLiveRetry, handleLiveRestart, handleLiveCopyAll, handleLiveCopyAndClear, handleLiveClearAll, handleActionAdd, handleActionEdit, handleActionDelete, setMicMute });
   compactActionsRef.current = { stopRecording, handleLivePause, handleLiveResume, handleLiveStop, handleLiveRetry, handleLiveRestart, handleLiveCopyAll, handleLiveCopyAndClear, handleLiveClearAll, handleActionAdd, handleActionEdit, handleActionDelete, setMicMute };
@@ -1077,8 +1162,28 @@ const FileUpload: React.FC<FileUploadProps> = ({ onUploaded, onRecordingChange, 
     void clearRecoveredRecording();
   }, []);
 
+  // AUG-200: one ACTION ITEMS column for the Live and the meeting panel.
+  const actionItemsColumn = (
+    <ActionItemsPanel
+      variant="live"
+      embedded
+      items={liveActionItems}
+      participants={liveParticipants}
+      enabled={liveActionEnabled}
+      offReason={liveActionOffReason}
+      onParticipantsChange={handleActionParticipants}
+      onAdd={handleActionAdd}
+      onEdit={handleActionEdit}
+      onDelete={handleActionDelete}
+      onSendToPraxis={(ids, mode) => {
+        const liveKey = liveKeyRef.current;
+        if (liveKey) setPraxisExport({ ids, mode, liveKey });
+      }}
+    />
+  );
+
   return (
-    <div className={`circuit-layout${isRecording ? ' circuit-recording' : ''}${liveActive && !liveHidden ? ' live-open' : ''}`}>
+    <div className={`circuit-layout${isRecording ? ' circuit-recording' : ''}${panelActive && !liveHidden ? ' live-open' : ''}`}>
       <h2 className="circuit-title">New Transcription</h2>
 
       <div className="circuit-diagram">
@@ -1226,6 +1331,9 @@ const FileUpload: React.FC<FileUploadProps> = ({ onUploaded, onRecordingChange, 
           {!liveActive && (
             <button type="button" className="recording-compact-btn recording-start-live-btn" onClick={handleLiveRestart} title="Start live text again. Recording continues.">[ ▶&#xFE0E; START LIVE TEXT ]</button>
           )}
+          {meetingActive && liveHidden && (
+            <button type="button" className="recording-compact-btn" onClick={() => setLiveHidden(false)} title="Show action items and the assistant">[ ACTION ITEMS{liveActionItems.length > 0 ? ` · ${liveActionItems.length}` : ''} ]</button>
+          )}
           {liveActive && (
             <button type="button" className={`recording-live-badge${liveHidden ? '' : ' recording-live-badge--dim'}`} onClick={() => setLiveHidden(prev => !prev)} aria-label={liveHidden ? 'Show live transcript' : 'Hide live transcript'}>
               <span className="recording-live-dot" aria-hidden="true" />
@@ -1344,21 +1452,51 @@ const FileUpload: React.FC<FileUploadProps> = ({ onUploaded, onRecordingChange, 
           micMuted={micMuted}
           onToggleMute={toggleMicMute}
           mutedHint={mutedSpeechHint}
-          aside={
-            <ActionItemsPanel
-              variant="live"
-              items={liveActionItems}
-              participants={liveParticipants}
-              enabled={liveActionEnabled}
-              offReason={liveActionOffReason}
-              onParticipantsChange={handleActionParticipants}
-              onAdd={handleActionAdd}
-              onEdit={handleActionEdit}
-              onDelete={handleActionDelete}
-              onSendToPraxis={(ids, mode) => {
-                const liveKey = liveKeyRef.current;
-                if (liveKey) setPraxisExport({ ids, mode, liveKey });
-              }}
+          ctxCount={ctxHintCount}
+          onCtx={() => liveColumnsStore.show('cp')}
+          columns={
+            <LiveColumns
+              actionCount={liveActionItems.length}
+              projects={preferences?.praxisProjects ?? []}
+              recentPaths={preferences?.praxisRecentPaths ?? []}
+              onOpenSettings={(tab) => onOpenSettings?.(tab)}
+              actionItems={actionItemsColumn}
+            />
+          }
+        />
+      )}
+      {/* AUG-200: recording without Live Text: action items + ASSISTANT only */}
+      {meetingActive && !liveActive && !liveHidden && (
+        <LiveTranscriptPanel
+          mode="meeting"
+          onStartLive={handleLiveRestart}
+          lines={[]}
+          status="stopped"
+          error={null}
+          warning={null}
+          micUnavailable={false}
+          onPause={() => {}}
+          onResume={() => {}}
+          onCopyAll={() => {}}
+          onCopyAndClear={() => {}}
+          skipClearConfirmation
+          onClose={handleLiveHide}
+          onStop={() => {}}
+          onClearAll={() => {}}
+          elapsed={formatTime(elapsedSeconds)}
+          onEndRecording={stopRecording}
+          onCompact={canCompact ? () => compactStore.requestCompact() : undefined}
+          micMuted={micMuted}
+          onToggleMute={toggleMicMute}
+          mutedHint={mutedSpeechHint}
+          columns={
+            <LiveColumns
+              copilot={false}
+              actionCount={liveActionItems.length}
+              projects={preferences?.praxisProjects ?? []}
+              recentPaths={preferences?.praxisRecentPaths ?? []}
+              onOpenSettings={(tab) => onOpenSettings?.(tab)}
+              actionItems={actionItemsColumn}
             />
           }
         />

@@ -7,6 +7,7 @@ import {
   sanitizePraxisProjects,
   sanitizePraxisRecentPaths,
   sanitizeCompactPreferences,
+  sanitizeAssistantPreferences,
   migratePraxisProjects,
 } from '../services/preferencesStore.js';
 import { stopLlmServer } from '../services/llmServer.js';
@@ -49,6 +50,12 @@ const ALLOWED_KEYS = new Set([
   'compactCaptionFontSize',
   'compactCaptionOpacity',
   'compactHintSeen',
+  // AUG-198: AI assistants (mode / enabled / consents are written only by /api/assistant)
+  'aiCopilotModel',
+  'aiCopilotAlwaysBudgetUsd',
+  'aiModel',
+  'aiSessionBudgetUsd',
+  'aiTranscriptWindowMin',
 ]);
 
 // GET /api/preferences
@@ -96,6 +103,7 @@ router.patch('/', async (req, res) => {
     else delete patch.autoDeleteWavThreshold;
   }
   patch = sanitizeCompactPreferences(patch);
+  patch = sanitizeAssistantPreferences(patch);
 
   const current = await readPreferencesMigrated();
   const merged = migratePraxisProjects({ ...current, ...patch });

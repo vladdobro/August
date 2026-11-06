@@ -15,6 +15,8 @@ import { getModelStatus } from '../services/modelDownloader.js';
 import { consumeCapture, hasCapture, CaptureError } from '../services/systemCapture.js';
 import { downloadFromUrl, UrlDownloadError } from '../services/urlDownloader.js';
 import { isPlatformUrl, probePlatformVideo, downloadPlatformAudio, YtDlpError, YTDLP_MISSING_MESSAGE, INFO_JSON_NAME } from '../services/ytDlp.js';
+import { stopAssistantLiveKey } from '../services/assistantSession.js';
+import { stopCopilotLiveKey } from '../services/copilotEngine.js';
 import { attachLiveActionItemsToSession, readSessionActionItems, mutateSessionActionItems, applyUserEdit, createManualItem, isValidLiveKey } from '../services/liveActionItems.js';
 import { writeTranscriptWithActionItems } from '../services/transcriptActionItems.js';
 import type { CorrectionStatus, ProcessingStage, SessionMetadata, SessionStatus, TranscriptionLanguage } from '../types.js';
@@ -750,6 +752,8 @@ router.post('/upload', (req, res, next) => {
       } catch (err) {
         console.warn(`[session ${session.id}] action items not attached: ${(err as Error).message}`);
       }
+      void stopAssistantLiveKey(liveKey, 'end-meeting'); // AUG-199: End Meeting stops the meeting assistant children
+      void stopCopilotLiveKey(liveKey, 'end-meeting'); // AUG-197: ... and the copilot children
     }
     const sessionDir = sessionManager.sessionAudioDir(session.id);
 

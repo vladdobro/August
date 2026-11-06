@@ -1,4 +1,4 @@
-import type { ActionItemsFile, CaptureCapabilities, CorrectionStatus, CorrectionsFile, HealthStatus, LlmModelId, LlmModelInfo, LlmStatus, GroqTextStatus, ModelSetupStatus, MuteInterval, ServerCapture, SessionMetadata, StorageSummary, TranscriptionLanguage } from './types';
+import type { ActionItemsFile, AssistantStatus, CopilotMode, CaptureCapabilities, CorrectionStatus, CorrectionsFile, HealthStatus, LlmModelId, LlmModelInfo, LlmStatus, GroqTextStatus, ModelSetupStatus, MuteInterval, ServerCapture, SessionMetadata, StorageSummary, TranscriptionLanguage } from './types';
 
 export interface UploadProgress {
   loaded: number;
@@ -413,4 +413,39 @@ export async function stopServerCapture(captureId: string): Promise<ServerCaptur
     body: JSON.stringify({ captureId }),
   });
   return handleJsonResponse<ServerCapture & { path: string; durationMs: number }>(res);
+}
+
+// AUG-198: AI assistants
+export async function fetchAssistantStatus(recheck = false): Promise<AssistantStatus> {
+  const res = await fetch(`${API_BASE}/assistant/status${recheck ? '?recheck=1' : ''}`);
+  return handleJsonResponse<AssistantStatus>(res);
+}
+
+export async function setCopilotMode(mode: CopilotMode, opts: { accept?: boolean; ack?: boolean } = {}): Promise<AssistantStatus> {
+  const res = await fetch(`${API_BASE}/assistant/copilot-mode`, {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({ mode, ...opts }),
+  });
+  return handleJsonResponse<AssistantStatus>(res);
+}
+
+export async function enableAssistantSession(): Promise<AssistantStatus> {
+  const res = await fetch(`${API_BASE}/assistant/enable`, {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({ accept: true }),
+  });
+  return handleJsonResponse<AssistantStatus>(res);
+}
+
+export async function disableAssistantSession(): Promise<AssistantStatus> {
+  const res = await fetch(`${API_BASE}/assistant/disable`, { method: 'POST' });
+  return handleJsonResponse<AssistantStatus>(res);
+}
+
+/// AUG-197: TL;DR of a project-context route (Praxis read_context_route). 404 = not a Praxis project, 503 = PraxisOS is down.
+export async function fetchCopilotRoute(projectPath: string, route: string): Promise<{ text: string }> {
+  const res = await fetch(`${API_BASE}/assistant/copilot/route?projectPath=${encodeURIComponent(projectPath)}&route=${encodeURIComponent(route)}`);
+  return handleJsonResponse<{ text: string }>(res);
 }

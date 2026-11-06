@@ -138,16 +138,30 @@ export type LiveControlFrame =
   | { type: 'resume' }
   | { type: 'config'; engine: 'local' | 'groq' }
   | { type: 'attach-capture'; captureId: string; language: string }
-  | { type: 'action-items-init'; liveKey: string; participants: { me: string; them: string } | null }
+  | { type: 'action-items-init'; liveKey: string; participants: { me: string; them: string } | null; meetingOnly?: true }
   | { type: 'participants'; me: string; them: string }
   | { type: 'action-item-edit'; id: string; text?: string; owner?: string }
   | { type: 'action-item-delete'; id: string }
-  | { type: 'action-item-add'; text: string; owner?: string };
+  | { type: 'action-item-add'; text: string; owner?: string; assistant?: { projectPath: string; messageId?: string } }
+  // AUG-199: meeting assistant
+  | { type: 'assistant-open'; projectPath: string }
+  | { type: 'assistant-ask'; projectPath: string; text: string; askId: string }
+  | { type: 'assistant-task'; projectPath: string; askId: string; messageId: string }
+  | { type: 'assistant-stop'; projectPath: string; interrupt?: true }
+  // AUG-197: meeting copilot
+  | { type: 'copilot-open'; projectPath: string }
+  | { type: 'copilot-close'; projectPath: string }
+  | { type: 'copilot-dismiss'; projectPath: string; hintId: string; undo?: true }
+  | { type: 'copilot-mode'; mode?: 'off' | 'local' | 'claude' | 'always'; model?: 'haiku' | 'sonnet' | 'opus' };
+
+const ASSISTANT_ID_RE = /^[A-Za-z0-9_-]{1,64}$/;
+const ASSISTANT_MAX_TEXT = 4000;
+const frameProjectPath = (v: unknown): string | null => (typeof v === 'string' && v.trim().length > 0 && v.length <= 1024 ? v : null);
 
 /// Parses one text WebSocket frame. Returns null for malformed JSON, unknown
 /// types, a config frame with an unknown engine, or an attach-capture frame
 /// without a non-empty string captureId. attach-capture's language defaults to 'auto'.
-/// AUG-165: also action-items-init (valid liveKey, optional participants), participants, action-item-edit
+/// AUG-165: also action-items-init (valid liveKey, optional participants; AUG-200: optional meetingOnly), participants, action-item-edit
 /// (valid id and a string text and/or owner), action-item-delete (valid id) and action-item-add (non-empty string text,
 /// optional string owner); anything else is null.
 export function parseLiveControlFrame(text: string): LiveControlFrame | null {
@@ -178,7 +192,7 @@ export function parseLiveControlFrame(text: string): LiveControlFrame | null {
       const participants = p && typeof p === 'object'
         ? { me: frameName((p as Record<string, unknown>).me), them: frameName((p as Record<string, unknown>).them) }
         : null;
-      return { type: 'action-items-init', liveKey: o.liveKey, participants };
+      return { type: 'action-items-init', liveKey: o.liveKey, participants, ...(o.meetingOnly === true ? { meetingOnly: true as const } : {}) };
     }
     case 'participants':
       return { type: 'participants', me: frameName(o.me), them: frameName(o.them) };
@@ -196,9 +210,58 @@ export function parseLiveControlFrame(text: string): LiveControlFrame | null {
     }
     case 'action-item-delete':
       return typeof o.id === 'string' && ACTION_ITEM_ID_RE.test(o.id) ? { type: 'action-item-delete', id: o.id } : null;
-    case 'action-item-add':
+    case 'action-item-add': {
       if (typeof o.text !== 'string' || !o.text.trim()) return null;
-      return { type: 'action-item-add', text: o.text, ...(typeof o.owner === 'string' ? { owner: o.owner } : {}) };
+      // AUG-199: a malformed `assistant` field is dropped, the frame stays.
+      const a = o.assistant && typeof o.assistant === 'object' ? (o.assistant as Record<string, unknown>) : null;
+      const aPath = a ? frameProjectPath(a.projectPath) : null;
+      const assistant = a && aPath
+        ? { projectPath: aPath, ...(typeof a.messageId === 'string' && ASSISTANT_ID_RE.test(a.messageId) ? { messageId: a.messageId } : {}) }
+        : null;
+      return {
+        type: 'action-item-add',
+        text: o.text,
+        ...(typeof o.owner === 'string' ? { owner: o.owner } : {}),
+        ...(assistant ? { assistant } : {}),
+      };
+    }
+    case 'assistant-open': {
+      const projectPath = frameProjectPath(o.projectPath);
+      return projectPath ? { type: 'assistant-open', projectPath } : null;
+    }
+    case 'assistant-ask': {
+      const projectPath = frameProjectPath(o.projectPath);
+      if (!projectPath || typeof o.text !== 'string' || typeof o.askId !== 'string' || !ASSISTANT_ID_RE.test(o.askId)) return null;
+      const text = o.text.trim();
+      if (text.length < 1 || text.length > ASSISTANT_MAX_TEXT) return null;
+      return { type: 'assistant-ask', projectPath, text, askId: o.askId };
+    }
+    case 'assistant-task': {
+      const projectPath = frameProjectPath(o.projectPath);
+      if (!projectPath || typeof o.askId !== 'string' || !ASSISTANT_ID_RE.test(o.askId)) return null;
+      if (typeof o.messageId !== 'string' || !ASSISTANT_ID_RE.test(o.messageId)) return null;
+      return { type: 'assistant-task', projectPath, askId: o.askId, messageId: o.messageId };
+    }
+    case 'assistant-stop': {
+      const projectPath = frameProjectPath(o.projectPath);
+      return projectPath ? { type: 'assistant-stop', projectPath, ...(o.interrupt === true ? { interrupt: true as const } : {}) } : null;
+    }
+    case 'copilot-open':
+    case 'copilot-close': {
+      const projectPath = frameProjectPath(o.projectPath);
+      return projectPath ? { type: o.type, projectPath } : null;
+    }
+    case 'copilot-dismiss': {
+      const projectPath = frameProjectPath(o.projectPath);
+      if (!projectPath || typeof o.hintId !== 'string' || !ASSISTANT_ID_RE.test(o.hintId)) return null;
+      return { type: 'copilot-dismiss', projectPath, hintId: o.hintId, ...(o.undo === true ? { undo: true as const } : {}) };
+    }
+    case 'copilot-mode': {
+      const mode = o.mode === 'off' || o.mode === 'local' || o.mode === 'claude' || o.mode === 'always' ? o.mode : undefined;
+      const model = o.model === 'haiku' || o.model === 'sonnet' || o.model === 'opus' ? o.model : undefined;
+      if (!mode && !model) return null;
+      return { type: 'copilot-mode', ...(mode ? { mode } : {}), ...(model ? { model } : {}) };
+    }
     default:
       return null;
   }

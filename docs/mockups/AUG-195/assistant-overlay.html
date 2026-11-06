@@ -1,0 +1,930 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Assistant Columns</title>
+<style>
+:root {
+  --bg:#f2efe8; --surface:rgba(250,248,244,.92); --line:rgba(45,58,51,.25); --fg:#1e2b24; --muted:#566b5e;
+  --accent:#0d8c5c; --accent-light:rgba(13,140,92,.12); --pause:#d49a00; --danger:#d44040; --them:#9a7a1a;
+  --on-accent:#f2efe8; --body-bg:#e6e2d8; --glow:rgba(13,140,92,.18); --warn:#d4a028; --glass:rgba(250,248,244,.86);
+  --scan:rgba(13,140,92,.04);
+  --mono:'Cascadia Code','Fira Code',Consolas,monospace;
+}
+@media (prefers-color-scheme: dark) { :root:not([data-theme="light"]) {
+  --bg:#0a110d; --surface:rgba(12,20,16,.92); --line:rgba(0,200,118,.18); --fg:#c0cec4; --muted:#5e7d6a;
+  --accent:#00c876; --accent-light:rgba(0,200,118,.10); --pause:#d4a020; --danger:#e05555; --them:#d4a843;
+  --on-accent:#0a110d; --body-bg:#0f1914; --glow:rgba(0,200,118,.3); --glass:rgba(12,20,16,.88); --scan:rgba(0,200,118,.025); color-scheme:dark; } }
+:root[data-theme="dark"] {
+  --bg:#0a110d; --surface:rgba(12,20,16,.92); --line:rgba(0,200,118,.18); --fg:#c0cec4; --muted:#5e7d6a;
+  --accent:#00c876; --accent-light:rgba(0,200,118,.10); --pause:#d4a020; --danger:#e05555; --them:#d4a843;
+  --on-accent:#0a110d; --body-bg:#0f1914; --glow:rgba(0,200,118,.3); --glass:rgba(12,20,16,.88); --scan:rgba(0,200,118,.025); color-scheme:dark; }
+
+* { box-sizing:border-box; border-radius:0; }
+[hidden] { display:none !important; }
+html { scroll-behavior:smooth; }
+body { margin:0; background:var(--bg); color:var(--fg); font-family:var(--mono); font-size:13px; line-height:1.5;
+  padding:0 max(16px,env(safe-area-inset-left,0px)) 48px; overflow-x:hidden; }
+.wrap { max-width:1480px; margin:0 auto; display:grid; grid-template-columns:minmax(0,1fr); gap:24px; }
+.wrap > * { min-width:0; }
+header { padding-top:24px; }
+h1 { margin:0; font-size:20px; text-wrap:balance; }
+h2 { margin:0 0 10px; font-size:13px; letter-spacing:.08em; text-transform:uppercase; color:var(--accent); border-bottom:1px solid var(--line); padding-bottom:6px; display:flex; flex-wrap:wrap; gap:8px; align-items:center; }
+.lead { margin:4px 0 0; color:var(--muted); max-width:75ch; }
+.note { margin:8px 0 0; font-size:11px; color:var(--muted); max-width:110ch; }
+button { font-family:var(--mono); cursor:pointer; }
+button:disabled, input:disabled, textarea:disabled { opacity:.4; cursor:not-allowed; }
+button:focus-visible, input:focus-visible, select:focus-visible, textarea:focus-visible, a:focus-visible { outline:2px solid var(--accent); outline-offset:2px; }
+
+.bar { position:sticky; top:0; z-index:50; background:var(--bg); border-bottom:1px solid var(--line); padding:10px 0; display:flex; flex-wrap:wrap; gap:10px 16px; align-items:center; }
+.grp { display:flex; align-items:center; gap:6px; flex-wrap:wrap; }
+.grp > span { font-size:10px; text-transform:uppercase; letter-spacing:.06em; color:var(--muted); }
+.seg { display:flex; border:1px solid var(--line); flex-wrap:wrap; }
+.seg button { border:0; background:transparent; color:var(--fg); font-size:11px; padding:6px 10px; }
+.seg button[aria-pressed="true"] { background:var(--accent); color:var(--on-accent); }
+
+.hscroll { overflow-x:auto; }
+.frame { position:relative; height:640px; min-width:1440px; border:1px solid var(--line); background:var(--bg); display:flex; flex-direction:column; overflow:hidden; }
+.topbar { flex:none; display:flex; align-items:center; gap:12px; padding:6px 16px; border-bottom:1px solid var(--line); background:var(--body-bg); min-height:48px; }
+.rec { display:inline-flex; align-items:center; gap:8px; font-weight:700; font-size:14px; color:var(--danger); font-variant-numeric:tabular-nums; white-space:nowrap; }
+.rec .dot { width:9px; height:9px; background:var(--danger); display:inline-block; }
+.rec .st { color:var(--muted); font-weight:400; font-size:12px; }
+.spacer { flex:1; }
+.tb { display:flex; gap:6px; flex-wrap:nowrap; }
+.pb { font-size:11px; letter-spacing:.06em; padding:5px 10px; background:transparent; white-space:nowrap; border:1px solid var(--accent); color:var(--accent); }
+.pb.y { border-color:var(--pause); color:var(--pause); }
+.pb.r { border-color:var(--danger); color:var(--danger); }
+.pb.rf { border-color:var(--danger); background:var(--danger); color:#fff; }
+.cbadge { border:1px solid var(--accent); color:var(--accent); background:transparent; font-size:10px; letter-spacing:.06em; padding:1px 6px; white-space:nowrap; }
+.cbadge:hover { background:var(--accent-light); }
+
+.main { flex:1; min-height:0; display:flex; position:relative; }
+.canvas { position:relative; flex:1; min-width:360px; overflow:hidden; background:var(--bg); }
+.canvas::before { content:''; position:absolute; inset:0; pointer-events:none; background:repeating-linear-gradient(to bottom,transparent 0,transparent 2px,var(--scan) 2px,var(--scan) 4px); }
+.lines { position:relative; padding:14px 18px; font-size:15px; display:flex; flex-direction:column; gap:8px; }
+.ln { padding-left:10px; border-left:2px solid transparent; }
+.ln.last { border-left-color:var(--accent); }
+.ln .who { font-weight:700; margin-right:6px; }
+.ln.me .who { color:var(--accent); } .ln.them .who { color:var(--them); }
+.ln .ts { font-size:10px; color:var(--muted); margin-right:6px; }
+
+.col { position:relative; flex:none; display:flex; flex-direction:column; min-height:0; border-left:1px solid var(--line); background:var(--body-bg); overflow:hidden; font-size:12px; }
+.spl { position:absolute; left:0; top:0; bottom:0; width:4px; cursor:col-resize; z-index:3; touch-action:none; }
+.spl:hover, .spl.drag { background:var(--accent); }
+.rail { flex:none; width:28px; border:0; border-left:1px solid var(--line); background:var(--body-bg); color:var(--accent); display:flex; flex-direction:column; align-items:center; gap:10px; padding:8px 0; font-size:11px; letter-spacing:.12em; font-weight:700; }
+.rail:hover { background:var(--accent-light); }
+.rail .rt { writing-mode:vertical-rl; }
+.rail .rb { border:1px solid var(--accent); font-size:10px; padding:0 4px; letter-spacing:0; }
+.cn { margin-left:8px; color:var(--muted); font-size:11px; }
+.ai-it { border:1px solid var(--line); background:var(--surface); padding:8px; }
+.ai-it .own { color:var(--muted); font-size:11px; margin-top:2px; display:flex; flex-wrap:wrap; gap:6px; align-items:center; }
+.tag { font-size:9px; letter-spacing:.06em; padding:0 4px; border:1px solid var(--accent); color:var(--accent); white-space:nowrap; }
+.tag.px { background:var(--accent); color:var(--on-accent); }
+.btn { border:1px solid var(--line); background:transparent; color:var(--fg); font-size:11px; text-transform:uppercase; letter-spacing:.05em; padding:4px 10px; }
+.btn:hover:not(:disabled) { border-color:var(--accent); color:var(--accent); }
+.btn.primary { background:var(--accent); border-color:var(--accent); color:var(--on-accent); }
+.btn.primary:hover:not(:disabled) { color:var(--on-accent); opacity:.88; }
+.btn.go { border-color:var(--accent); color:var(--accent); }
+.btn.ask { border-color:var(--pause); color:var(--pause); }
+.btn.plain { border-color:transparent; color:var(--muted); }
+.btn.red { color:var(--danger); border-color:var(--danger); }
+.btn.red:hover:not(:disabled) { color:var(--danger); border-color:var(--danger); background:color-mix(in srgb,var(--danger) 12%,transparent); }
+
+.pin { flex:none; display:flex; gap:8px; justify-content:center; padding:6px; border-top:1px solid var(--line); background:var(--body-bg); }
+.pin { align-items:center; }
+.pin .btn { letter-spacing:.1em; }
+.pin .sep { width:1px; align-self:stretch; background:var(--line); margin:0 8px; }
+.pin .btn.open { background:var(--accent); color:var(--on-accent); border-color:var(--accent); }
+
+/* assistant / copilot / action items columns */
+.ap { display:flex; flex-direction:column; flex:1; min-height:0; min-width:0; font-size:12px; }
+.ap-h { flex:none; display:flex; align-items:center; padding:6px 8px 6px 12px; border-bottom:1px solid var(--line); }
+.ap-h b { letter-spacing:.12em; color:var(--accent); }
+.ap-h .kb2 { color:var(--muted); font-size:11px; margin-left:10px; }
+.x { border:1px solid transparent; background:transparent; color:var(--muted); font-size:16px; width:24px; height:24px; padding:0; }
+.x:hover { color:var(--fg); border-color:var(--line); }
+.tabrow { position:relative; flex:none; display:flex; align-items:stretch; border-bottom:1px solid var(--line); min-height:32px; }
+.tabs2 { display:flex; flex:1; min-width:0; overflow-x:auto; scrollbar-width:none; }
+.tab2 { display:flex; align-items:center; flex:none; border-bottom:2px solid transparent; border-right:1px solid var(--line); }
+.tab2.on { border-bottom-color:var(--accent); background:var(--accent-light); }
+.tab2 .tn { border:0; background:transparent; color:var(--muted); font-size:12px; padding:6px 4px 6px 10px; display:flex; gap:6px; align-items:center; }
+.tab2.on .tn { color:var(--fg); font-weight:700; }
+.tab2 .tx { border:0; background:transparent; color:var(--muted); font-size:13px; width:20px; height:20px; padding:0; margin-right:4px; }
+.tab2 .tx:hover { color:var(--danger); }
+.mk.run { color:var(--accent); } .mk.idle { color:var(--muted); } .mk.err { color:var(--danger); font-weight:700; }
+.plus { flex:none; border:0; border-left:1px solid var(--line); background:transparent; color:var(--accent); font-size:16px; width:34px; }
+.plus:hover, .plus[aria-expanded="true"] { background:var(--accent-light); }
+.picker { border:1px solid var(--line); background:var(--bg); padding:10px 12px; }
+.tabrow .picker { position:absolute; left:0; right:0; top:100%; z-index:10; box-shadow:0 8px 20px rgba(0,0,0,.3); }
+.pgrp { font-size:10px; letter-spacing:.1em; color:var(--muted); text-transform:uppercase; margin:6px 0 4px; }
+.pgrp:first-child { margin-top:0; }
+.prow { display:flex; align-items:center; gap:8px; width:100%; text-align:left; border:1px solid transparent; background:transparent; color:var(--fg); padding:5px 8px; font-size:12px; min-width:0; }
+.prow:hover:not(:disabled) { border-color:var(--accent); background:var(--accent-light); }
+.prow .pth { color:var(--muted); font-size:11px; overflow:hidden; text-overflow:ellipsis; white-space:nowrap; min-width:0; flex:1; }
+.prow .op { margin-left:auto; color:var(--muted); font-size:10px; text-transform:uppercase; }
+.phint { font-size:11px; color:var(--muted); margin-top:8px; border-top:1px solid var(--line); padding-top:6px; }
+.pickt { font-weight:700; margin-bottom:8px; }
+.mstrip { display:flex; justify-content:space-between; align-items:center; gap:8px; padding:5px 12px; border-bottom:1px solid var(--line); font-size:11px; color:var(--muted); letter-spacing:.04em; }
+.mstrip b { color:var(--fg); font-weight:700; }
+select { font-family:var(--mono); font-size:12px; background:var(--bg); color:var(--fg); border:1px solid var(--line); padding:4px 6px; max-width:100%; }
+select.sm { font-size:11px; padding:2px 4px; letter-spacing:0; }
+.mctl { display:flex; gap:6px; align-items:center; margin-left:auto; }
+a.lnk { color:var(--accent); text-decoration:underline; text-underline-offset:2px; font-size:11px; }
+.ap-body { flex:1; min-height:0; overflow:auto; padding:10px 12px; display:flex; flex-direction:column; gap:10px; scrollbar-width:thin; }
+.blk-t { font-size:10px; letter-spacing:.1em; color:var(--muted); text-transform:uppercase; margin-bottom:4px; }
+.hh { display:flex; justify-content:space-between; align-items:center; gap:8px; }
+.hh .blk-t { margin:0; }
+.hh .cnt { font-size:11px; color:var(--muted); display:flex; gap:8px; align-items:center; }
+.hrow { border:1px solid var(--line); padding:4px 8px; }
+.empty { border:1px dashed var(--line); padding:14px; color:var(--muted); text-align:center; }
+.empty .acts { justify-content:center; }
+.stack { display:flex; flex-direction:column; gap:8px; }
+.hintcard { border:1px solid var(--line); border-left:3px solid var(--pause); background:var(--surface); padding:8px 10px; margin-top:6px; }
+.hintcard .meta { display:flex; flex-wrap:wrap; gap:4px 8px; align-items:baseline; font-size:11px; color:var(--muted); margin-bottom:4px; }
+.hintcard .big { font-size:13px; color:var(--fg); margin:4px 0; }
+.hintcard .src { font-size:11px; color:var(--muted); margin:2px 0; word-break:break-word; }
+.acts { display:flex; flex-wrap:wrap; gap:6px; margin-top:8px; align-items:center; }
+.dismrow { display:flex; justify-content:space-between; align-items:center; gap:8px; flex-wrap:wrap; border:1px dashed var(--line); padding:6px 10px; font-size:11px; color:var(--muted); margin-top:6px; }
+.warnline { border:1px solid var(--warn); color:var(--warn); padding:6px 8px; font-size:11px; }
+.caret { display:inline-block; width:7px; height:13px; background:var(--accent); vertical-align:text-bottom; margin-left:2px; animation:bl 1s steps(1) infinite; }
+@keyframes bl { 50% { opacity:0; } }
+
+.msg { padding:2px 0 2px 10px; display:flex; flex-direction:column; gap:4px; }
+.msg.u { border-left:2px solid var(--accent); }
+.msg.c { border-left:2px solid var(--line); }
+.ml { font-size:10px; letter-spacing:.08em; color:var(--muted); }
+.msg.u .ml b { color:var(--accent); }
+.msg.c .ml b { color:var(--fg); }
+.mt p { margin:0 0 6px; } .mt p:last-child { margin:0; }
+.mt ul { margin:0 0 6px; padding-left:18px; }
+.sent { font-size:10px; color:var(--muted); }
+.tools { display:flex; flex-wrap:wrap; gap:4px; }
+.tchip { border:1px solid var(--line); color:var(--muted); font-size:10px; padding:1px 6px; }
+.tchip.prog { border-style:dashed; color:var(--fg); }
+.macts { display:flex; flex-wrap:wrap; gap:6px; margin-top:2px; }
+.macts .btn { padding:2px 8px; font-size:10px; }
+.sysl { text-align:center; color:var(--muted); font-size:11px; padding:4px 0; }
+.noans { display:flex; justify-content:space-between; align-items:center; gap:8px; flex-wrap:wrap; color:var(--muted); font-size:11px; padding-left:10px; border-left:2px solid var(--danger); }
+.stopped { font-size:11px; color:var(--muted); }
+
+.inp { flex:none; border-top:1px solid var(--line); padding:8px 12px; }
+.inrow { display:flex; gap:8px; align-items:stretch; }
+.inrow textarea { flex:1; min-width:0; resize:none; font-family:var(--mono); font-size:12px; background:var(--bg); color:var(--fg); border:1px solid var(--line); padding:6px 8px; }
+.inrow .btn { align-self:flex-end; padding:6px 14px; }
+.inhint { font-size:10px; color:var(--muted); margin-top:4px; }
+.foot { flex:none; border-top:1px solid var(--line); padding:6px 12px; display:flex; align-items:center; gap:10px; font-size:11px; color:var(--muted); }
+.foot .sp { flex:1; min-width:0; }
+.foot .btn { padding:2px 8px; font-size:10px; }
+
+#toast { position:fixed; left:50%; bottom:20px; transform:translateX(-50%); z-index:200; background:var(--accent); color:var(--on-accent); font:700 11px var(--mono); padding:6px 12px; max-width:90vw; opacity:0; pointer-events:none; transition:opacity .15s; }
+#toast.show { opacity:1; }
+
+/* compact widgets */
+.card { border:1px solid var(--line); background:var(--surface); padding:14px; }
+.card.hl { border-color:var(--accent); }
+.wlab { font-size:10px; color:var(--muted); text-transform:uppercase; letter-spacing:.06em; margin:14px 0 6px; }
+.wlab:first-child { margin-top:0; }
+.kdesk { display:flex; padding:12px; border:1px solid var(--line); background:var(--body-bg);
+  background-image:linear-gradient(rgba(128,128,128,.07) 1px,transparent 1px),linear-gradient(90deg,rgba(128,128,128,.07) 1px,transparent 1px); background-size:40px 40px; width:max-content; min-width:100%; }
+.kwin { display:flex; flex:none; border:1px dashed var(--muted); }
+.kfake { width:200px; padding:8px 14px; margin-right:12px; color:var(--muted); font-size:11px; }
+.kfake div { border:1px solid var(--line); height:46px; margin-bottom:10px; background:var(--surface); padding:4px 8px; }
+.kbox { background:var(--bg); border:1px solid var(--line); display:flex; flex-direction:column; height:540px; flex:none; min-height:0; }
+.kstrip { width:340px; }
+.kh { flex:none; display:flex; align-items:center; gap:8px; min-height:28px; padding:2px 6px 2px 8px; border-bottom:1px solid var(--line); font-size:10px; letter-spacing:.08em; text-transform:uppercase; }
+.kh .sp { flex:1; }
+.kh b { color:var(--accent); }
+.kb { flex:none; padding:2px 6px; font:700 10px var(--mono); letter-spacing:.06em; text-transform:uppercase; color:var(--fg); background:transparent; border:1px solid var(--line); white-space:nowrap; }
+.kb:hover:not(:disabled) { color:var(--accent); border-color:var(--accent); }
+.kb.ic { border-color:transparent; font-size:11px; }
+.kb.on { color:var(--accent); border-color:var(--accent); }
+.kb.g { color:var(--accent); border-color:var(--accent); }
+.kb.y { color:var(--pause); border-color:var(--pause); }
+.kb.s { background:var(--accent); color:var(--on-accent); border-color:var(--accent); }
+.kb.r { color:var(--danger); border-color:var(--danger); }
+.kb.e { background:var(--danger); color:#fff; border-color:var(--danger); }
+.kbody { flex:1; min-height:0; overflow:auto; padding:8px 10px; display:flex; flex-direction:column; gap:6px; font:12px/1.4 system-ui,-apple-system,"Segoe UI",sans-serif; }
+.kbody .kl { padding-left:8px; border-left:3px solid var(--accent); }
+.kbody .kl.them { border-left-color:var(--them); }
+.kact { flex:none; border-top:1px solid var(--line); padding:6px 10px; font:11px/1.4 system-ui,-apple-system,"Segoe UI",sans-serif; }
+.kact div { padding:1px 0; }
+.kfoot { flex:none; display:flex; gap:6px; padding:5px 8px; border-top:1px solid var(--line); }
+.kfoot .kb { flex:1; }
+.kdh { flex:none; display:flex; justify-content:space-between; align-items:center; gap:6px; padding:4px 10px; border-bottom:1px solid var(--line); font:10px var(--mono); color:var(--muted); text-transform:uppercase; letter-spacing:.06em; }
+.kq { font:11px/1.4 system-ui,-apple-system,"Segoe UI",sans-serif; color:var(--muted); }
+.kq b { font:700 9px var(--mono); letter-spacing:.06em; margin-right:6px; color:var(--accent); }
+.kan { border-left:3px solid var(--accent); padding:3px 0 3px 8px; font:11px/1.45 system-ui,-apple-system,"Segoe UI",sans-serif; background:var(--accent-light); color:var(--fg); }
+.kan p { margin:0 0 4px; } .kan ul { margin:0 0 4px; padding-left:16px; }
+.kan .macts .btn { font-size:9px; padding:1px 6px; }
+.ktools { display:flex; flex-wrap:wrap; gap:3px; margin-bottom:3px; }
+.ktools .tchip { font-size:9px; padding:0 4px; }
+.kin { flex:none; display:flex; gap:4px; padding:6px 8px; border-top:1px solid var(--line); }
+.kin input { flex:1; min-width:0; font:11px var(--mono); background:transparent; border:1px solid var(--line); color:var(--fg); padding:3px 6px; }
+.kmsg { flex:none; padding:6px 10px; border-top:1px solid var(--pause); color:var(--pause); font:10px/1.4 var(--mono); }
+.kemp { border:1px dashed var(--line); padding:8px; color:var(--muted); font:10px/1.4 var(--mono); text-align:center; }
+.kscreen { padding:16px; overflow:auto; border:1px solid var(--line); background:linear-gradient(135deg,#17332b,#0e1b2b); }
+.kcall { position:relative; min-width:780px; height:400px; background:linear-gradient(135deg,#17202a,#0e1318); border:1px solid var(--line); }
+.ktiles { position:absolute; inset:0; display:grid; grid-template-columns:1fr 1fr; grid-template-rows:1fr 1fr; gap:6px; padding:6px; opacity:.5; }
+.ktiles div { background:linear-gradient(160deg,#243241,#18222c); }
+.kcapw { position:absolute; left:50%; bottom:14px; transform:translateX(-50%); width:740px; }
+.gx { --fg:#e8f0ea; --muted:#8fa89a; --line:rgba(0,200,118,.3); --accent:#00c876; --accent-light:rgba(0,200,118,.12); --danger:#e05555; --pause:#d4a020; --bg:#0a110d; --on-accent:#0a110d; color:#e8f0ea; font-family:var(--mono); }
+.kcap { display:flex; background:rgba(6,11,8,.78); border:1px solid rgba(0,200,118,.35); }
+.kcap .cl { width:104px; flex:none; padding:8px; border-right:1px solid rgba(0,200,118,.18); display:flex; flex-direction:column; gap:6px; font:700 11px var(--mono); }
+.kcap .cm { flex:1; min-width:0; padding:8px 12px; font-size:14px; display:flex; flex-direction:column; gap:4px; justify-content:flex-end; height:112px; overflow:hidden; }
+.kcap .cm .l1 { opacity:.6; }
+.kcap .cm .l2 { font-weight:500; }
+.kcap .cb2 { flex:none; display:flex; align-items:center; padding:0 10px; }
+.kfcard { position:absolute; right:0; bottom:calc(100% + 8px); width:340px; max-height:260px; display:flex; flex-direction:column; background:rgba(6,11,8,.88); border:1px solid rgba(0,200,118,.35); overflow:hidden; }
+.kfbar { flex:none; height:2px; background:var(--pause); }
+.kfcard .kbody { color:#e8f0ea; }
+.kfcard .kan { color:#e8f0ea; }
+.khl { border-left:3px solid var(--pause); background:rgba(212,160,32,.14); padding:3px 6px; font:12px/1.35 system-ui,-apple-system,"Segoe UI",sans-serif; display:flex; align-items:center; gap:6px; }
+.khl .t { flex:1; min-width:0; white-space:nowrap; overflow:hidden; text-overflow:ellipsis; }
+.kfnote { flex:none; padding:4px 10px; border-top:1px solid rgba(0,200,118,.18); font:10px var(--mono); color:var(--muted); }
+.ksmall { display:flex; flex-wrap:wrap; gap:20px; align-items:flex-start; }
+.ksq { width:180px; height:180px; display:flex; flex-direction:column; }
+.ksq .kmid { flex:1; display:flex; flex-direction:column; align-items:center; justify-content:center; gap:6px; }
+.ksq .ktm { font:700 28px var(--mono); }
+.kcoin { display:flex; height:56px; width:56px; background:rgba(6,11,8,.85); border:1px solid rgba(0,200,118,.5); flex-direction:column; align-items:center; justify-content:center; gap:3px; font:700 11px var(--mono); }
+.klab { font-size:10px; color:var(--muted); text-transform:uppercase; letter-spacing:.06em; margin-bottom:6px; }
+.desk { position:relative; width:1100px; border:1px dashed var(--muted); background-color:var(--body-bg);
+  background-image:linear-gradient(rgba(128,128,128,.07) 1px,transparent 1px),linear-gradient(90deg,rgba(128,128,128,.07) 1px,transparent 1px); background-size:40px 40px; overflow:hidden; }
+.desk.gx { background-color:#0e1b2b; background-image:linear-gradient(135deg,#17332b,#0e1b2b); }
+.win { position:absolute; display:flex; flex-direction:column; background:var(--bg); border:1px solid var(--line); resize:both; overflow:hidden; transition:left .15s,top .15s; }
+.win.dragging { transition:none; z-index:5; opacity:.92; }
+.win.flash { outline:2px solid var(--accent); outline-offset:-2px; }
+.win .wt { flex:none; display:flex; align-items:center; min-height:22px; padding:2px 8px; border-bottom:1px solid var(--line); background:var(--body-bg); color:var(--accent); font:700 10px var(--mono); letter-spacing:.08em; text-transform:uppercase; cursor:move; user-select:none; touch-action:none; }
+.win .wb { flex:1; min-height:0; display:flex; flex-direction:column; }
+.win .grip { position:absolute; right:2px; bottom:0; font-size:10px; line-height:1; color:var(--muted); pointer-events:none; }
+.win.whole { cursor:move; touch-action:none; background:rgba(6,11,8,.78); border-color:rgba(0,200,118,.35); }
+.dockrow { display:flex; align-items:center; gap:6px; padding:6px 8px; font:11px var(--mono); }
+.dockrow .sp { flex:1; }
+.capw { display:flex; flex:1; min-width:0; height:100%; color:#e8f0ea; }
+.cl2 { flex:none; display:flex; align-items:center; gap:6px; padding:0 8px; border-right:1px solid rgba(0,200,118,.18); font:700 11px var(--mono); }
+.cm2 { flex:1; min-width:0; display:flex; align-items:center; padding:0 10px; font-size:13px; white-space:nowrap; overflow:hidden; text-overflow:ellipsis; }
+.rules, .oq { margin:0; padding-left:20px; max-width:110ch; }
+.rules li, .oq li { margin-bottom:6px; }
+</style>
+</head>
+<body>
+<div class="wrap">
+<header>
+  <h1>AUG-195 &mdash; ASSISTANT and COPILOT columns: Active project session</h1>
+  <p class="lead">Every state of the Active project session during a live recording: side-by-side Action items / Copilot / Assistant columns, project tabs, chat with Claude Code bound to a Praxis project, action items and Praxis tasks from a message, errors, and the separate Copilot and Assistant windows in Compact Mode.</p>
+</header>
+
+<div class="bar">
+  <div class="grp"><span>Theme</span>
+    <div class="seg"><button data-act="theme:light" aria-pressed="false">Light</button><button data-act="theme:dark" aria-pressed="false">Dark</button></div></div>
+  <div class="grp"><span>State</span>
+    <div class="seg">
+      <button data-act="state:none" aria-pressed="false">No project yet</button>
+      <button data-act="state:one" aria-pressed="true">One project</button>
+      <button data-act="state:two" aria-pressed="false">Two projects</button>
+      <button data-act="state:stream" aria-pressed="false">Answer streaming</button>
+      <button data-act="state:praxis" aria-pressed="false">PraxisOS not running</button>
+      <button data-act="state:missing" aria-pressed="false">Claude Code missing</button>
+      <button data-act="state:signedout" aria-pressed="false">Not signed in</button>
+      <button data-act="state:off" aria-pressed="false">Session off</button>
+      <button data-act="state:budget" aria-pressed="false">Spending limit reached</button>
+      <button data-act="state:crash" aria-pressed="false">Crashed &rarr; resumed</button>
+    </div></div>
+  <div class="grp"><span>Layout</span>
+    <div class="seg"><button data-act="layout:full" aria-pressed="true">Full window</button><button data-act="layout:compact" aria-pressed="false">Compact Mode</button></div></div>
+</div>
+
+<section id="live">
+  <h2>Live recording</h2>
+  <div class="hscroll"><div class="frame" id="frame"></div></div>
+  <p class="note">Live: collapse (&ndash;) a column to a rail and click the rail to expand; hide (&times;) and bring back from the pin bar toggles or Ctrl/Cmd+3 (ASSISTANT) and Ctrl/Cmd+4 (COPILOT); drag a column&rsquo;s left edge to resize (240&ndash;560 px, the transcript keeps 360 px; double-click resets); the CTX badge shows COPILOT; copilot mode and model selects; tabs and the project picker; hint Ask (fills the ASSISTANT input); &rarr; Action item; &rarr; Praxis task (Creating&hellip; for 1 s, then a &ldquo;Created task AUG-200&rdquo; chip; created directly in the PraxisOS-off, spending-limit and crash states); Send; Stop; Stop session. Switching a state resets the chat to that state&rsquo;s starting point.</p>
+</section>
+
+<section id="compact">
+  <h2>Compact Mode windows</h2>
+  <div class="card" id="compactCard"></div>
+</section>
+
+<section id="rules">
+  <h2>Rules</h2>
+  <ul class="rules">
+    <li>Full window: Transcript, Action items, Copilot and Assistant are side-by-side columns; nothing is drawn over the transcript or the action items.</li>
+    <li>Each column can be collapsed to a rail, hidden and shown again from the pin bar, and resized by its left edge during the meeting; the layout is remembered.</li>
+    <li>One tab per Praxis project in ASSISTANT; a tab is one Claude Code session bound to that project folder. Copilot follows the active tab. Closing a tab stops its session.</li>
+    <li>Claude starts on the first question in a tab; hints for the project start as soon as the tab opens.</li>
+    <li>Each question carries the last N minutes of the transcript (Settings &rarr; Transcript window); nothing is sent between questions.</li>
+    <li>At most 3 Claude sessions run at once (chat and copilot together); the least recently used idle one is stopped first. A session stops after 10 minutes without questions and at End Meeting; the next question resumes the conversation.</li>
+    <li>&rarr; Action item adds the message to Action items with an AI tag; near-duplicates are not added twice. &rarr; Praxis task asks Claude to create the task through PraxisOS; when PraxisOS or Claude is unavailable it is created directly, like Send to Praxis.</li>
+    <li>The panel shows no money, models (except the copilot model select), tokens or tool names; spending appears only as &ldquo;Spending limit reached&rdquo;.</li>
+    <li>Compact Mode: Dock Strip / Ghost Caption, Copilot and Assistant are separate windows, each movable and resizable; they never overlap.</li>
+  </ul>
+</section>
+
+<section id="oq">
+  <h2>Decisions (2026-11-06)</h2>
+  <ul class="oq">
+    <li>Columns side by side instead of the overlay; each column collapsible, hideable and resizable during the meeting.</li>
+    <li>Compact: Copilot and Assistant are separate movable, resizable windows that never overlap.</li>
+    <li>No money in the panel; only &ldquo;Spending limit reached&rdquo;.</li>
+    <li>&rarr; Praxis task: Claude creates it through PraxisOS; direct creation is the fallback.</li>
+    <li>Chat model is chosen in Settings only.</li>
+  </ul>
+</section>
+</div>
+<div id="toast"</section>
+</div>
+<div id="toast" role="status"></div>
+
+<script>
+var T1 = 'Проверить запуск Claude Code на macOS из GUI-приложения до пятницы';
+var S = { theme:'light', state:'one', layout:'full', picker:false, win:{}, cols:{ ai:{ show:true, col:false, w:300 }, cp:{ show:true, col:false, w:300 }, as:{ show:true, col:false, w:380 } },
+  model:'sonnet', mode:'claude', tabs:[], tab:'August', chats:{}, items:[], act:{}, task:{}, hd:{}, draft:'', n:0, clock:1350, tmr:0, focus:false };
+var MODE_OPTS = [['off', 'Off'], ['local', 'Local hints'], ['claude', 'Claude explains'], ['always', 'Always-on Claude']];
+var MODEL_SHORT = [['haiku', 'Haiku'], ['sonnet', 'Sonnet'], ['opus', 'Opus']];
+var MODE_NAME = { off:'Off', local:'Local hints', claude:'Claude explains', always:'Always-on Claude' };
+var PROJECTS = [{ n:'August', def:true }, { n:'squarefi-crm' }];
+var RECENT = [{ n:'crm-guard', p:'D:\\claude\\git\\crm-guard' }];
+var HINTS = {
+  'August': { t:'00:20:44', big:'Решили в AUG-195: Action items, Copilot и Assistant — колонки рядом, без наложения; каждую можно свернуть, скрыть и растянуть.', src:'Source: ai-assistants', ask:'Расскажи подробнее: колонки ассистента' },
+  'squarefi-crm': { t:'00:20:44', big:'В прошлый раз решили: кнопка «Тикет в L2» есть только в CSM-группах, в live-чатах её пока нет.', src:'Source: support/csm-group-tickets · CRM-207', ask:'Расскажи подробнее: Тикет в L2' }
+};
+var TX = [
+  ['them', '00:20:12', 'Давай по панели ASSISTANT: поверх action items или рядом?'],
+  ['me', '00:20:25', 'Рядом. Колонки, и чтобы лишние можно было свернуть прямо на встрече.'],
+  ['them', '00:20:41', 'Хорошо. Теперь macOS: кто-нибудь запускал это на Маке?'],
+  ['me', '00:20:58', 'Не запускал. Сборку проверю, но есть вопрос с запуском Claude из приложения.'],
+  ['them', '00:21:12', 'А логин в Claude на Mac кто проверяет? Там же авторизация через браузер.'],
+  ['me', '00:21:24', 'Давай я возьму, мне как раз нужен мак до пятницы.'],
+  ['them', '00:21:33', 'Договорились, запишем.']
+];
+var AI_STATES = { one:1, two:1, stream:1, crash:1, budget:1, praxis:1 };
+var BLOCK = {
+  missing:'Claude Code is not installed on this computer. Install it, sign in, then press Recheck.',
+  signedout:'Claude Code is installed but not signed in. Open a terminal, run claude and sign in with your browser, then press Recheck.',
+  off:'Active session is off. Turn it on in Settings \u2192 AI assistants to ask Claude about this project.',
+  budget:'Spending limit reached for this meeting. Raise it in Settings \u2192 AI assistants to keep asking; the conversation is kept.'
+};
+
+function $(id) { return document.getElementById(id); }
+function esc(t) { return String(t).replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;').replace(/"/g, '&quot;'); }
+var tt;
+function toast(m) { var t = $('toast'); t.textContent = m; t.classList.add('show'); clearTimeout(tt); tt = setTimeout(function () { t.classList.remove('show'); }, 1800); }
+function p2(n) { return (n < 10 ? '0' : '') + n; }
+function clk() { S.clock += 7; return '00:' + p2(Math.floor(S.clock / 60)) + ':' + p2(S.clock % 60); }
+
+/* ---------- data ---------- */
+function augChat() {
+  return [
+    { id:'a1q', r:'u', t:'00:20:30', p:['Как мы решили расположить ассистента и копайлот?'] },
+    { id:'a1', r:'c', t:'00:20:35', chips:['Searched project notes', 'Read ai-assistants'], p:['Колонками рядом, без наложения:'],
+      list:['Action items, Copilot и Assistant — отдельные колонки;', 'каждую можно свернуть, скрыть и растянуть во время встречи.'], item:'Зафиксировать: колонки Action items / Copilot / Assistant рядом, без наложения' },
+    { id:'a2q', r:'u', t:'00:21:05', p:['Запиши: я проверю запуск Claude на маке до пятницы'] },
+    { id:'a2', r:'c', t:'00:21:09', chips:['Added action item'], p:['Записал в action items: «' + T1 + '» — Me.'], item:T1 }
+  ];
+}
+function crmChat() {
+  return [
+    { id:'c1q', r:'u', t:'00:19:40', p:['Что у нас было по эскалации в L2 из live-чатов?'] },
+    { id:'c1', r:'c', t:'00:19:46', chips:['Searched project notes', 'Found task CRM-207'], p:['По CRM-207: кнопка «Тикет в L2» есть только в CSM-группах, в live-чатах её пока нет.'], item:'Добавить кнопку «Тикет в L2» в live-чаты CSM' }
+  ];
+}
+var PART3 = 'Создаю задачу в проекте August: «Проверка запуска Claude Code на macOS», срок — пятница, ответственный';
+function V() {
+  if (!S.tabs.length) return 'none';
+  var s = S.state;
+  if (s === 'none') s = 'one';
+  return s;
+}
+function setState(s) {
+  S.state = s; S.picker = false; S.act = {}; S.task = {}; S.hd = {}; S.draft = ''; clearTimeout(S.tmr);
+  var v = s, ch = {};
+  S.tabs = []; S.tab = 'August';
+  if (v !== 'none') S.tabs = [{ n:'August', m:'run' }];
+  if (v === 'off') S.tabs[0].m = 'idle';
+  if (v === 'missing' || v === 'signedout') S.tabs[0].m = 'err';
+  if (v === 'one' || v === 'two' || v === 'stream' || v === 'praxis' || v === 'budget' || v === 'crash') ch['August'] = augChat();
+  if (v === 'two') { S.tabs.push({ n:'squarefi-crm', m:'run' }); S.tab = 'squarefi-crm'; ch['squarefi-crm'] = crmChat(); }
+  if (v === 'stream') ch['August'].push({ id:'a3q', r:'u', t:'00:21:38', p:['Создай задачу на проверку macOS'] },
+    { id:'a3', r:'c', t:'00:21:41', chips:[{ t:'Creating a Praxis task\u2026', prog:1 }], p:[PART3], streaming:true });
+  if (v === 'crash') ch['August'].push({ id:'a3q', r:'u', t:'00:21:52', p:['Напомни, кто проверяет логин Claude на Mac?'] }, { id:'a3n', r:'noans' },
+    { id:'sys', r:'sys', text:'\u2014 Session restarted at 00:22:14 \u00b7 conversation kept \u2014' });
+  S.chats = ch;
+  S.items = [{ t:'Показать макет панели ASSISTANT до среды', o:'Them' }, { t:'Узнать, кто проверит логин Claude на Mac', o:'Me' }];
+  if (AI_STATES[v]) S.items.push({ t:T1, o:'Me', ai:1 });
+}
+function curTab() { for (var i = 0; i < S.tabs.length; i++) if (S.tabs[i].n === S.tab) return S.tabs[i]; return null; }
+function chat() { return S.chats[S.tab] || (S.chats[S.tab] = []); }
+function streaming() { var c = chat(), m = c[c.length - 1]; return !!(m && m.streaming); }
+function inputOff(v) { if (v === 'none') return 'Pick a project first'; return BLOCK[v] || null; }
+function ph(v) {
+  if (v === 'none') return 'Pick a project first';
+  if (v === 'missing' || v === 'signedout') return 'Claude Code is not available';
+  if (v === 'off') return 'Active session is off';
+  if (v === 'budget') return 'Spending limit reached';
+  return 'Ask about ' + S.tab + '\u2026';
+}
+function hintOf(name) { return HINTS[name] && !S.hd[name] ? HINTS[name] : null; }
+function ctxN() { var v = V(); if (v === 'none' || v === 'praxis' || S.mode === 'off') return 0; return hintOf(S.tab) ? 1 : 0; }
+function dup(m) { return !!m.item && S.items.some(function (x) { return x.t === m.item; }); }
+
+/* ---------- messages ---------- */
+function chip(c) { if (typeof c === 'string') c = { t:c }; return '<span class="tchip' + (c.prog && !m_stopped ? ' prog' : '') + '">' + esc(c.t) + '</span>'; }
+var m_stopped = false;
+function bodyHtml(m) {
+  var h = m.p.map(function (x, i) {
+    var last = i === m.p.length - 1 && !m.list;
+    return '<p>' + esc(x) + (m.streaming && last ? '<span class="caret"></span>' : '') + '</p>';
+  }).join('');
+  if (m.list) h += '<ul>' + m.list.map(function (x) { return '<li>' + esc(x) + '</li>'; }).join('') + '</ul>';
+  return h;
+}
+function chipsHtml(m, cls) {
+  if (!m.chips || !m.chips.length) return '';
+  return '<div class="' + cls + '">' + m.chips.map(function (c) {
+    if (typeof c === 'string') c = { t:c };
+    return '<span class="tchip' + (c.prog ? ' prog' : '') + '">' + esc(c.t) + '</span>';
+  }).join('') + '</div>';
+}
+function actions(m, compact) {
+  if (m.streaming || !m.item) return '';
+  var h = '<div class="macts">';
+  if (S.act[m.id]) h += '<button class="btn" disabled>\u2713 Added</button>';
+  else if (dup(m)) h += '<button class="btn" disabled>Already in the list</button>';
+  else h += '<button class="btn go" data-act="ai:' + m.id + '">\u2192 Action item</button>';
+  var tk = S.task[m.id];
+  if (!compact) {
+    if (tk === 'busy') h += '<button class="btn" disabled>Creating\u2026</button>';
+    else if (tk === 'done') h += '<button class="btn" disabled>\u2713 AUG-200</button>';
+    else if (tk) h += '<button class="btn" disabled>\u2713 AUG-200 (created directly)</button>';
+    else h += '<button class="btn" data-act="task:' + m.id + '">\u2192 Praxis task</button>';
+    h += '<button class="btn plain" data-act="copy:' + m.id + '">Copy</button>';
+  }
+  h += '</div>';
+  if (!compact && tk === 'dp') h += '<div class="sent">PraxisOS is off \u2014 created directly, without Claude\u2019s summary.</div>';
+  if (!compact && tk === 'dc') h += '<div class="sent">Claude is unavailable \u2014 created directly, without Claude\u2019s summary.</div>';
+  return h;
+}
+function msgHtml(m) {
+  if (m.r === 'sys') return '<div class="sysl">' + esc(m.text) + '</div>';
+  if (m.r === 'noans') return '<div class="noans"><span>No answer \u2014 the session stopped while answering.</span><button class="btn" data-act="again">Ask again</button></div>';
+  if (m.r === 'u') return '<div class="msg u"><div class="ml"><b>YOU</b> \u00b7 ' + m.t + '</div><div class="mt"><p>' + esc(m.p[0]) + '</p></div><div class="sent">+ last 5 min of the transcript</div></div>';
+  return '<div class="msg c"><div class="ml"><b>CLAUDE</b> \u00b7 ' + m.t + '</div>' + chipsHtml(m, 'tools') + '<div class="mt">' + bodyHtml(m) + '</div>' +
+    (m.stopped ? '<div class="stopped">Stopped.</div>' : '') + actions(m, false) + '</div>';
+}
+
+/* ---------- assistant column pieces ---------- */
+function pickerHtml(inline) {
+  var open = {}; S.tabs.forEach(function (t) { open[t.n] = 1; });
+  function row(n, extra, path) {
+    var o = !!open[n];
+    return '<button class="prow" data-act="pick:' + esc(n) + '"' + (o ? ' disabled' : '') + '><b>' + esc(n) + '</b>' + (extra || '') + (path ? '<span class="pth">' + esc(path) + '</span>' : '') + (o ? '<span class="op">open</span>' : '') + '</button>';
+  }
+  var h = '<div class="picker"' + (inline ? ' style="border:0;padding:0"' : '') + '><div class="pgrp">Projects</div>';
+  PROJECTS.forEach(function (p) { h += row(p.n, p.def ? '<span class="tag">DEFAULT</span>' : ''); });
+  h += '<div class="pgrp">Recent</div>';
+  RECENT.forEach(function (p) { h += row(p.n, '', p.p); });
+  h += '<div class="acts"><button class="btn" data-act="openfs">Open…</button></div>' +
+    '<div class="phint">Picking a project starts hints for it at once; Claude starts on your first question.</div></div>';
+  return h;
+}
+function tabsRow() {
+  var h = '<div class="tabrow"><div class="tabs2">';
+  S.tabs.forEach(function (t) {
+    var mk = t.m === 'run' ? '●' : t.m === 'idle' ? '○' : '!';
+    var lab = t.m === 'run' ? 'session running' : t.m === 'idle' ? 'not started' : 'session unavailable';
+    h += '<div class="tab2' + (t.n === S.tab ? ' on' : '') + '"><button class="tn" data-act="tab:' + esc(t.n) + '">' + esc(t.n) + ' <span class="mk ' + t.m + '" role="img" aria-label="' + lab + '">' + mk + '</span></button>' +
+      '<button class="tx" data-act="tclose:' + esc(t.n) + '" aria-label="Close tab ' + esc(t.n) + '">&times;</button></div>';
+  });
+  h += '</div><button class="plus" data-act="plus" aria-label="Open project" aria-expanded="' + S.picker + '">+</button>';
+  if (S.picker) h += pickerHtml(false);
+  return h + '</div>';
+}
+function selHtml(act, cur, opts, lab) {
+  return '<select class="sm" data-sel="' + act + '" aria-label="' + lab + '">' + opts.map(function (o) {
+    return '<option value="' + o[0] + '"' + (cur === o[0] ? ' selected' : '') + '>' + o[1] + '</option>';
+  }).join('') + '</select>';
+}
+function fallback(v) { return v === 'missing' || v === 'signedout'; }
+function mstrip(v) {
+  var fb = fallback(v);
+  var label = fb ? '<b>Local hints</b> (Claude Code not available)' : '<b>' + MODE_NAME[S.mode] + '</b>';
+  var cl = !fb && (S.mode === 'claude' || S.mode === 'always');
+  return '<div class="mstrip"><span>' + label + '</span><div class="mctl">' + (cl ? selHtml('model', S.model, MODEL_SHORT, 'Model') : '') +
+    selHtml('mode', fb ? 'local' : S.mode, MODE_OPTS, 'Copilot mode') + '</div></div>';
+}
+function hintsBlock(v) {
+  var name = S.tab, hd = hintOf(name), paused = v === 'praxis';
+  var shown = hd ? 1 : 0, cnt = paused ? 'paused' : shown + ' shown · 5 checked silently';
+  var h = '<div><div class="hh"><div class="blk-t">Hints</div><div class="cnt">' + cnt + '</div></div>';
+  if (paused) return h + '<div class="empty" style="margin-top:6px">Hints are paused until PraxisOS starts.</div></div>';
+  if (hd) {
+    h += '<div class="hintcard"><div class="meta"><span>' + hd.t + '</span><span class="tag">EXPLAINED</span></div><div class="big">' + esc(hd.big) + '</div><div class="src">' + esc(hd.src) + '</div>' +
+      '<div class="acts"><button class="btn go" data-act="route">Open route</button><button class="btn ask" data-act="hask">Ask</button><button class="btn plain" data-act="dismiss">Dismiss</button></div></div>';
+  } else if (S.hd[name]) {
+    h += '<div class="dismrow"><span>Dismissed — hidden for the rest of this meeting</span><button class="btn plain" data-act="undo">Undo</button></div>';
+  } else h += '<div class="empty" style="margin-top:6px">Listening for references to past agreements.</div>';
+  return h + '</div>';
+}
+function body(v) {
+  if (v === 'none') return '<div class="pickt">Pick a Praxis project for this meeting</div>' + pickerHtml(true);
+  var h = '';
+  if (v === 'praxis') h += '<div class="warnline">PraxisOS is not running. Claude answers without the project notes; hints are paused. It reconnects when PraxisOS starts.</div>';
+  if (v === 'budget') h += '<div class="warnline">' + BLOCK.budget + '</div>';
+  if (v === 'missing' || v === 'signedout' || v === 'off') {
+    return h + '<div class="empty">' + esc(BLOCK[v]) + '<div class="acts">' +
+      (v === 'off' ? '' : '<button class="btn go" data-act="recheck">Recheck</button>') + '<button class="btn" data-act="settings">Open Settings</button></div></div>';
+  }
+  var c = chat();
+  h += '<div><div class="blk-t">Session</div>';
+  if (!c.length) h += '<div class="empty">Ask a question about ' + esc(S.tab) + '. Claude starts on your first question.</div>';
+  else h += '<div class="stack">' + c.map(msgHtml).join('') + '</div>';
+  return h + '</div>';
+}
+function inputArea(v) {
+  var off = inputOff(v), st = streaming();
+  return '<div class="inp"><div class="inrow"><textarea rows="2" data-in="1" aria-label="Question" placeholder="' + esc(ph(v)) + '"' + (off ? ' disabled' : '') + '>' + esc(off ? '' : S.draft) + '</textarea>' +
+    (st ? '<button class="btn red" data-act="stop">Stop</button>' : '<button class="btn primary" data-act="send"' + (off ? ' disabled' : '') + '>Send</button>') + '</div>' +
+    '<div class="inhint">Enter to send · Shift+Enter new line · sends your question with the last 5 min of the transcript</div></div>';
+}
+function footer(v) {
+  if (v === 'none' || v === 'missing' || v === 'signedout' || v === 'off') return '';
+  return '<div class="foot"><span class="sp"></span><button class="btn plain" data-act="stopsess">Stop session</button></div>';
+}
+
+/* ---------- columns ---------- */
+var DEF = { ai:300, cp:300, as:380 };
+var NAMES = { ai:'ACTION ITEMS', cp:'COPILOT', as:'ASSISTANT' };
+function colHead(k, cnt, kb) {
+  return '<div class="ap-h"><b>' + NAMES[k] + '</b>' + (cnt !== '' ? '<span class="cn">' + cnt + '</span>' : '') + (kb ? '<span class="kb2">' + kb + '</span>' : '') + '<span class="spacer"></span>' +
+    '<button class="x" data-act="collapse:' + k + '" aria-label="Collapse ' + NAMES[k] + '">&ndash;</button>' +
+    '<button class="x" data-act="hide:' + k + '" aria-label="Hide ' + NAMES[k] + '">&times;</button></div>';
+}
+function colWrap(k, count, inner) {
+  var c = S.cols[k];
+  if (!c.show) return '';
+  if (c.col) return '<button class="rail" data-act="expand:' + k + '" aria-label="Expand ' + NAMES[k] + '"><span class="rb">' + count + '</span><span class="rt">' + NAMES[k] + '</span></button>';
+  return '<section class="col" data-k="' + k + '" style="width:' + c.w + 'px" aria-label="' + NAMES[k] + '"><div class="spl" data-col="' + k + '" role="separator" aria-orientation="vertical" aria-label="Resize ' + NAMES[k] + '" title="Drag to resize · double-click to reset"></div>' +
+    '<div class="ap">' + inner + '</div></section>';
+}
+function colAI() {
+  return colHead('ai', String(S.items.length), '') + '<div class="ap-body">' + S.items.map(function (i) {
+    return '<div class="ai-it">' + esc(i.t) + '<div class="own">' + i.o + (i.ai ? ' <span class="tag">AI</span>' : '') + '</div></div>';
+  }).join('') + '</div>';
+}
+function colCP(v) {
+  var h = colHead('cp', '', 'Ctrl+4');
+  if (v === 'none') return h + '<div class="ap-body"><div class="empty">Pick a project in ASSISTANT to start hints.</div></div>';
+  h += mstrip(v) + '<div class="ap-body">';
+  if (S.mode === 'off' && !fallback(v)) h += '<div class="empty">Copilot is off. Turn it on in Settings → AI assistants.</div>';
+  else h += hintsBlock(v);
+  return h + '</div>';
+}
+function colAS(v) {
+  return colHead('as', '', 'Ctrl+3') + tabsRow() + '<div class="ap-body" id="apbody">' + body(v) + '</div>' + inputArea(v) + footer(v);
+}
+function toggleCol(k) {
+  var c = S.cols[k];
+  if (c.show) c.show = false; else { c.show = true; c.col = false; }
+}
+function showCol(k) { S.cols[k].show = true; S.cols[k].col = false; }
+
+/* ---------- frame ---------- */
+function badge(n) { return n > 0 ? '<button class="cbadge" data-act="badge" aria-label="' + n + ' hint, show COPILOT">CTX ' + n + '</button>' : ''; }
+function renderFrame() {
+  var n = ctxN(), v = V(), h = '';
+  h += '<div class="topbar"><span class="rec"><span class="dot"></span>REC 00:21:40<span class="st">&middot; Listening</span></span>' + badge(n) + '<span class="spacer"></span>' +
+    '<div class="tb"><button class="pb y">PAUSE</button><button class="pb">MUTE MIC</button><button class="pb">COPY ALL</button><button class="pb">COPY &amp; CLEAR</button>' +
+    '<button class="pb r">CLEAR</button><button class="pb r">STOP LIVE TEXT</button><button class="pb rf">END MEETING</button></div></div>';
+  var lines = '<div class="lines">' + TX.map(function (l, i) {
+    return '<div class="ln ' + l[0] + (i === TX.length - 1 ? ' last' : '') + '"><span class="ts">' + l[1] + '</span><span class="who">' + (l[0] === 'me' ? 'Me:' : 'Them:') + '</span>' + esc(l[2]) + '</div>';
+  }).join('') + '</div>';
+  h += '<div class="main"><div class="canvas">' + lines + '</div>' + colWrap('ai', S.items.length, colAI()) + colWrap('cp', n, colCP(v)) + colWrap('as', S.tabs.length, colAS(v)) + '</div>';
+  h += '<div class="pin"><button class="btn">[ SESSIONS ]</button><button class="btn">[ CONTROLS ]</button><span class="sep"></span>' +
+    ['ai', 'cp', 'as'].map(function (k) {
+      return '<button class="btn' + (S.cols[k].show ? ' open' : '') + '" data-act="tog:' + k + '" aria-pressed="' + S.cols[k].show + '">[ ' + NAMES[k] + ' ]</button>';
+    }).join('') + '</div>';
+  $('frame').innerHTML = h;
+}
+
+/* ---------- compact ---------- */
+function lastEx() {
+  var c = chat(), i, q = -1;
+  for (i = c.length - 1; i >= 0; i--) if (c[i].r === 'u') { q = i; break; }
+  if (q < 0) return null;
+  var a = null, na = false;
+  for (i = q + 1; i < c.length; i++) { if (c[i].r === 'c') a = c[i]; if (c[i].r === 'noans') na = true; }
+  return { q:c[q], a:a, na:na };
+}
+function exHtml() {
+  var e = lastEx();
+  if (!e) return '<div class="kemp">No questions yet.</div>';
+  var h = '<div class="kq"><b>YOU</b>' + esc(e.q.p[0]) + '</div>';
+  if (e.a) h += '<div class="kan">' + chipsHtml(e.a, 'ktools') + bodyHtml(e.a) + actions(e.a, true) + '</div>';
+  else if (e.na) h += '<div class="kq">No answer — the session stopped while answering.</div>';
+  return h;
+}
+function cInput(v) {
+  var off = inputOff(v);
+  if (off) return '<div class="kmsg">' + esc(off) + '</div>';
+  return '<div class="kin"><input data-cin="1" placeholder="' + esc(ph(v)) + '" autocomplete="off" aria-label="Question" value="' + esc(S.draft) + '">' +
+    (streaming() ? '<button class="kb r" data-act="stop">Stop</button>' : '<button class="kb s" data-act="send" aria-label="Send">&crarr;</button>') + '</div>';
+}
+function cBadge(n) { return n > 0 ? '<button class="kb g" data-act="badgeC" aria-label="' + n + ' hint, show COPILOT in the full window">CTX ' + n + '</button>' : ''; }
+
+var DESK = {
+  d1:{ h:560, dark:false, label:'Desktop (Compact Mode) · Dock Strip', order:['dock', 'cp', 'as'], wins:{
+    dock:{ t:'Dock Strip', x:20, y:20, w:340, h:112, mw:300, mh:96 },
+    cp:{ t:'Copilot', x:20, y:152, w:340, h:220, mw:260, mh:140 },
+    as:{ t:'Assistant', x:400, y:20, w:360, h:420, mw:280, mh:240 } } },
+  d2:{ h:420, dark:true, label:'Desktop (Compact Mode) · Ghost Caption', order:['cap', 'cp', 'as'], wins:{
+    cap:{ t:'Ghost Caption', whole:1, x:20, y:350, w:480, h:48, mw:300, mh:48 },
+    cp:{ t:'Copilot', x:20, y:20, w:340, h:220, mw:260, mh:140 },
+    as:{ t:'Assistant', x:520, y:20, w:360, h:380, mw:280, mh:240 } } }
+};
+function wget(id, k) {
+  var d = DESK[id].wins[k], m = S.win[id] || (S.win[id] = {});
+  return m[k] || (m[k] = { x:d.x, y:d.y, w:d.w, h:d.h, hide:false });
+}
+function winHtml(id, k, inner) {
+  var d = DESK[id].wins[k], w = wget(id, k);
+  if (w.hide) return '';
+  return '<div class="win' + (d.whole ? ' whole' : '') + '" data-cv="' + id + '" data-w="' + k + '" style="left:' + w.x + 'px;top:' + w.y + 'px;width:' + w.w + 'px;height:' + w.h + 'px;min-width:' + d.mw + 'px;min-height:' + d.mh + 'px">' +
+    (d.whole ? '' : '<div class="wt"><span>' + d.t + '</span></div>') + '<div class="wb">' + inner + '</div><span class="grip" aria-hidden="true">◢</span></div>';
+}
+function dockInner(id, n) {
+  function tg(k, lab) { var on = !wget(id, k).hide; return '<button class="kb' + (on ? ' on' : '') + '" data-act="wtog:' + id + ':' + k + '" aria-pressed="' + on + '" aria-label="' + (on ? 'Hide ' : 'Show ') + (k === 'cp' ? 'Copilot' : 'Assistant') + ' window">[ ' + lab + ' ]</button>'; }
+  return '<div class="dockrow"><span style="color:var(--danger)">&#9679;</span><b>21:40</b><b style="color:var(--accent);font-size:10px">LIVE</b>' + cBadge(n) + '</div>' +
+    '<div class="dockrow"><button class="kb y">PAUSE</button><button class="kb">COPY</button><button class="kb e">END</button><span class="sp"></span>' + tg('cp', 'CP') + tg('as', 'AS') + '</div>';
+}
+function cpInner(v, hd) {
+  var fb = fallback(v), body;
+  var mline = '<div class="kdh"><span>Copilot · ' + (fb ? 'Local hints' : MODE_NAME[S.mode]) + '</span>' + (hd && v !== 'praxis' ? '<span style="color:var(--pause)">' + esc(hd.src.replace('Source: ', '')) + '</span>' : '') + '</div>';
+  if (v === 'none') body = '<div class="kemp">Pick a project in ASSISTANT to start hints.</div>';
+  else if (S.mode === 'off' && !fb) body = '<div class="kemp">Copilot is off. Turn it on in Settings → AI assistants.</div>';
+  else if (v === 'praxis') body = '<div class="kemp">PraxisOS is not running — hints paused</div>';
+  else if (hd) body = '<div class="kan" style="border-left-color:var(--pause);background:var(--surface)"><div>' + esc(hd.big) + '</div><div class="macts"><button class="btn ask" data-act="cask">Ask</button></div></div>';
+  else body = '<div class="kemp">Listening for references to past agreements.</div>';
+  return mline + '<div class="kbody">' + body + '</div>';
+}
+function asInner(v) {
+  var sel = S.tabs.length ? '<select class="sm" data-sel="ctab" aria-label="Project">' + S.tabs.map(function (t) { return '<option' + (t.n === S.tab ? ' selected' : '') + '>' + esc(t.n) + '</option>'; }).join('') + '</select>' : '<span>no project</span>';
+  var blocked = v === 'none' || v === 'missing' || v === 'signedout' || v === 'off';
+  return '<div class="kdh"><span>Project</span>' + sel + '</div><div class="kbody">' + (blocked ? '' : exHtml()) + '</div>' + cInput(v);
+}
+function capInner(n) {
+  return '<div class="capw"><div class="cl2"><span style="color:var(--danger)">&#9679;</span><b>21:40</b><b style="color:var(--accent);font-size:9px">LIVE</b>' + cBadge(n) + '</div>' +
+    '<div class="cm2"><span style="opacity:.6">Давай я возьму, мне как раз нужен мак до пятницы.</span> Договорились, запишем.</div></div>';
+}
+function deskHtml(id, n, v, hd) {
+  var d = DESK[id], inner = {
+    dock:function () { return dockInner(id, n); }, cap:function () { return capInner(n); },
+    cp:function () { return cpInner(v, hd); }, as:function () { return asInner(v); } };
+  return '<div class="klab">' + d.label + '</div><div class="hscroll"><div class="desk' + (d.dark ? ' gx' : '') + '" id="' + id + '" style="height:' + d.h + 'px">' +
+    d.order.map(function (k) { return winHtml(id, k, inner[k]()); }).join('') + '</div></div>';
+}
+
+/* window geometry: written once, used by both canvases */
+function rectOf(el) { return { x:el.offsetLeft, y:el.offsetTop, w:el.offsetWidth, h:el.offsetHeight }; }
+function hit(a, b) { return a.x < b.x + b.w && a.x + a.w > b.x && a.y < b.y + b.h && a.y + a.h > b.y; }
+function clampR(r, cw, ch) {
+  r.w = Math.min(r.w, cw); r.h = Math.min(r.h, ch);
+  r.x = Math.max(0, Math.min(cw - r.w, r.x)); r.y = Math.max(0, Math.min(ch - r.h, r.y));
+  return r;
+}
+function snapR(r, os, cw, ch) {
+  var T = 12, bx = null, by = null, i, c, d;
+  function tryX(a, b) { d = b - a; if (Math.abs(d) <= T && (bx === null || Math.abs(d) < Math.abs(bx))) bx = d; }
+  function tryY(a, b) { d = b - a; if (Math.abs(d) <= T && (by === null || Math.abs(d) < Math.abs(by))) by = d; }
+  tryX(r.x, 0); tryX(r.x + r.w, cw); tryY(r.y, 0); tryY(r.y + r.h, ch);
+  for (i = 0; i < os.length; i++) {
+    c = os[i];
+    tryX(r.x, c.x); tryX(r.x, c.x + c.w); tryX(r.x + r.w, c.x); tryX(r.x + r.w, c.x + c.w);
+    tryY(r.y, c.y); tryY(r.y, c.y + c.h); tryY(r.y + r.h, c.y); tryY(r.y + r.h, c.y + c.h);
+  }
+  if (bx !== null) r.x += bx;
+  if (by !== null) r.y += by;
+  return clampR(r, cw, ch);
+}
+function freeAt(r, os) { for (var i = 0; i < os.length; i++) if (hit(r, os[i])) return false; return true; }
+function freeSpot(r, o, os, cw, ch) {
+  var c = [{ x:o.x + o.w, y:r.y }, { x:r.x, y:o.y + o.h }, { x:o.x - r.w, y:r.y }, { x:r.x, y:o.y - r.h }], i, p;
+  for (i = 0; i < c.length; i++) {
+    p = clampR({ x:c[i].x, y:c[i].y, w:r.w, h:r.h }, cw, ch);
+    if (freeAt(p, os)) return p;
+  }
+  var best = null, bd = 1e12, x, y, dd;
+  for (y = 0; y <= ch - r.h; y += 10) for (x = 0; x <= cw - r.w; x += 10) {
+    p = { x:x, y:y, w:r.w, h:r.h };
+    if (freeAt(p, os)) { dd = Math.abs(x - r.x) + Math.abs(y - r.y); if (dd < bd) { bd = dd; best = p; } }
+  }
+  return best;
+}
+function winsOf(box) { return [].slice.call(box.parentNode.querySelectorAll('.win')).filter(function (o) { return o !== box; }); }
+function flash(box) { box.classList.add('flash'); setTimeout(function () { box.classList.remove('flash'); }, 600); }
+function settle(box) {
+  if (!box || !box.parentNode || box.isConnected === false) return;
+  var cv = box.parentNode, cw = cv.clientWidth, ch = cv.clientHeight, r = clampR(rectOf(box), cw, ch), os = winsOf(box).map(rectOf), moved = false, i;
+  for (i = 0; i < os.length; i++) if (hit(r, os[i])) {
+    var p = freeSpot(r, os[i], os, cw, ch);
+    if (p) { r = p; moved = true; }
+    break;
+  }
+  box.style.left = r.x + 'px'; box.style.top = r.y + 'px';
+  var w = wget(box.getAttribute('data-cv'), box.getAttribute('data-w'));
+  w.x = r.x; w.y = r.y; w.w = box.offsetWidth; w.h = box.offsetHeight;
+  if (moved) flash(box);
+}
+var dg = null;
+document.addEventListener('pointerdown', function (e) {
+  var t = e.target, box = null, h;
+  if (!t || !t.closest) return;
+  h = t.closest('.wt');
+  if (h) box = h.parentNode;
+  else { var wh = t.closest('.win.whole'); if (wh && !t.closest('button,select,input')) box = wh; }
+  if (!box) return;
+  e.preventDefault();
+  try { box.setPointerCapture(e.pointerId); } catch (x) { }
+  dg = { box:box, sx:e.clientX, sy:e.clientY, r:rectOf(box), os:winsOf(box).map(rectOf), cw:box.parentNode.clientWidth, ch:box.parentNode.clientHeight };
+  box.classList.add('dragging');
+});
+document.addEventListener('pointermove', function (e) {
+  if (dg) {
+    var r = snapR(clampR({ x:dg.r.x + e.clientX - dg.sx, y:dg.r.y + e.clientY - dg.sy, w:dg.r.w, h:dg.r.h }, dg.cw, dg.ch), dg.os, dg.cw, dg.ch);
+    dg.box.style.left = r.x + 'px'; dg.box.style.top = r.y + 'px';
+  } else if (sp) {
+    var w = Math.max(240, Math.min(sp.max, sp.w + sp.x - e.clientX));
+    sp.col.style.width = w + 'px'; sp.cw = w;
+  }
+});
+document.addEventListener('pointerup', function (e) {
+  if (dg) { var b = dg.box; b.classList.remove('dragging'); dg = null; settle(b); }
+  else if (sp) { S.cols[sp.k].w = sp.cw; sp.spl.classList.remove('drag'); sp = null; }
+  else { var wb = e.target && e.target.closest ? e.target.closest('.win') : null; if (wb) settle(wb); }
+});
+/* column splitters */
+var sp = null;
+document.addEventListener('pointerdown', function (e) {
+  var s = e.target && e.target.closest ? e.target.closest('.spl') : null;
+  if (!s) return;
+  var col = s.parentNode, cv = col.parentNode.querySelector('.canvas'), k = s.getAttribute('data-col');
+  sp = { k:k, spl:s, col:col, x:e.clientX, w:col.offsetWidth, cw:col.offsetWidth };
+  sp.max = Math.max(240, Math.min(560, sp.w + cv.offsetWidth - 360));
+  s.classList.add('drag');
+  try { s.setPointerCapture(e.pointerId); } catch (x) { }
+  e.preventDefault();
+});
+document.addEventListener('dblclick', function (e) {
+  var s = e.target && e.target.closest ? e.target.closest('.spl') : null;
+  if (!s) return;
+  S.cols[s.getAttribute('data-col')].w = DEF[s.getAttribute('data-col')];
+  render(false);
+});
+function watch() {
+  if (typeof ResizeObserver === 'undefined') return;
+  [].forEach.call(document.querySelectorAll('.win'), function (b) {
+    new ResizeObserver(function () { clearTimeout(b._t); b._t = setTimeout(function () { settle(b); }, 250); }).observe(b);
+  });
+}
+function renderCompact() {
+  var v = V(), n = ctxN(), hd = hintOf(S.tab), h = '';
+  h += deskHtml('d1', n, v, hd);
+  h += '<p class="note">Each window is its own frameless window in the desktop app: position and size are saved per window and restored next time.</p>';
+  h += '<div style="height:20px"></div>' + deskHtml('d2', n, v, hd);
+  h += '<p class="note" style="color:var(--muted)">Ghost Caption: the Copilot card fades to CTX ' + (n || 1) + ' after 20 s untouched.</p>';
+  h += '<p class="note">Windows never overlap: a window dropped over another is moved next to it.</p>';
+  h += '<p class="wlab">Dock Square and Ghost Coin</p><div class="ksmall"><div><div class="klab">Dock Square</div><div class="kbox ksq" style="height:180px">' +
+    '<div class="kh"><span style="color:var(--danger)">&#9679;</span><b>MIC + SYS</b></div><div class="kmid"><div class="ktm">21:40</div>' + cBadge(n) + '</div></div></div>' +
+    '<div class="gx"><div class="klab">Ghost Coin</div><div class="kcoin"><div><span style="color:var(--danger)">&#9679;</span> 21:40</div>' + cBadge(n) + '</div></div></div>';
+  h += '<p class="note">Compact windows show only the last exchange; the full chat is in the ASSISTANT column of the full window.</p>';
+  var c = $('compactCard'); c.innerHTML = h; c.className = 'card' + (S.layout === 'compact' ? ' hl' : '');
+  watch();
+}
+
+/* ---------- render ---------- */
+function sync() {
+  document.querySelectorAll('.seg button[data-act]').forEach(function (b) {
+    var p = b.getAttribute('data-act').split(':');
+    b.setAttribute('aria-pressed', String(S[p[0]] === p[1]));
+  });
+  document.documentElement.setAttribute('data-theme', S.theme);
+}
+function render(stick) {
+  var old = document.getElementById('apbody'), top = old ? old.scrollTop : 0;
+  var ae = document.activeElement, keep = ae && ae.getAttribute && ae.getAttribute('data-in');
+  var ss = 0; if (keep) ss = ae.selectionStart;
+  renderFrame(); renderCompact(); sync();
+  var b = document.getElementById('apbody');
+  if (b) b.scrollTop = stick ? b.scrollHeight : top;
+  if (S.focus || keep) {
+    var t = document.querySelector('[data-in]');
+    if (t && !t.disabled) { t.focus(); try { var l = S.focus ? t.value.length : ss; t.setSelectionRange(l, l); } catch (x) { } }
+    S.focus = false;
+  }
+}
+
+/* ---------- actions ---------- */
+function send() {
+  var v = V();
+  if (inputOff(v) || streaming()) return;
+  var t = S.draft.replace(/^\s+|\s+$/g, ''); if (!t) return;
+  var c = chat(), m;
+  c.push({ id:'u' + (++S.n), r:'u', t:clk(), p:[t] });
+  m = { id:'k' + S.n, r:'c', t:clk(), chips:[{ t:'Searching project notes…', prog:1 }], p:[''], streaming:true };
+  c.push(m); S.draft = '';
+  S.tmr = setTimeout(function () {
+    m.streaming = false; m.chips = ['Searched project notes'];
+    m.p = ['Принял. Здесь Claude отвечает по заметкам проекта и расшифровке последних минут.']; m.item = 'Уточнить: ' + t;
+    render(true);
+  }, 900);
+}
+function findMsg(id) { var c = chat(); for (var i = 0; i < c.length; i++) if (c[i].id === id) return c[i]; return null; }
+function onAct(a) {
+  var i = a.indexOf(':'), k = i < 0 ? a : a.slice(0, i), v = i < 0 ? '' : a.slice(i + 1), stick = false, m;
+  if (k === 'theme') S.theme = v;
+  else if (k === 'state') { setState(v); showCol('as'); showCol('cp'); stick = true; }
+  else if (k === 'layout') { S.layout = v; if (v === 'compact') setTimeout(function () { $('compact').scrollIntoView(); }, 0); }
+  else if (k === 'collapse') S.cols[v].col = true;
+  else if (k === 'expand') S.cols[v].col = false;
+  else if (k === 'hide') S.cols[v].show = false;
+  else if (k === 'tog') { toggleCol(v); stick = true; }
+  else if (a === 'badge') { showCol('cp'); }
+  else if (a === 'badgeC') { S.layout = 'full'; showCol('cp'); setTimeout(function () { $('live').scrollIntoView(); }, 0); }
+  else if (k === 'wtog') { var q = v.split(':'); var w = wget(q[0], q[1]); w.hide = !w.hide; }
+  else if (k === 'tab') { S.tab = v; S.picker = false; stick = true; }
+  else if (k === 'tclose') {
+    S.tabs = S.tabs.filter(function (t) { return t.n !== v; }); delete S.chats[v];
+    if (S.tab === v) S.tab = S.tabs.length ? S.tabs[0].n : '';
+    stick = true;
+  }
+  else if (a === 'plus') S.picker = !S.picker;
+  else if (k === 'pick') { S.tabs.push({ n:v, m:'idle' }); S.tab = v; S.picker = false; stick = true; }
+  else if (a === 'openfs') toast('Opens a folder dialog (mockup)');
+  else if (a === 'route') toast('Opens ai-assistants in August (mockup: no navigation)');
+  else if (a === 'hask' || a === 'cask') {
+    var hd = HINTS[S.tab]; if (hd) S.draft = hd.ask; S.focus = true; showCol('as');
+    if (a === 'cask') toast('Question placed in the Assistant window input (mockup)');
+  }
+  else if (a === 'dismiss') S.hd[S.tab] = true;
+  else if (a === 'undo') S.hd[S.tab] = false;
+  else if (k === 'ai') { m = findMsg(v); if (m && !dup(m)) { S.items.push({ t:m.item, o:'Me', ai:1 }); S.act[v] = 1; } }
+  else if (k === 'task') {
+    var v0 = V(), mm = findMsg(v);
+    if (v0 === 'praxis' || v0 === 'budget' || v0 === 'crash') S.task[v] = v0 === 'praxis' ? 'dp' : 'dc';
+    else {
+      S.task[v] = 'busy';
+      var tk = S.task;
+      setTimeout(function () {
+        if (S.task !== tk) return;
+        tk[v] = 'done';
+        if (mm) mm.chips = (mm.chips || []).concat(['Created task AUG-200']);
+        render(false);
+      }, 1000);
+    }
+  }
+  else if (k === 'copy') toast('Copied');
+  else if (a === 'again') {
+    var c = chat(); S.chats[S.tab] = c.filter(function (x) { return x.r !== 'noans'; });
+    S.chats[S.tab].push({ id:'a3', r:'c', t:'00:22:21', chips:['Searched project notes'], p:['Логин в Claude на Mac проверяете вы: «Давай я возьму, мне как раз нужен мак до пятницы» (00:21:24).'], item:'Проверить логин Claude на Mac до пятницы' });
+    stick = true;
+  }
+  else if (a === 'stop') {
+    clearTimeout(S.tmr); var cc = chat(), l = cc[cc.length - 1];
+    if (l && l.streaming) { l.streaming = false; l.stopped = true; l.chips = (l.chips || []).filter(function (x) { return typeof x === 'string'; }); if (!l.p[0]) l.p = ['—']; }
+  }
+  else if (a === 'stopsess') { var tb = curTab(); if (tb) tb.m = 'idle'; toast('Session stopped; the next question resumes the conversation'); }
+  else if (a === 'recheck') toast('Checking Claude Code… (mockup)');
+  else if (a === 'settings') toast('Opens Settings → AI assistants (mockup)');
+  else if (a === 'send') { send(); stick = true; }
+  render(stick);
+}
+document.addEventListener('click', function (e) {
+  var el = e.target.closest ? e.target.closest('[data-act]') : null;
+  if (!el || el.disabled) {
+    if (S.picker && !(e.target.closest && e.target.closest('.tabrow'))) { S.picker = false; render(false); }
+    return;
+  }
+  onAct(el.getAttribute('data-act'));
+});
+document.addEventListener('change', function (e) {
+  var k = e.target.getAttribute && e.target.getAttribute('data-sel');
+  if (!k) return;
+  if (k === 'ctab') { S.tab = e.target.value; render(true); return; }
+  S[k] = e.target.value; render(false);
+});
+document.addEventListener('input', function (e) {
+  var t = e.target;
+  if (t.getAttribute && (t.getAttribute('data-in') || t.getAttribute('data-cin'))) S.draft = t.value;
+});
+document.addEventListener('keydown', function (e) {
+  var t = e.target, g = t.getAttribute && (t.getAttribute('data-in') || t.getAttribute('data-cin'));
+  if (g && e.key === 'Enter' && !e.shiftKey) { e.preventDefault(); S.draft = t.value; send(); render(true); if (t.getAttribute('data-in')) S.focus = false; }
+  else if (e.key === 'Escape' && S.picker) { S.picker = false; render(false); }
+  else if ((e.ctrlKey || e.metaKey) && (e.key === '3' || e.key === '4')) { e.preventDefault(); toggleCol(e.key === '3' ? 'as' : 'cp'); render(true); }
+});
+(function () {
+  S.theme = window.matchMedia && matchMedia('(prefers-color-scheme: dark)').matches ? 'dark' : 'light';
+  setState('one'); render(true);
+})();
+</script>
+</body>
+</html>

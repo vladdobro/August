@@ -7,9 +7,11 @@
 // pipeline already captured; this class only taps them, it never touches
 // the tracks used for the normal recording/upload path.
 // AUG-113: when the system track is a server capture, start() receives its captureId; the client then sends an attach-capture control frame instead of tapping a system MediaStream, so only mic chunks travel over the socket.
+// AUG-199: assistant-* frames go to onAssistant; assistantOpen/Ask/Task/Stop send them; onSocketOpen fires once the socket is ready so the assistant tabs can be (re)opened.
+// AUG-200: startMeeting() opens a control-only socket (meetingOnly action-items-init, no audio) for a recording without Live Text.
 // AUG-165: start() also receives a liveKey (UUID per recording) and the participant names; an action-items-init frame joins the server-side action-items store, action-items frames come back, and edits/deletes/participant names go out as control frames.
 
-import type { ActionItem, Participants } from '../types';
+import type { ActionItem, AiModel, AssistantServerFrame, CopilotMode, CopilotServerFrame, Participants } from '../types';
 
 export type Speaker = 'Me' | 'Them';
 export type LiveStatus = 'connecting' | 'listening' | 'paused' | 'interrupted' | 'stopped';
@@ -31,6 +33,7 @@ const PROCESSOR_BUFFER_SIZE = 4096;
 export interface LiveActionItemsState {
   enabled: boolean;
   groqText: boolean; // AUG-190: Online text (Groq) consent gate is active
+  manual: boolean; // AUG-200: meeting-only socket, items are not collected automatically
   participants: Participants;
   items: ActionItem[];
 }
@@ -39,6 +42,9 @@ interface LiveTranscriptionCallbacks {
   onTranscript: (speaker: Speaker, text: string, id?: string) => void;
   onCorrection?: (id: string, text: string) => void;
   onActionItems?: (state: LiveActionItemsState) => void;
+  onAssistant?: (frame: AssistantServerFrame) => void;
+  onCopilot?: (frame: CopilotServerFrame) => void; // AUG-197
+  onSocketOpen?: () => void;
   onStatusChange: (status: LiveStatus) => void;
   onError: (message: string) => void;
   onWarning: (message: string) => void;
@@ -160,10 +166,17 @@ export class LiveTranscriptionClient {
   private captureId: string | null = null;
   private liveKey: string | null = null;
   private participants: Participants | null = null;
+  private meetingOnly = false;
   private callbacks: LiveTranscriptionCallbacks;
 
   constructor(callbacks: LiveTranscriptionCallbacks) {
     this.callbacks = callbacks;
+  }
+
+  /// AUG-200: control-only socket for a recording without Live Text: joins the action-items store and the meeting assistant, sends no audio.
+  startMeeting(liveKey: string, participants: Participants | null): void {
+    this.meetingOnly = true;
+    this.start(null, null, 'auto', 'local', null, liveKey, participants);
   }
 
   start(micStream: MediaStream | null, systemStream: MediaStream | null, language: string, engine: LiveEngine = 'local', captureId: string | null = null, liveKey: string | null = null, participants: Participants | null = null): void {
@@ -184,6 +197,12 @@ export class LiveTranscriptionClient {
 
     ws.onopen = () => {
       if (this.stopped) { ws.close(); return; }
+      if (this.meetingOnly) {
+        ws.send(JSON.stringify({ type: 'action-items-init', liveKey: this.liveKey, participants: this.participants, meetingOnly: true }));
+        this.callbacks.onStatusChange('listening');
+        this.callbacks.onSocketOpen?.();
+        return;
+      }
       if (this.engine !== 'local') {
         ws.send(JSON.stringify({ type: 'config', engine: this.engine }));
       }
@@ -194,6 +213,7 @@ export class LiveTranscriptionClient {
         ws.send(JSON.stringify({ type: 'action-items-init', liveKey: this.liveKey, participants: this.participants }));
       }
       this.callbacks.onStatusChange('listening');
+      this.callbacks.onSocketOpen?.();
       this.attachAudio(micStream, systemStream);
     };
 
@@ -209,9 +229,14 @@ export class LiveTranscriptionClient {
           this.callbacks.onActionItems?.({
             enabled: msg.enabled === true,
             groqText: msg.groqText === true,
+            manual: msg.manual === true,
             participants: { me: String(msg.participants?.me ?? ''), them: String(msg.participants?.them ?? '') },
             items: msg.items,
           });
+        } else if (typeof msg.type === 'string' && msg.type.startsWith('assistant-')) {
+          this.callbacks.onAssistant?.(msg as AssistantServerFrame);
+        } else if (typeof msg.type === 'string' && msg.type.startsWith('copilot-')) {
+          this.callbacks.onCopilot?.(msg as CopilotServerFrame);
         } else if (msg.type === 'error') {
           this.callbacks.onError(msg.message || 'Live transcription error');
           this.callbacks.onStatusChange('interrupted');
@@ -230,7 +255,7 @@ export class LiveTranscriptionClient {
       }
     };
 
-    if (!micStream || micStream.getAudioTracks().length === 0) {
+    if (!this.meetingOnly && (!micStream || micStream.getAudioTracks().length === 0)) {
       this.callbacks.onMicUnavailable();
     }
   }
@@ -322,10 +347,48 @@ export class LiveTranscriptionClient {
     }
   }
 
-  addActionItem(text: string, owner?: string): void {
+  addActionItem(text: string, owner?: string, assistant?: { projectPath: string; messageId?: string }): void {
     if (this.ws?.readyState === WebSocket.OPEN) {
-      this.ws.send(JSON.stringify({ type: 'action-item-add', text, owner }));
+      this.ws.send(JSON.stringify(assistant ? { type: 'action-item-add', text, owner, assistant } : { type: 'action-item-add', text, owner }));
     }
+  }
+
+  // AUG-199: meeting assistant frames (same OPEN-check pattern).
+  assistantOpen(projectPath: string): void {
+    if (this.ws?.readyState === WebSocket.OPEN) this.ws.send(JSON.stringify({ type: 'assistant-open', projectPath }));
+  }
+
+  assistantAsk(projectPath: string, text: string, askId: string): void {
+    if (this.ws?.readyState === WebSocket.OPEN) this.ws.send(JSON.stringify({ type: 'assistant-ask', projectPath, text, askId }));
+  }
+
+  assistantTask(projectPath: string, askId: string, messageId: string): void {
+    if (this.ws?.readyState === WebSocket.OPEN) this.ws.send(JSON.stringify({ type: 'assistant-task', projectPath, askId, messageId }));
+  }
+
+  // AUG-197: meeting copilot frames.
+  copilotOpen(projectPath: string): void {
+    if (this.ws?.readyState === WebSocket.OPEN) this.ws.send(JSON.stringify({ type: 'copilot-open', projectPath }));
+  }
+
+  copilotClose(projectPath: string): void {
+    if (this.ws?.readyState === WebSocket.OPEN) this.ws.send(JSON.stringify({ type: 'copilot-close', projectPath }));
+  }
+
+  copilotDismiss(projectPath: string, hintId: string, undo?: boolean): void {
+    if (this.ws?.readyState === WebSocket.OPEN) this.ws.send(JSON.stringify(undo ? { type: 'copilot-dismiss', projectPath, hintId, undo: true } : { type: 'copilot-dismiss', projectPath, hintId }));
+  }
+
+  copilotMode(mode?: CopilotMode, model?: AiModel): void {
+    if (this.ws?.readyState !== WebSocket.OPEN) return;
+    const frame: { type: 'copilot-mode'; mode?: CopilotMode; model?: AiModel } = { type: 'copilot-mode' };
+    if (mode) frame.mode = mode;
+    if (model) frame.model = model;
+    this.ws.send(JSON.stringify(frame));
+  }
+
+  assistantStop(projectPath: string, interrupt?: boolean): void {
+    if (this.ws?.readyState === WebSocket.OPEN) this.ws.send(JSON.stringify(interrupt ? { type: 'assistant-stop', projectPath, interrupt: true } : { type: 'assistant-stop', projectPath }));
   }
 
   deleteActionItem(id: string): void {

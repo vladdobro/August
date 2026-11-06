@@ -1,9 +1,15 @@
+import fs from 'node:fs';
+import os from 'node:os';
+import path from 'node:path';
 import { afterEach, describe, expect, it, vi } from 'vitest';
 
 import { GroqTextSkipError } from './groqText.js';
 import {
   ACTION_LOCAL_MAX_CHARS,
+  addAssistantItemToList,
+  sanitizeActionItemsFile,
   LiveActionItemsExtractor,
+  LiveActionItemsStore,
   liveLocalSlot,
   localFallbackIntervalMs,
   localFallbackTrigger,
@@ -226,5 +232,110 @@ describe('local fallback (AUG-168)', () => {
     await env.extractor.tick();
     expect(env.withLocal).toHaveBeenCalledTimes(4);
     expect(logs().some((l) => l.includes('local fallback skipped: interval'))).toBe(false);
+  });
+});
+
+describe('addAssistantItemToList (AUG-199)', () => {
+  const NOW = new Date('2026-11-06T10:00:00.000Z');
+
+  it('creates a manual, locked item from Me with the assistant field', () => {
+    const items: import('../types.js').ActionItem[] = [];
+    const r = addAssistantItemToList(items, { text: ' Check the mac build by Friday ', owner: 'Them', projectPath: 'D:\proj' }, NOW);
+    expect(r.changed).toBe(true);
+    expect(r.result?.status).toBe('created');
+    expect(items).toHaveLength(1);
+    expect(items[0]).toMatchObject({
+      id: r.result?.id,
+      text: 'Check the mac build by Friday',
+      owner: 'Them',
+      source: 'Me',
+      manual: true,
+      locked: { text: true, owner: true },
+      assistant: { projectPath: 'D:\proj', at: NOW.toISOString() },
+    });
+    expect(items[0].praxis).toBeUndefined();
+  });
+
+  it('owner defaults to Me for anything else', () => {
+    const items: import('../types.js').ActionItem[] = [];
+    addAssistantItemToList(items, { text: 'Do it', owner: 'Anna' }, NOW);
+    expect(items[0].owner).toBe('Me');
+  });
+
+  it('detects a duplicate by exact text', () => {
+    const items: import('../types.js').ActionItem[] = [];
+    const first = addAssistantItemToList(items, { text: 'Send the report.' }, NOW);
+    const second = addAssistantItemToList(items, { text: 'send the report' }, NOW);
+    expect(second.result).toEqual({ status: 'duplicate', id: first.result!.id });
+    expect(second.changed).toBe(false);
+    expect(items).toHaveLength(1);
+  });
+
+  it('detects a duplicate by similar wording', () => {
+    const items: import('../types.js').ActionItem[] = [];
+    const first = addAssistantItemToList(items, { text: 'Update the assistant panel mockup to 420 px' }, NOW);
+    const second = addAssistantItemToList(items, { text: 'Update assistant panel mockup to 420 px width' }, NOW);
+    expect(second.result?.status).toBe('duplicate');
+    expect(second.result?.id).toBe(first.result!.id);
+    expect(items).toHaveLength(1);
+  });
+
+  it('praxisTaskId marks a duplicate item and a created one', () => {
+    const items: import('../types.js').ActionItem[] = [];
+    const made = addAssistantItemToList(items, { text: 'Write the release notes', praxisTaskId: 'AUG-5-abc123', projectPath: 'P' }, NOW);
+    expect(items[0].praxis).toEqual({ taskId: 'AUG-5-abc123', projectPath: 'P', sentAt: NOW.toISOString() });
+    expect(made.result?.status).toBe('created');
+
+    const other: import('../types.js').ActionItem[] = [];
+    addAssistantItemToList(other, { text: 'Write the release notes' }, NOW);
+    const dup = addAssistantItemToList(other, { text: 'Write the release notes', praxisTaskId: 'AUG-6-zzzzzz', projectPath: 'Q' }, NOW);
+    expect(dup.result?.status).toBe('duplicate');
+    expect(dup.changed).toBe(true);
+    expect(other[0].praxis).toEqual({ taskId: 'AUG-6-zzzzzz', projectPath: 'Q', sentAt: NOW.toISOString() });
+  });
+
+  it('rejects invalid text', () => {
+    const items: import('../types.js').ActionItem[] = [];
+    expect(addAssistantItemToList(items, { text: '   ' })).toEqual({ result: null, changed: false });
+    expect(addAssistantItemToList(items, { text: 'x'.repeat(301) })).toEqual({ result: null, changed: false });
+    expect(addAssistantItemToList(items, { text: 42 })).toEqual({ result: null, changed: false });
+    expect(items).toHaveLength(0);
+  });
+
+  it('assistant survives the tolerant reader', () => {
+    const file = sanitizeActionItemsFile({
+      items: [
+        { id: 'a1', text: 'One', owner: 'Me', source: 'Me', createdAt: 'x', assistant: { projectPath: 'P', at: '2026-11-06T10:00:00.000Z' } },
+        { id: 'a2', text: 'Two', assistant: { projectPath: 5 } },
+      ],
+    });
+    expect(file.items[0].assistant).toEqual({ projectPath: 'P', at: '2026-11-06T10:00:00.000Z' });
+    expect(file.items[1].assistant).toBeUndefined();
+  });
+});
+
+describe('meeting-only store (AUG-200)', () => {
+  it('holds manual and assistant items, notifies and persists', async () => {
+    const tmpDir = fs.mkdtempSync(path.join(os.tmpdir(), 'aug200-'));
+    const target = path.join(tmpDir, 'k.json');
+    const store = new LiveActionItemsStore('k', { version: 1, participants: { me: '', them: '' }, items: [], updatedAt: new Date().toISOString() }, target);
+    try {
+      const seen: number[] = [];
+      store.subscribe((f) => seen.push(f.items.length));
+      const manual = store.addManualItem({ text: 'Book the room', owner: 'Them' });
+      expect(manual?.manual).toBe(true);
+      expect(manual?.locked).toEqual({ text: true, owner: true });
+      const r = store.addAssistantItem({ text: 'Send the deck', projectPath: 'C:/p' });
+      expect(r?.status).toBe('created');
+      expect(store.file.items).toHaveLength(2);
+      expect(store.file.items[1].assistant).toBeDefined();
+      expect(seen[seen.length - 1]).toBe(2);
+      await store.flush();
+      const onDisk = JSON.parse(fs.readFileSync(target, 'utf-8'));
+      expect(onDisk.items).toHaveLength(2);
+    } finally {
+      await store.flush();
+      fs.rmSync(tmpDir, { recursive: true, force: true });
+    }
   });
 });

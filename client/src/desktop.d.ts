@@ -42,6 +42,8 @@ export type DesktopCompactEvent =
   | { type: 'strip-width'; width: number }
   | { type: 'caption-height'; height: number }
   | { type: 'caption-width'; width: number };
+export type DesktopCompactPanel = 'copilot' | 'assistant';
+export interface DesktopCompactPanels { copilot: boolean; assistant: boolean; }
 export type DesktopCompactIssue = 'interrupted' | 'capture-lost';
 
 // Mirror of UpdateState in electron/src/updater.ts (the state machine lives only in main). 'error' renders like 'idle'.
@@ -79,6 +81,10 @@ export interface AugustDesktopApi {
   checkForUpdates?(): void;
   installUpdate?(): void;
   onUpdateState?(cb: (state: DesktopUpdateState) => void): () => void;
+  // AUG-199: compact Copilot / Assistant windows. setCompactPanel shows or hides one (compact mode only; main window,
+  // ghost or the panel itself); onCompactPanels reports which are open.
+  setCompactPanel?(kind: DesktopCompactPanel, visible: boolean): void;
+  onCompactPanels?(cb: (state: DesktopCompactPanels) => void): () => void;
   // Native notification, shown by main only while the main window is hidden.
   reportCompactIssue?(issue: DesktopCompactIssue): void;
   // Ghost window only: click-through toggle (caption), size (coin hover), drag driven by the cursor position in main.

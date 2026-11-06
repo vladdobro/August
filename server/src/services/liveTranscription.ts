@@ -21,6 +21,10 @@
 // LiveTextCorrector pushes { type: 'correction', id, text } frames for settled
 // chunks; still nothing is persisted.
 //
+// AUG-199: with the Active session on (or a copilot mode on) the connection also fills a per-liveKey LiveFeed (in memory only) and, with the session on, joins the meeting assistant (assistant-* frames, services/assistantSession.ts).
+//
+// AUG-200: action-items-init with meetingOnly (a recording without Live Text) joins only the action-items store and the meeting assistant: no audio, capture, corrector, extractor, LiveFeed or copilot.
+//
 // AUG-165: with an action-items-init frame (liveKey per recording) the connection joins that recording's action-items store; when online text correction is active a LiveActionItemsExtractor collects items. Items and participants are persisted (pending file -> session folder on upload); live text still is not. AUG-168: the extractor knows the live engine to space local fallback calls (120 s on local whisper).
 
 import { randomUUID } from 'node:crypto';
@@ -38,6 +42,11 @@ import { LivePcmFeeder, parseLiveControlFrame, SAMPLE_RATE } from './liveChunkin
 import { liveGroqTextFeatures } from './groqText.js';
 import { LiveTextCorrector } from './liveTextCorrection.js';
 import { openLiveActionItems, releaseLiveActionItems, LiveActionItemsExtractor, type LiveActionItemsStore } from './liveActionItems.js';
+import { acquireLiveFeed, releaseLiveFeed, type LiveFeed } from './liveFeed.js';
+import { attachAssistantSocket, type AssistantSocketHandle } from './assistantSession.js';
+import { attachCopilotSocket, type CopilotSocketHandle } from './copilotEngine.js';
+import { AI_SESSION_CONSENT_VERSION, readConsent } from './assistantState.js';
+import { readPreferences } from './preferencesStore.js';
 import type { ActionItemsFile } from '../types.js';
 
 type Speaker = 'Me' | 'Them';
@@ -172,19 +181,65 @@ export function setupLiveTranscription(server: HttpServer): void {
     let groqTextActive: boolean | null = null;
     let liveItemsOn = false;
     let actionKey: string | null = null;
+    let meetingOnly = false;
     let actionStore: LiveActionItemsStore | null = null;
     let actionExtractor: LiveActionItemsExtractor | null = null;
     let unsubscribeActions: (() => void) | null = null;
-    const sendActionItems = (file: ActionItemsFile) => send({ type: 'action-items', enabled: liveItemsOn, groqText: groqTextActive === true, participants: file.participants, items: file.items });
+    const sendActionItems = (file: ActionItemsFile) => send({ type: 'action-items', enabled: liveItemsOn && !meetingOnly, groqText: groqTextActive === true, manual: meetingOnly, participants: file.participants, items: file.items });
     const maybeStartExtractor = () => {
-      if (stopped || !actionStore || !liveItemsOn || actionExtractor) return;
+      if (stopped || meetingOnly || !actionStore || !liveItemsOn || actionExtractor) return;
       actionExtractor = new LiveActionItemsExtractor(actionStore, undefined, { liveEngine: () => engine });
       actionExtractor.start();
+    };
+    // AUG-199: live feed + meeting assistant. Default off: no feed, no assistant, no child unless the user turned the session on (consent current).
+    let feed: LiveFeed | null = null;
+    let assistant: AssistantSocketHandle | null = null;
+    let assistantInit: Promise<void> | null = null;
+    let copilot: CopilotSocketHandle | null = null;
+    const setupAssistant = async () => {
+      if (stopped || !actionKey) return;
+      const prefs = await readPreferences();
+      const consent = readConsent(prefs.aiConsent);
+      const sessionOn = prefs.aiSessionEnabled === true && !!consent && consent.version >= AI_SESSION_CONSENT_VERSION;
+      const copilotOn = prefs.aiCopilotMode === 'local' || prefs.aiCopilotMode === 'claude' || prefs.aiCopilotMode === 'always';
+      if (stopped || !actionKey) return;
+      if (!meetingOnly && (sessionOn || copilotOn) && !feed) feed = acquireLiveFeed(actionKey);
+      if (sessionOn && !assistant) assistant = attachAssistantSocket(actionKey, send);
+      if (!meetingOnly && copilotOn && !copilot) copilot = attachCopilotSocket(actionKey, send);
+    };
+    const handleAssistantFrame = async (frame: Parameters<AssistantSocketHandle['handleFrame']>[0]) => {
+      if (!assistant) {
+        await assistantInit;
+        if (!assistant) {
+          assistantInit = setupAssistant().catch(() => {});
+          await assistantInit;
+        }
+      }
+      if (assistant) assistant.handleFrame(frame);
+      else send({ type: 'assistant-status', projectPath: frame.projectPath, state: 'session-off', praxis: false, spentUsd: 0, limitUsd: 0 });
+    };
+    // AUG-197: meeting copilot frames. A mode switched on mid-meeting re-reads the preferences (and acquires the feed) here.
+    const handleCopilotFrame = async (frame: Parameters<CopilotSocketHandle['handleFrame']>[0]) => {
+      if (!copilot) {
+        await assistantInit;
+        if (!copilot) {
+          assistantInit = setupAssistant().catch(() => {});
+          await assistantInit;
+        }
+      }
+      if (copilot) copilot.handleFrame(frame);
+      else if (frame.type === 'copilot-open') {
+        send({ type: 'copilot-status', projectPath: frame.projectPath, mode: 'off', savedMode: 'off', model: 'sonnet', state: 'paused', counts: { shown: 0, silent: 0, dismissed: 0 } });
+      }
     };
     const stopActionItems = () => {
       actionExtractor?.stop(); actionExtractor = null;
       unsubscribeActions?.(); unsubscribeActions = null;
       if (actionStore) { releaseLiveActionItems(actionStore.liveKey); actionStore = null; }
+      assistant?.detach(); assistant = null;
+      copilot?.detach(); copilot = null;
+      if (feed && actionKey) releaseLiveFeed(actionKey);
+      feed = null;
     };
 
     let corrector: LiveTextCorrector | null = null;
@@ -192,8 +247,8 @@ export function setupLiveTranscription(server: HttpServer): void {
       groqTextActive = features.active;
       liveItemsOn = features.actionItems;
       if (features.active) console.log(`[live] Groq text: line fixes ${features.correction ? 'on' : 'off'}, action items ${features.actionItems ? 'on' : 'off'}`);
-      if (features.correction && !stopped) {
-        corrector = new LiveTextCorrector((id, text) => { send({ type: 'correction', id, text }); actionExtractor?.noteCorrection(id, text); }, undefined, undefined, () => actionExtractor?.cloudCallPending === true);
+      if (features.correction && !stopped && !meetingOnly) {
+        corrector = new LiveTextCorrector((id, text) => { send({ type: 'correction', id, text }); actionExtractor?.noteCorrection(id, text); feed?.correct(id, text); }, undefined, undefined, () => actionExtractor?.cloudCallPending === true);
         corrector.start();
       }
       maybeStartExtractor();
@@ -262,6 +317,7 @@ export function setupLiveTranscription(server: HttpServer): void {
               send({ type: 'transcript', id, speaker: chunk.speaker, text: cleaned });
               corrector?.add(id, cleaned);
               actionExtractor?.addTranscript(id, chunk.speaker, cleaned);
+              feed?.push({ id, speaker: chunk.speaker, text: cleaned });
             }
           }
         } catch (err) {
@@ -315,6 +371,7 @@ export function setupLiveTranscription(server: HttpServer): void {
       if (stopped) return;
 
       if (isBinary && Buffer.isBuffer(data)) {
+        if (meetingOnly) return;
         try {
           const chunk = decodeChunkMessage(data);
           if (chunk.samples.length > 0) {
@@ -345,20 +402,24 @@ export function setupLiveTranscription(server: HttpServer): void {
           if (queue.length > 0) void processQueue();
           break;
         case 'config':
+          if (meetingOnly) break;
           engine = frame.engine;
           break;
         case 'attach-capture':
+          if (meetingOnly) break;
           attachCapture(frame.captureId, frame.language);
           break;
         case 'action-items-init':
           if (actionKey) break; // one store per connection
           actionKey = frame.liveKey;
+          if (frame.meetingOnly) { meetingOnly = true; queue.length = 0; stopCorrector(); detachCapture(); }
           void openLiveActionItems(frame.liveKey).then((store) => {
             if (stopped) { releaseLiveActionItems(frame.liveKey); return; }
             actionStore = store;
             if (frame.participants) store.setParticipants(frame.participants);
             unsubscribeActions = store.subscribe(sendActionItems);
             maybeStartExtractor();
+            assistantInit = setupAssistant().catch(() => {});
           }).catch((err) => console.warn(`[actionItems] could not open store: ${(err as Error).message}`));
           break;
         case 'participants':
@@ -371,7 +432,24 @@ export function setupLiveTranscription(server: HttpServer): void {
           actionStore?.removeItem(frame.id);
           break;
         case 'action-item-add':
-          actionStore?.addManualItem({ text: frame.text, owner: frame.owner });
+          if (frame.assistant) {
+            const r = actionStore?.addAssistantItem({ text: frame.text, owner: frame.owner, projectPath: frame.assistant.projectPath });
+            if (r) send({ type: 'assistant-item', projectPath: frame.assistant.projectPath, messageId: frame.assistant.messageId ?? '', status: r.status, id: r.id });
+          } else {
+            actionStore?.addManualItem({ text: frame.text, owner: frame.owner });
+          }
+          break;
+        case 'assistant-open':
+        case 'assistant-ask':
+        case 'assistant-task':
+        case 'assistant-stop':
+          void handleAssistantFrame(frame);
+          break;
+        case 'copilot-open':
+        case 'copilot-close':
+        case 'copilot-dismiss':
+        case 'copilot-mode':
+          void handleCopilotFrame(frame);
           break;
       }
     });

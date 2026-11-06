@@ -15,6 +15,8 @@ import preferencesRouter from './routes/preferences.js';
 import captureRouter from './routes/capture.js';
 import llmRouter from './routes/llm.js';
 import groqTextRouter from './routes/groqText.js';
+import assistantRouter from './routes/assistant.js';
+import liveRouter from './routes/live.js';
 import { setupLiveTranscription } from './services/liveTranscription.js';
 import { checkFfmpegAvailable, FFMPEG_MISSING_MESSAGE, fileExists, probeGpuBackend } from './services/whisper.js';
 import { gpuState } from './services/gpuBackend.js';
@@ -24,6 +26,8 @@ import { cleanupOrphanedCaptures, detectCapabilities } from './services/systemCa
 import { migrateLegacyPreferences } from './services/preferencesStore.js';
 import { ensureLlmInstalled } from './services/llmInstaller.js';
 import { cleanupOrphanedLlmServer, killLlmServerSync, stopLlmServer } from './services/llmServer.js';
+import { killAllAssistantsSync, setAssistantServerPort, stopAllAssistants } from './services/assistantSession.js';
+import { killAllCopilotsSync, stopAllCopilots } from './services/copilotEngine.js';
 
 const __filename = fileURLToPath(import.meta.url);
 const __dirname = path.dirname(__filename);
@@ -84,6 +88,8 @@ export async function startServer(options: StartServerOptions = {}): Promise<Run
   app.use('/api/capture', captureRouter);
   app.use('/api/llm', llmRouter);
   app.use('/api/groq-text', groqTextRouter);
+  app.use('/api/assistant', assistantRouter);
+  app.use('/api/live', liveRouter);
 
   const isDev = process.env.NODE_ENV !== 'production';
 
@@ -145,13 +151,16 @@ export async function startServer(options: StartServerOptions = {}): Promise<Run
   console.log('  Local LLM: GET /api/llm/status (opt-in, off until enabled in Settings)');
   console.log(`  Groq API: ${config.groqApiKey ? 'configured' : 'not configured (live mode uses local whisper only)'}`);
 
+  setAssistantServerPort(port); // AUG-199: the assistant's MCP url needs the real port
   void detectCapabilities();
   process.once('exit', killLlmServerSync);
+  process.once('exit', killAllAssistantsSync);
+  process.once('exit', killAllCopilotsSync);
 
   return {
     port,
     httpServer,
-    close: () => stopLlmServer('server closing').catch(() => {}).then(
+    close: () => Promise.all([stopAllAssistants(), stopAllCopilots()]).catch(() => {}).then(() => stopLlmServer('server closing')).catch(() => {}).then(
       () => new Promise<void>((resolve, reject) => httpServer.close((err) => (err ? reject(err) : resolve()))),
     ),
   };

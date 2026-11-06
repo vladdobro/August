@@ -24,7 +24,8 @@ export interface GhostState {
   actionItems: ActionItem[]; // AUG-165
   participants: Participants;
   actionEnabled: boolean | null;
-  actionOffReason: 'groq' | 'items' | null;
+  actionOffReason: 'groq' | 'items' | 'manual' | null;
+  meeting: boolean; // AUG-200
   micMuted: boolean; // AUG-181
   mutedHint: boolean; // AUG-181
   skipClearConfirmation: boolean;

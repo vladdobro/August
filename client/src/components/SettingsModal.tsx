@@ -11,6 +11,7 @@ import SettingsDropdown from './SettingsDropdown';
 import PraxisProjectsPage from './PraxisProjectsPage';
 import GroqKeyModal from './GroqKeyModal';
 import GroqTextConsentModal from './GroqTextConsentModal';
+import AiAssistantsTab from './AiAssistantsTab';
 
 interface SettingsModalProps {
   preferences: UserPreferences;
@@ -27,7 +28,7 @@ interface SettingsModalProps {
   isTranscribing: boolean;
   groqAvailable: boolean;
   onGroqKeySaved: () => void;
-  initialTab?: 'general' | 'audio' | 'transcription' | 'projects' | 'compact';
+  initialTab?: 'general' | 'audio' | 'transcription' | 'projects' | 'assistants' | 'compact';
 }
 
 const SettingsModal: React.FC<SettingsModalProps> = ({
@@ -51,7 +52,7 @@ const SettingsModal: React.FC<SettingsModalProps> = ({
   const [cudaProgress, setCudaProgress] = useState<number>(0);
   const [cudaError, setCudaError] = useState<string | null>(null);
   const [confirmingReset, setConfirmingReset] = useState(false);
-  const [tab, setTab] = useState<'general' | 'audio' | 'transcription' | 'projects' | 'compact'>(initialTab ?? 'general');
+  const [tab, setTab] = useState<'general' | 'audio' | 'transcription' | 'projects' | 'assistants' | 'compact'>(initialTab ?? 'general');
 
   // Opt-in local language model (AUG-162). Nothing is downloaded until the user confirms.
   const [llmModels, setLlmModels] = useState<LlmModelInfo[]>([]);
@@ -104,6 +105,8 @@ const SettingsModal: React.FC<SettingsModalProps> = ({
   // Opt-in online text correction via Groq (AUG-164). Off until the user accepts the consent.
   const [groqText, setGroqText] = useState<GroqTextStatus | null>(null);
   const [groqConsentOpen, setGroqConsentOpen] = useState(false);
+  const [assistantModalOpen, setAssistantModalOpen] = useState(false);
+  const [resetKey, setResetKey] = useState(0);
   const [groqKeyOpen, setGroqKeyOpen] = useState(false);
   const [groqTextBusy, setGroqTextBusy] = useState(false);
   const [groqTextError, setGroqTextError] = useState<string | null>(null);
@@ -207,11 +210,11 @@ const SettingsModal: React.FC<SettingsModalProps> = ({
 
   useEffect(() => {
     const handleEsc = (e: KeyboardEvent) => {
-      if (e.key === 'Escape' && !groqConsentOpen && !groqKeyOpen) onClose();
+      if (e.key === 'Escape' && !groqConsentOpen && !groqKeyOpen && !assistantModalOpen) onClose();
     };
     window.addEventListener('keydown', handleEsc);
     return () => window.removeEventListener('keydown', handleEsc);
-  }, [onClose, groqConsentOpen, groqKeyOpen]);
+  }, [onClose, groqConsentOpen, groqKeyOpen, assistantModalOpen]);
 
   const language = preferences.language ?? DEFAULT_PREFERENCES.language;
   const micDeviceId = preferences.micDeviceId ?? DEFAULT_PREFERENCES.micDeviceId;
@@ -270,6 +273,7 @@ const SettingsModal: React.FC<SettingsModalProps> = ({
       return;
     }
     setConfirmingReset(false);
+    setResetKey((k) => k + 1);
     onReset();
   };
 
@@ -281,9 +285,9 @@ const SettingsModal: React.FC<SettingsModalProps> = ({
           <button className="settings-close" onClick={onClose}>×</button>
         </div>
         <nav className="settings-tabs" aria-label="Settings sections">
-          {(['general', 'audio', 'transcription', 'projects', 'compact'] as const).map((t) => (
+          {(['general', 'audio', 'transcription', 'projects', 'assistants', 'compact'] as const).map((t) => (
             <button key={t} type="button" className={`settings-tab${tab === t ? ' settings-tab--active' : ''}`} onClick={() => setTab(t)}>
-              {t === 'general' ? 'General' : t === 'audio' ? 'Audio' : t === 'transcription' ? 'Transcription' : t === 'projects' ? 'Projects' : 'Compact mode'}
+              {t === 'general' ? 'General' : t === 'audio' ? 'Audio' : t === 'transcription' ? 'Transcription' : t === 'projects' ? 'Projects' : t === 'assistants' ? 'AI assistants' : 'Compact mode'}
             </button>
           ))}
         </nav>
@@ -911,6 +915,9 @@ const SettingsModal: React.FC<SettingsModalProps> = ({
             <PraxisProjectsPage preferences={preferences} onPreferenceChange={onPreferenceChange} />
           )}
 
+          {tab === 'assistants' && (
+            <AiAssistantsTab key={resetKey} preferences={preferences} onPreferenceChange={onPreferenceChange} onModalChange={setAssistantModalOpen} />
+          )}
           {tab === 'compact' && (
             <div className="settings-section compact-tab">
               {!compactSupported && (

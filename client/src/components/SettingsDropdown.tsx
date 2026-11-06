@@ -13,9 +13,10 @@ export interface SettingsDropdownProps {
   onChange: (value: string) => void;
   className?: string;
   placeholder?: string;
+  disabled?: boolean;
 }
 
-export const SettingsDropdown: React.FC<SettingsDropdownProps> = ({ value, options, onChange, className, placeholder }) => {
+export const SettingsDropdown: React.FC<SettingsDropdownProps> = ({ value, options, onChange, className, placeholder, disabled }) => {
   const [open, setOpen] = useState(false);
   const containerRef = useRef<HTMLDivElement>(null);
 
@@ -38,14 +39,15 @@ export const SettingsDropdown: React.FC<SettingsDropdownProps> = ({ value, optio
         type="button"
         className="settings-dropdown-trigger"
         title={selectedOption?.sublabel}
-        onClick={() => setOpen((prev) => !prev)}
+        disabled={disabled}
+        onClick={() => { if (!disabled) setOpen((prev) => !prev); }}
       >
         <span>{selectedOption ? selectedOption.label : (placeholder ?? value)}</span>
         <svg className="settings-dropdown-chevron" viewBox="0 0 12 12" fill="none" stroke="currentColor" strokeWidth="1.5">
           <polyline points="3 4.5 6 7.5 9 4.5" />
         </svg>
       </button>
-      {open && (
+      {open && !disabled && (
         <div className="settings-dropdown-menu">
           {options.map((option, index) => (
             <button

@@ -8,7 +8,8 @@ import { parseGhostWindowState, type GhostWindowState } from './ghostGeometry.js
 /// Main window size/position remembered between launches as <userData>/window-state.json. Kept out of
 /// desktop-settings.json because the renderer reads that file through the settings bridge.
 /// The file also holds an optional `ghost` record (AUG-187: saved Ghost Mode caption / coin placement),
-/// written by the main process; writeWindowState preserves it.
+/// written by the main process; writeWindowState preserves it. AUG-199 adds a `panels` record (saved compact
+/// Copilot / Assistant window bounds), preserved the same way.
 export interface WindowState {
   x: number;
   y: number;
@@ -50,10 +51,19 @@ export function writeWindowState(userDataDir: string, state: WindowState): void 
   try {
     const prev = readRaw(userDataDir);
     const ghost = prev ? parseGhostWindowState(prev.ghost) : {};
+    const panels = prev ? parsePanelState(prev.panels) : {};
     fs.mkdirSync(userDataDir, { recursive: true });
     fs.writeFileSync(
       path.join(userDataDir, 'window-state.json'),
-      JSON.stringify({ ...state, ...(Object.keys(ghost).length ? { ghost } : {}) }, null, 2),
+      JSON.stringify(
+        {
+          ...state,
+          ...(Object.keys(ghost).length ? { ghost } : {}),
+          ...(Object.keys(panels).length ? { panels } : {}),
+        },
+        null,
+        2,
+      ),
     );
   } catch {
     // best effort — a failed write only means the next launch uses the default size
@@ -74,6 +84,39 @@ export function writeGhostState(userDataDir: string, ghost: GhostWindowState | n
     fs.writeFileSync(path.join(userDataDir, 'window-state.json'), JSON.stringify(raw, null, 2));
   } catch {
     // best effort — a failed write only means the ghost returns to its default spot
+  }
+}
+
+export type PanelKind = 'copilot' | 'assistant';
+export type PanelState = Partial<Record<PanelKind, { x: number; y: number; width: number; height: number }>>;
+
+function parsePanelState(v: unknown): PanelState {
+  if (!v || typeof v !== 'object' || Array.isArray(v)) return {};
+  const rec = v as Record<string, unknown>;
+  const out: PanelState = {};
+  for (const kind of ['copilot', 'assistant'] as const) {
+    const r = rec[kind] as Partial<{ x: number; y: number; width: number; height: number }> | undefined;
+    if (r && [r.x, r.y, r.width, r.height].every((n) => typeof n === 'number' && Number.isFinite(n)) && r.width! > 0 && r.height! > 0) {
+      out[kind] = { x: r.x!, y: r.y!, width: r.width!, height: r.height! };
+    }
+  }
+  return out;
+}
+
+export function readPanelState(userDataDir: string): PanelState {
+  return parsePanelState(readRaw(userDataDir)?.panels);
+}
+
+/// Saves (or, with an empty record, clears) the compact panel bounds without touching the other keys.
+export function writePanelState(userDataDir: string, panels: PanelState): void {
+  try {
+    const raw = readRaw(userDataDir) ?? {};
+    if (Object.keys(panels).length === 0) delete raw.panels;
+    else raw.panels = panels;
+    fs.mkdirSync(userDataDir, { recursive: true });
+    fs.writeFileSync(path.join(userDataDir, 'window-state.json'), JSON.stringify(raw, null, 2));
+  } catch {
+    // best effort — a failed write only means the panels return to their default spots
   }
 }
 

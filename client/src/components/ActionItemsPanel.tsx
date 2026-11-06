@@ -8,7 +8,7 @@ interface ActionItemsPanelProps {
   /// Live only: false -> Online text (Groq) or Collect live action items is off, show the hint instead of an empty list; null -> not known yet.
   enabled?: boolean | null;
   /// AUG-190: why live items are off; 'items' = Groq on but Collect live action items off.
-  offReason?: 'groq' | 'items' | null;
+  offReason?: 'groq' | 'items' | 'manual' | null; // AUG-200: 'manual' = meeting-only socket (Live Text off)
   /// Live only: renders the editable Participants fields.
   onParticipantsChange?: (p: Participants) => void;
   /// AUG-165: when set, the panel offers `+ Add an item` (hand-written item).
@@ -17,10 +17,12 @@ interface ActionItemsPanelProps {
   onDelete: (id: string) => void;
   /// AUG-166: when set (live + session variants), items get checkboxes and the Praxis export bar.
   onSendToPraxis?: (ids: string[], mode: 'separate' | 'common') => void;
+  /// AUG-199: inside a LiveColumn, whose header already shows the title and count.
+  embedded?: boolean;
 }
 
 /// AUG-166: `AUG-12-ab12cd` -> `AUG-12`.
-function shortTaskId(id: string): string {
+export function shortTaskId(id: string): string {
   const m = id.match(/^(.*\d)-[a-z0-9]+$/i);
   return m ? m[1] : id;
 }
@@ -149,7 +151,7 @@ const AddItemForm: React.FC<AddItemFormProps> = ({ onAdd, onCancel }) => {
   );
 };
 
-const ActionItemsPanel: React.FC<ActionItemsPanelProps> = ({ items, participants, variant, enabled, offReason, onParticipantsChange, onAdd, onEdit, onDelete, onSendToPraxis }) => {
+const ActionItemsPanel: React.FC<ActionItemsPanelProps> = ({ items, participants, variant, enabled, offReason, onParticipantsChange, onAdd, onEdit, onDelete, onSendToPraxis, embedded }) => {
   const [adding, setAdding] = useState(false);
   const compact = variant === 'compact';
   const exportEnabled = Boolean(onSendToPraxis) && !compact;
@@ -168,7 +170,11 @@ const ActionItemsPanel: React.FC<ActionItemsPanelProps> = ({ items, participants
   });
   const addForm = onAdd && adding ? <AddItemForm onAdd={onAdd} onCancel={() => setAdding(false)} /> : null;
   const itemsOff = offReason === 'items';
-  const disabledHint = compact
+  const disabledHint = offReason === 'manual'
+    ? (compact
+      ? 'Live text off — only manual items'
+      : `Live text is off, so action items are not collected automatically.${onAdd ? ' Add them by hand or with → Action item in ASSISTANT.' : ''}`)
+    : compact
     ? (itemsOff ? 'Live items off — only manual items' : 'Groq off — only manual items')
     : itemsOff
       ? `Turn on Collect live action items in Settings → Transcription to collect action items during live recording.${onAdd ? ' You can still add items by hand.' : ''}`
@@ -180,8 +186,8 @@ const ActionItemsPanel: React.FC<ActionItemsPanelProps> = ({ items, participants
       {/* Sticky: Add stays reachable however long the list gets. */}
       <div className="action-items-top">
         <div className="action-items-header">
-          <span className="action-items-title">Action items</span>
-          <span className="action-items-count">{items.length}</span>
+          {!embedded && <span className="action-items-title">Action items</span>}
+          {!embedded && <span className="action-items-count">{items.length}</span>}
           {onAdd && !adding && (
             <button type="button" className={`action-items-add${compact ? ' action-items-add--compact' : ' action-items-add--header'}`} onClick={() => setAdding(true)}>
               {compact ? '[ + ADD ]' : '+ Add an item'}
@@ -243,6 +249,7 @@ const ActionItemsPanel: React.FC<ActionItemsPanelProps> = ({ items, participants
               )}
               <span className="action-item-arrow" aria-hidden="true">→</span>
               <InlineField className="action-item-owner" value={displayOwner(item.owner, participants)} placeholder="Owner" ariaLabel="Owner" allowEmpty onCommit={(v) => onEdit(item.id, { owner: v })} />
+              {item.assistant && <span className="live-ai-tag" title="Added by the meeting assistant">AI</span>}
               {item.praxis && (
                 <span className="action-item-praxis-badge" title={`Sent to Praxis: ${item.praxis.projectPath}`}>{shortTaskId(item.praxis.taskId)}</span>
               )}

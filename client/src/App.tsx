@@ -13,6 +13,8 @@ import { getPreferences, patchPreferences, resetPreferences } from './services/p
 import type { UserPreferences } from './services/preferences';
 import OverlayLayer, { type OverlayId } from './components/OverlayLayer';
 import ControlsPanel from './components/ControlsPanel';
+import LiveColumnToggles from './components/live/LiveColumnToggles';
+import { assistantStore } from './services/assistantStore';
 import CompactLayer from './components/compact/CompactLayer';
 import { ThemeToggle } from './theme';
 import { Agentation } from 'agentation';
@@ -38,7 +40,7 @@ const App: React.FC = () => {
   const [showGroqKeyModal, setShowGroqKeyModal] = useState(false);
   const [preferences, setPreferences] = useState<UserPreferences>({});
   const [showSettings, setShowSettings] = useState(false);
-  const [settingsTab, setSettingsTab] = useState<'transcription' | undefined>(undefined);
+  const [settingsTab, setSettingsTab] = useState<'transcription' | 'assistants' | undefined>(undefined);
   const [audioDevices, setAudioDevices] = useState<MediaDeviceInfo[]>([]);
   const [captureCapabilities, setCaptureCapabilities] = useState<CaptureCapabilities | null>(null);
   // Desktop shell (Electron) only: a pending "toggle recording" request from the global hotkey or tray.
@@ -389,7 +391,7 @@ const App: React.FC = () => {
                 audioDevicesFromApp={audioDevices}
                 captureCapabilities={captureCapabilities}
                 onCaptureCapabilitiesChange={setCaptureCapabilities}
-                onOpenSettings={() => setShowSettings(true)}
+                onOpenSettings={(tab) => { if (tab) setSettingsTab(tab); setShowSettings(true); }}
                 desktopToggleRequest={desktopToggleRequest}
                 onDesktopToggleHandled={() => setDesktopToggleRequest(null)}
               />
@@ -404,6 +406,7 @@ const App: React.FC = () => {
           onOpen={setOpenOverlay}
           onToggle={toggleOverlay}
           onClose={closeOverlay}
+          extra={<LiveColumnToggles />}
           sessions={
             <SessionList
               sessions={sessions}
@@ -445,7 +448,7 @@ const App: React.FC = () => {
           captureCapabilities={captureCapabilities}
           onPreferenceChange={handlePreferenceChange}
           onReset={handlePreferencesReset}
-          onClose={() => { setShowSettings(false); setSettingsTab(undefined); }}
+          onClose={() => { setShowSettings(false); setSettingsTab(undefined); void assistantStore.refreshStatus(); }}
           initialTab={settingsTab}
           gpuBackend={healthStatus?.gpuBackend}
           gpuEngine={healthStatus?.gpuEngine}

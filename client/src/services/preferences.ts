@@ -1,4 +1,4 @@
-import type { CaptureCapabilities, SystemAudioSource } from '../types';
+import type { AiModel, CaptureCapabilities, SystemAudioSource } from '../types';
 
 const API_BASE = '/api';
 
@@ -58,6 +58,12 @@ export interface UserPreferences {
   compactCaptionOpacity?: number;
   // One-time "snap your call" hint. Stored here, not localStorage: the packaged app's origin port changes every launch.
   compactHintSeen?: boolean;
+  // AUG-198: AI assistants tab. Mode / enabled / consents are server-written (GET /api/assistant/status), never patched.
+  aiCopilotModel?: AiModel;
+  aiCopilotAlwaysBudgetUsd?: number;
+  aiModel?: AiModel;
+  aiSessionBudgetUsd?: number;
+  aiTranscriptWindowMin?: 2 | 5 | 10 | 15;
 }
 
 export const DEFAULT_PREFERENCES: Required<UserPreferences> = {
@@ -97,6 +103,11 @@ export const DEFAULT_PREFERENCES: Required<UserPreferences> = {
   compactCaptionFontSize: 14,
   compactCaptionOpacity: 78,
   compactHintSeen: false,
+  aiCopilotModel: 'sonnet',
+  aiCopilotAlwaysBudgetUsd: 2,
+  aiModel: 'sonnet',
+  aiSessionBudgetUsd: 2,
+  aiTranscriptWindowMin: 5,
 };
 
 export async function getPreferences(): Promise<UserPreferences> {

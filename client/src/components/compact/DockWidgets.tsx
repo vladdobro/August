@@ -4,6 +4,21 @@ import { formatClock } from '../../services/compact';
 import { statusTag } from './ghostProtocol';
 import ActionItemsPanel from '../ActionItemsPanel';
 import HoldToStopButton from '../HoldToStopButton';
+import { useAssistantSnapshot } from './useAssistantSnapshot';
+import './compactPanels.css';
+
+/// AUG-199: which compact Copilot / Assistant windows are open (desktop shell only; main pushes changes).
+function useCompactPanels(): { copilot: boolean; assistant: boolean } {
+  const [state, setState] = useState({ copilot: false, assistant: false });
+  useEffect(() => window.august?.onCompactPanels?.(setState), []);
+  return state;
+}
+
+/// AUG-199: hint count for the `CTX n` badge, read from the assistant channel; clicking it opens COPILOT in the full window.
+export function useCtxBadge(): { count: number; show: () => void } {
+  const { snap, send } = useAssistantSnapshot();
+  return { count: snap?.copilot.hintCount ?? 0, show: () => send({ kind: 'show-copilot' }) };
+}
 
 /// AUG-181: small mic glyph, slashed when muted.
 export const MicGlyph: React.FC<{ muted: boolean }> = ({ muted }) => (
@@ -29,6 +44,8 @@ export const DockStrip: React.FC<StripProps> = ({ snap, actions, onExpand, onSwi
   const [follow, setFollow] = useState(true);
   const followRef = useRef(true);
   const [clearConfirm, setClearConfirm] = useState(false);
+  const panels = useCompactPanels();
+  const canPanels = Boolean(window.august?.setCompactPanel);
   useEffect(() => { if (!snap.live) setClearConfirm(false); }, [snap.live]);
   const handleClear = () => { if (snap.skipClearConfirmation) actions?.clearLive(); else setClearConfirm(true); };
 
@@ -76,6 +93,19 @@ export const DockStrip: React.FC<StripProps> = ({ snap, actions, onExpand, onSwi
           <span className={`compact-tag compact-tag--${tag.tone}`}>{tag.label}</span>
           {snap.micMuted && <span className="compact-tag compact-tag--muted">{snap.mutedHint ? "YOU'RE MUTED" : 'MIC OFF'}</span>}
           <span className="compact-spacer" />
+          {canPanels && (snap.live ? ['copilot', 'assistant'] as const : ['assistant'] as const).map((kind) => (
+            <button
+              key={kind}
+              type="button"
+              className={`compact-btn compact-btn--icon cp-panel-toggle${panels[kind] ? ' compact-btn--accent' : ''}`}
+              onClick={() => window.august?.setCompactPanel?.(kind, !panels[kind])}
+              aria-pressed={panels[kind]}
+              aria-label={`${panels[kind] ? 'Hide' : 'Show'} ${kind === 'copilot' ? 'Copilot' : 'Assistant'} window`}
+              title={`${panels[kind] ? 'Hide' : 'Show'} ${kind === 'copilot' ? 'Copilot' : 'Assistant'} window`}
+            >
+              {kind === 'copilot' ? '[ CP ]' : '[ AS ]'}
+            </button>
+          ))}
           <button type="button" className="compact-btn compact-btn--icon" onClick={onSwitch} title="Switch to Dock Square" aria-label="Switch to Dock Square">[ ⇄ ]</button>
           <button type="button" className="compact-btn compact-btn--icon" onClick={onExpand} title="Expand August (Esc)" aria-label="Expand August">[ ⤢ ]</button>
         </div>
@@ -117,7 +147,7 @@ export const DockStrip: React.FC<StripProps> = ({ snap, actions, onExpand, onSwi
 
       <div className="compact-strip-bodywrap">
         <div className="compact-strip-body" ref={bodyRef} onScroll={onScroll}>
-          {snap.lines.length === 0 && <div className="compact-strip-empty">Waiting for speech…</div>}
+          {snap.lines.length === 0 && <div className="compact-strip-empty">{snap.live ? 'Waiting for speech…' : 'Live text is off'}</div>}
           {snap.lines.map((line, i) => line.kind === 'gap' ? (
             <div key={i} className="compact-line compact-line--gap">{line.text}</div>
           ) : (
@@ -129,7 +159,7 @@ export const DockStrip: React.FC<StripProps> = ({ snap, actions, onExpand, onSwi
         )}
       </div>
 
-      {snap.live && (
+      {(snap.live || snap.meeting) && (
         <div className="compact-strip-actions">
           <ActionItemsPanel
             variant="compact"
@@ -177,6 +207,7 @@ export const DockSquare: React.FC<SquareProps> = ({ snap, actions, onExpand, onS
   const paused = snap.liveStatus === 'paused';
   const interrupted = snap.liveStatus === 'interrupted';
   const lost = snap.captureLost;
+  const ctx = useCtxBadge();
 
   const tagLabel = lost ? 'LOST' : paused ? 'PAUSED' : snap.micMuted ? (snap.dualTrack ? 'SYS · MIC OFF' : 'MIC OFF') : (snap.dualTrack ? 'MIC + SYS' : 'MIC');
   const tagTone = lost ? 'error' : paused ? 'pause' : snap.micMuted ? 'muted' : 'idle';
@@ -186,6 +217,9 @@ export const DockSquare: React.FC<SquareProps> = ({ snap, actions, onExpand, onS
       <div className="compact-square-top">
         <span className={`compact-rec${paused ? ' compact-rec--paused' : ''}`} aria-hidden="true" />
         <span className={`compact-tag compact-tag--${tagTone} compact-square-tag`}>{tagLabel}</span>
+        {!snap.live && snap.meeting && !lost && (
+          <button type="button" className="compact-btn compact-btn--icon compact-square-icon" onClick={onSwitch} aria-label="Show action items — switch to Dock Strip" title="Show action items — switch to Dock Strip">⇄</button>
+        )}
         {snap.live && !interrupted && !lost && (
           <button
             type="button"
@@ -221,6 +255,9 @@ export const DockSquare: React.FC<SquareProps> = ({ snap, actions, onExpand, onS
         ) : (
           <button type="button" className="compact-btn compact-btn--solid compact-btn--small" onClick={() => actions?.startLive()} title="Start live text again. Recording continues.">▶&#xFE0E; LIVE</button>
         ))}
+        {ctx.count > 0 && !lost && (
+          <button type="button" className="cp-ctx" onClick={ctx.show} aria-label={`${ctx.count} hint, show Copilot in the full window`}>CTX {ctx.count}</button>
+        )}
         {snap.mutedHint && !lost && <span className="compact-tag compact-tag--muted">YOU'RE MUTED</span>}
         {interrupted && !lost && (
           <button type="button" className="compact-btn compact-btn--small" onClick={() => actions?.retryLive()}>[ RETRY ]</button>

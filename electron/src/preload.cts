@@ -59,6 +59,16 @@ const api = {
       ipcRenderer.removeListener('august:compact-event', listener);
     };
   },
+  setCompactPanel: (kind: string, visible: boolean) => {
+    ipcRenderer.send('august:compact-panel', { kind, visible });
+  },
+  onCompactPanels: (cb: (state: { copilot: boolean; assistant: boolean }) => void) => {
+    const listener = (_event: Electron.IpcRendererEvent, state: { copilot: boolean; assistant: boolean }) => cb(state);
+    ipcRenderer.on('august:compact-panels', listener);
+    return () => {
+      ipcRenderer.removeListener('august:compact-panels', listener);
+    };
+  },
   reportCompactIssue: (issue: string) => {
     ipcRenderer.send('august:compact-issue', issue);
   },

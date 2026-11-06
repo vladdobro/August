@@ -87,7 +87,7 @@ const CompactLayer: React.FC<CompactLayerProps> = (props) => {
     const s = snapRef.current;
     if (!s.recording) return;
     const p = propsRef.current.preferences;
-    const w = pickCompactWidget(p, s.live, overrideRef.current);
+    const w = pickCompactWidget(p, s.live, overrideRef.current, s.live || s.meeting);
     if (!w) return;
     busyRef.current = true;
     try {
@@ -175,7 +175,7 @@ const CompactLayer: React.FC<CompactLayerProps> = (props) => {
   // While compact and recording: Stop Live (or Live starting) can change which widget applies.
   useEffect(() => {
     if (!supported || phase !== 'compact' || !snap.recording) return;
-    const w = pickCompactWidget(propsRef.current.preferences, snap.live, overrideRef.current);
+    const w = pickCompactWidget(propsRef.current.preferences, snap.live, overrideRef.current, snap.live || snap.meeting);
     if (!w) return;
     if (w === widgetRef.current) return;
     void (async () => {
@@ -183,7 +183,7 @@ const CompactLayer: React.FC<CompactLayerProps> = (props) => {
       setWidgetBoth(w);
       applyDockClass(w);
     })();
-  }, [supported, phase, snap.recording, snap.live, requestShape]);
+  }, [supported, phase, snap.recording, snap.live, snap.meeting, requestShape]);
 
   // Native notification for failures; main shows it only while the main window is hidden. Never auto-expands.
   useEffect(() => {
@@ -235,7 +235,7 @@ const CompactLayer: React.FC<CompactLayerProps> = (props) => {
     const cur = widgetRef.current;
     if (!cur) return;
     const next = pairWidget(cur);
-    if (isTranscriptWidget(next) && !snapRef.current.live) return;
+    if (isTranscriptWidget(next) && !snapRef.current.live && !snapRef.current.meeting) return;
     busyRef.current = true;
     try {
       if (!(await requestShape(next))) return;
@@ -268,6 +268,7 @@ const CompactLayer: React.FC<CompactLayerProps> = (props) => {
       participants: s.participants,
       actionEnabled: s.actionEnabled,
       actionOffReason: s.actionOffReason,
+      meeting: s.meeting,
       micMuted: s.micMuted,
       mutedHint: s.mutedHint,
       skipClearConfirmation: s.skipClearConfirmation,
