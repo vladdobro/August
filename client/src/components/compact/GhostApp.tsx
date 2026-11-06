@@ -1,7 +1,7 @@
 import React, { useCallback, useEffect, useLayoutEffect, useRef, useState } from 'react';
 import { formatClock } from '../../services/compact';
 import ActionItemsPanel from '../ActionItemsPanel';
-import { MicGlyph, useCtxBadge } from './DockWidgets';
+import { MicGlyph, PanelToggles, canCompactPanels, useCtxBadge } from './DockWidgets';
 import HoldToStopButton from '../HoldToStopButton';
 import { GHOST_CHANNEL, statusTag, type GhostAction, type GhostCommand, type GhostMessage, type GhostState, type GhostWidget } from './ghostProtocol';
 
@@ -56,6 +56,13 @@ const GhostCaption: React.FC<GhostCaptionProps> = ({ state, send, sendAction }) 
   const lost = state.captureLost;
   const alert = interrupted || lost || done;
   const tag = statusTag(state.liveStatus, state.live);
+  const ctx = useCtxBadge(); // AUG-201: hint count; in Ghost Caption CTX n opens the compact Copilot window
+  const panelsOn = canCompactPanels(); // AUG-201: desktop shell has compact panels
+  const ctxShown = ctx.count > 0 && !lost;
+  const openCopilot = () => {
+    if (window.august?.setCompactPanel) window.august.setCompactPanel('copilot', true);
+    else ctx.show();
+  };
   const interactive = alert || leftHover || dragging || edgeHover || resizing || widthHover || widthResizing !== null || actionsHover || actionsFocus || tbarHover || clearConfirm;
   // The resize handle sits on the inner edge: top when the caption is docked at the bottom of the screen, and vice versa.
   // availTop (Chromium) is the display's top in virtual-screen coordinates, so a secondary monitor resolves correctly.
@@ -144,7 +151,7 @@ const GhostCaption: React.FC<GhostCaptionProps> = ({ state, send, sendAction }) 
     left.classList.remove('ghost-caption-left--measure');
     fitRef.current = { rect, sq };
     setSquare(root.offsetHeight < rect);
-  }, [state.live, state.micMuted, state.mutedHint, interrupted, lost, done, paused]);
+  }, [state.live, state.micMuted, state.mutedHint, interrupted, lost, done, paused, panelsOn, ctxShown]);
   useEffect(() => {
     const root = rootRef.current;
     if (!root) return;
@@ -175,7 +182,7 @@ const GhostCaption: React.FC<GhostCaptionProps> = ({ state, send, sendAction }) 
     <div
       ref={rootRef}
       style={{ '--ghost-bg': `rgba(6, 11, 8, ${state.captionOpacity / 100})`, '--ghost-line-size': `${state.captionFontSize}px` } as React.CSSProperties}
-      className={`ghost-caption${interrupted || lost ? ' ghost-caption--error' : ''}${done ? ' ghost-caption--done' : ''}${square ? ' ghost-caption--sq' : ''}`}
+      className={`ghost-caption${interrupted || lost ? ' ghost-caption--error' : ''}${done ? ' ghost-caption--done' : ''}${square ? ' ghost-caption--sq' : ''}${panelsOn ? ' ghost-caption--panels' : ''}`}
       onMouseEnter={() => setHovered(true)}
       onMouseLeave={() => setHovered(false)}
       onClick={done ? () => send('expand') : undefined}
@@ -227,6 +234,9 @@ const GhostCaption: React.FC<GhostCaptionProps> = ({ state, send, sendAction }) 
             <div className="ghost-caption-id">
               <span className={`ghost-rec${paused ? ' ghost-rec--paused' : ''}`} aria-hidden="true" />
               <span className={`ghost-timer${paused ? ' ghost-timer--paused' : ''}`}>{formatClock(state.elapsedSeconds)}</span>
+              {ctxShown && (
+                <button type="button" className="ghost-btn ghost-btn--accent ghost-ctx" onClick={openCopilot} title="Show the Copilot window" aria-label={`${ctx.count} hints, show the Copilot window`}>CTX {ctx.count}</button>
+              )}
             </div>
             <span className={`ghost-tag ghost-tag--${lost ? 'error' : tag.tone}`}>{lost ? 'CAPTURE LOST' : tag.label}</span>
             {state.micMuted && !lost && <span className="ghost-tag ghost-tag--muted">{state.mutedHint ? "YOU'RE MUTED" : 'MIC OFF'}</span>}
@@ -272,6 +282,7 @@ const GhostCaption: React.FC<GhostCaptionProps> = ({ state, send, sendAction }) 
                   <button type="button" className="ghost-btn ghost-btn--solid" onClick={() => send('start-live')} title="Start live text again. Recording continues." aria-label="Start live text"><span className="ghost-br">[ </span>▶&#xFE0E;<span className="ghost-br"> ]</span></button>
                 )}
                 <HoldToStopButton className="ghost-btn ghost-btn--end" onComplete={() => send('end')} title="Hold 1.5 s to end the meeting" ariaLabel="End Meeting (hold 1.5 seconds)" hint="HOLD"><span className="ghost-br">[ </span>■<span className="ghost-br"> ]</span></HoldToStopButton>
+                <PanelToggles live={state.live} variant="ghost" />
               </div>
             )}
           </>

@@ -1,0 +1,20 @@
+{
+  "id": "AUG-201-slf1pr",
+  "assignee": "jarvis.json",
+  "priority": "high",
+  "status": "in_progress",
+  "title": "[AUG-201] Ghost Caption: add [ CP ] / [ AS ] toggles and make CTX n open the compact Copilot window",
+  "why_we_need_this": "In Compact Mode with Ghost Caption the user cannot see Meeting Copilot (AUG-197) or Active project session (AUG-199) at all: the Copilot / Assistant frameless windows are only opened by the Dock Strip `[ CP ]` / `[ AS ]` toggles, and Ghost Caption has none. Its only addition is `[ CTX n ]`, which appears only when hints exist and expands August to the full window, leaving Ghost mode. The AUG-195 mockup (scene \"Desktop (Compact Mode) · Ghost Caption\") shows Caption + Copilot + Assistant side by side, so the feature is effectively missing for Ghost users.\n\nFound by the user testing commit 03c4892. Code facts:\n- Toggles exist only in @client/src/components/compact/DockWidgets.tsx (~L100, `cp-panel-toggle`, `window.august?.setCompactPanel`).\n- @client/src/components/compact/GhostApp.tsx ~L350/L451 renders only `useCtxBadge()`; `useCtxBadge().show` sends `{kind:'show-copilot'}` (full window).\n- Main process already accepts `august:compact-panel` from the ghost sender (@electron/src/main.ts ~L536, `compact.isGhostSender`) and `CompactController.setPanel` works in ghost shape (@electron/src/compact.ts ~L215, placement for `ghosted` ~L650).\n- Panel state reaches the ghost via `august:compact-panels` broadcast (main.ts ~L222).",
+  "acceptance_criteria": "- [ ] Ghost Caption tools row shows `[ CP ]` and `[ AS ]` toggles (same labels, aria-pressed and accent-when-on styling as Dock Strip), only when `window.august.setCompactPanel` exists (desktop) and an Active session / copilot is available per the same rule the Dock Strip uses.\n- [ ] Clicking `[ CP ]` / `[ AS ]` in Ghost Caption shows / hides the Copilot / Assistant frameless window via `setCompactPanel`; the toggle state follows the `august:compact-panels` broadcast (closing a panel with its × un-highlights the toggle).\n- [ ] In Ghost Caption, `[ CTX n ]` opens the compact Copilot window (`setCompactPanel('copilot', true)`) instead of expanding to the full window; August stays in Ghost mode. Dock Square / Ghost Coin keep the existing CTX n behaviour.\n- [ ] Opened panels are placed per the existing ghosted placement (above the caption), never overlap the caption or each other, and their bounds persist in window-state.json `panels`.\n- [ ] Ghost click-through still works: the new buttons are clickable, the rest of the caption stays click-through as before.\n- [ ] Ghost Caption width resize (320–760, AUG-187) still fits the tools row at the minimum width without overflow.\n- [ ] Checked on Windows (dev Electron) and code paths reviewed for macOS; no new `process.platform` branch.\n- [ ] Client tests / typecheck pass (`npm run electron:test`, client build).",
+  "important_constraints": "- Mockup reference: @docs/mockups/AUG-195/assistant-overlay.html (DESK.d2 scene) and @docs/mockups/AUG-195/findings.md §6. Angular brutalist style: 0 border-radius; red only for destructive actions.\n- Reuse the Dock Strip toggle logic (extract a shared component/hook from DockWidgets.tsx rather than duplicating).\n- Do not change Dock Strip, Dock Square, Ghost Coin behaviour.\n- Highest-risk shared files: electron/src/main.ts, compact.ts — changes there must be no-op for non-ghost shapes.\n- Commit straight to master.\n- Related RCA task is created alongside (spec gap analysis).",
+  "labels": [
+    "bug",
+    "compact-mode",
+    "copilot",
+    "assistant"
+  ],
+  "on_hold_reason": "",
+  "contextRouterIncluded": true,
+  "created_at": 1794003459211,
+  "column_entered_at": 1794003632958
+}

@@ -1,5 +1,11 @@
 import { contextBridge, ipcRenderer } from 'electron';
 
+// AUG-201: last compact panel state, so a late subscriber (new ghost window, remounted widget) starts correct.
+let lastCompactPanels: { copilot: boolean; assistant: boolean } | null = null;
+ipcRenderer.on('august:compact-panels', (_event, state: { copilot: boolean; assistant: boolean }) => {
+  lastCompactPanels = state;
+});
+
 // Mirror of client/src/desktop.d.ts — keep the two in sync.
 const api = {
   isDesktop: true as const,
@@ -65,6 +71,7 @@ const api = {
   onCompactPanels: (cb: (state: { copilot: boolean; assistant: boolean }) => void) => {
     const listener = (_event: Electron.IpcRendererEvent, state: { copilot: boolean; assistant: boolean }) => cb(state);
     ipcRenderer.on('august:compact-panels', listener);
+    if (lastCompactPanels) cb(lastCompactPanels);
     return () => {
       ipcRenderer.removeListener('august:compact-panels', listener);
     };

@@ -597,6 +597,8 @@ export class CompactController {
       ghost.webContents.on('will-navigate', (e) => e.preventDefault());
       // showInactive: never steal focus from the call the user is in.
       ghost.once('ready-to-show', () => ghost.showInactive());
+      // AUG-201: the ghost's [ CP ] / [ AS ] toggles start from the panels already open (e.g. after a widget switch).
+      ghost.webContents.on('did-finish-load', () => this.notifyPanels());
       ghost.on('closed', () => {
         if (this.ghost === ghost) {
           this.ghost = null;

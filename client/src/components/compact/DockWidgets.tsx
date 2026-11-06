@@ -8,11 +8,47 @@ import { useAssistantSnapshot } from './useAssistantSnapshot';
 import './compactPanels.css';
 
 /// AUG-199: which compact Copilot / Assistant windows are open (desktop shell only; main pushes changes).
-function useCompactPanels(): { copilot: boolean; assistant: boolean } {
+export function useCompactPanels(): { copilot: boolean; assistant: boolean } {
   const [state, setState] = useState({ copilot: false, assistant: false });
   useEffect(() => window.august?.onCompactPanels?.(setState), []);
   return state;
 }
+
+export function canCompactPanels(): boolean {
+  return Boolean(window.august?.setCompactPanel);
+}
+
+/// AUG-201: [ CP ] / [ AS ] toggles shared by Dock Strip and Ghost Caption. CP only while Live (same rule as AUG-199).
+export const PanelToggles: React.FC<{ live: boolean; variant: 'dock' | 'ghost' }> = ({ live, variant }) => {
+  const panels = useCompactPanels();
+  if (!canCompactPanels()) return null;
+  const kinds = live ? (['copilot', 'assistant'] as const) : (['assistant'] as const);
+  return (
+    <>
+      {kinds.map((kind) => {
+        const on = panels[kind];
+        const name = kind === 'copilot' ? 'Copilot' : 'Assistant';
+        const short = kind === 'copilot' ? 'CP' : 'AS';
+        const label = `${on ? 'Hide' : 'Show'} ${name} window`;
+        return (
+          <button
+            key={kind}
+            type="button"
+            className={variant === 'dock'
+              ? `compact-btn compact-btn--icon cp-panel-toggle${on ? ' compact-btn--accent' : ''}`
+              : `ghost-btn ghost-panel-toggle${on ? ' ghost-btn--accent' : ''}`}
+            onClick={() => window.august?.setCompactPanel?.(kind, !on)}
+            aria-pressed={on}
+            aria-label={label}
+            title={label}
+          >
+            {variant === 'dock' ? `[ ${short} ]` : <><span className="ghost-br">[ </span>{short}<span className="ghost-br"> ]</span></>}
+          </button>
+        );
+      })}
+    </>
+  );
+};
 
 /// AUG-199: hint count for the `CTX n` badge, read from the assistant channel; clicking it opens COPILOT in the full window.
 export function useCtxBadge(): { count: number; show: () => void } {
@@ -44,8 +80,6 @@ export const DockStrip: React.FC<StripProps> = ({ snap, actions, onExpand, onSwi
   const [follow, setFollow] = useState(true);
   const followRef = useRef(true);
   const [clearConfirm, setClearConfirm] = useState(false);
-  const panels = useCompactPanels();
-  const canPanels = Boolean(window.august?.setCompactPanel);
   useEffect(() => { if (!snap.live) setClearConfirm(false); }, [snap.live]);
   const handleClear = () => { if (snap.skipClearConfirmation) actions?.clearLive(); else setClearConfirm(true); };
 
@@ -93,19 +127,7 @@ export const DockStrip: React.FC<StripProps> = ({ snap, actions, onExpand, onSwi
           <span className={`compact-tag compact-tag--${tag.tone}`}>{tag.label}</span>
           {snap.micMuted && <span className="compact-tag compact-tag--muted">{snap.mutedHint ? "YOU'RE MUTED" : 'MIC OFF'}</span>}
           <span className="compact-spacer" />
-          {canPanels && (snap.live ? ['copilot', 'assistant'] as const : ['assistant'] as const).map((kind) => (
-            <button
-              key={kind}
-              type="button"
-              className={`compact-btn compact-btn--icon cp-panel-toggle${panels[kind] ? ' compact-btn--accent' : ''}`}
-              onClick={() => window.august?.setCompactPanel?.(kind, !panels[kind])}
-              aria-pressed={panels[kind]}
-              aria-label={`${panels[kind] ? 'Hide' : 'Show'} ${kind === 'copilot' ? 'Copilot' : 'Assistant'} window`}
-              title={`${panels[kind] ? 'Hide' : 'Show'} ${kind === 'copilot' ? 'Copilot' : 'Assistant'} window`}
-            >
-              {kind === 'copilot' ? '[ CP ]' : '[ AS ]'}
-            </button>
-          ))}
+          <PanelToggles live={snap.live} variant="dock" />
           <button type="button" className="compact-btn compact-btn--icon" onClick={onSwitch} title="Switch to Dock Square" aria-label="Switch to Dock Square">[ ⇄ ]</button>
           <button type="button" className="compact-btn compact-btn--icon" onClick={onExpand} title="Expand August (Esc)" aria-label="Expand August">[ ⤢ ]</button>
         </div>

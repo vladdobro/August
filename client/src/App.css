@@ -9678,6 +9678,13 @@ html.ghost-root #root > * {
 .ghost-caption--sq .ghost-caption-tools--grid .ghost-btn { flex: none; width: 14px; height: 16px; padding: 0; line-height: 14px; font-size: 9px; letter-spacing: 0; text-align: center; }
 .ghost-caption--sq .ghost-br { display: none; }
 .ghost-caption--sq .ghost-caption-tools--grid .hold-btn-hint { font-size: 6px; }
+/* AUG-201: with [ CP ] / [ AS ] the tools zone is 4 columns wide (cells keep their ~25 px width), so the grid stays
+   two rows and the 112 px default height keeps the rectangle layout; the square row fits 8 buttons. */
+.ghost-caption--panels .ghost-caption-left { width: 128px; }
+.ghost-caption--panels .ghost-caption-tools--grid { grid-template-columns: repeat(4, minmax(0, 1fr)); }
+.ghost-caption--panels.ghost-caption--sq .ghost-caption-tools--grid { gap: 1px; }
+.ghost-caption--panels.ghost-caption--sq .ghost-caption-tools--grid .ghost-btn { width: 13px; }
+.ghost-ctx { flex: none; margin-left: auto; padding: 0 4px; font-size: 9px; line-height: 14px; }
 
 .ghost-line--them { border-left-color: var(--ghost-them); }
 .ghost-line--old { color: var(--ghost-fg); opacity: 0.7; }
