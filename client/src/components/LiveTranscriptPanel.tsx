@@ -1,6 +1,7 @@
-import React, { useCallback, useEffect, useRef, useState } from 'react';
+import React, { useCallback, useEffect, useRef, useState, useSyncExternalStore } from 'react';
 import HoldToStopButton from './HoldToStopButton';
 import type { LiveStatus, Speaker } from '../services/liveTranscriptionClient';
+import { liveColumnsStore } from '../services/liveColumnsStore';
 
 export interface LiveLinePart {
   id?: string;
@@ -58,12 +59,51 @@ const STATUS_LABEL: Record<LiveStatus, string> = {
   stopped: 'Stopped',
 };
 
+// AUG-205: below this width the copy / clear actions move behind a More button and the mute button is icon-only,
+// so the toolbar stays on one row at the 960×600 minimum window. Same breakpoint as SINGLE_COLUMN_BELOW.
+const NARROW_QUERY = '(max-width: 1100px)';
+const narrowMq = typeof window !== 'undefined' && typeof window.matchMedia === 'function' ? window.matchMedia(NARROW_QUERY) : null;
+const subscribeNarrow = (cb: () => void) => {
+  narrowMq?.addEventListener('change', cb);
+  return () => narrowMq?.removeEventListener('change', cb);
+};
+const getNarrow = () => narrowMq?.matches ?? false;
+
 const LiveTranscriptPanel: React.FC<LiveTranscriptPanelProps> = ({
   lines, status, error, warning, micUnavailable, onPause, onResume, onCopyAll, onCopyAndClear, skipClearConfirmation, onClose, onStop, onClearAll, elapsed, onEndRecording, onCompact, aside, columns, ctxCount, onCtx, micMuted, onToggleMute, mutedHint, mode = 'live', onStartLive,
 }) => {
   const bodyRef = useRef<HTMLDivElement>(null);
   const [autoScroll, setAutoScroll] = useState(true);
   const [confirmAction, setConfirmAction] = useState<'clearAll' | null>(null);
+  const narrow = useSyncExternalStore(subscribeNarrow, getNarrow, () => false);
+  const [moreOpen, setMoreOpen] = useState(false);
+  const moreRef = useRef<HTMLDivElement>(null);
+  const mainRef = useRef<HTMLDivElement>(null);
+
+  // AUG-205: the column store fits the side columns to the width of .live-panel-main.
+  useEffect(() => {
+    const el = mainRef.current;
+    if (!el) return;
+    liveColumnsStore.setAvailable(el.getBoundingClientRect().width);
+    if (typeof ResizeObserver === 'undefined') return;
+    const ro = new ResizeObserver((entries) => {
+      const w = entries[0]?.contentRect.width;
+      if (w) liveColumnsStore.setAvailable(w);
+    });
+    ro.observe(el);
+    return () => { ro.disconnect(); liveColumnsStore.setAvailable(0); };
+  }, []);
+
+  // AUG-205: the More menu closes on outside click, Esc, or when the toolbar is wide again.
+  useEffect(() => {
+    if (!moreOpen) return;
+    const onDown = (e: PointerEvent) => { if (!moreRef.current?.contains(e.target as Node)) setMoreOpen(false); };
+    const onKey = (e: KeyboardEvent) => { if (e.key === 'Escape') setMoreOpen(false); };
+    document.addEventListener('pointerdown', onDown);
+    document.addEventListener('keydown', onKey);
+    return () => { document.removeEventListener('pointerdown', onDown); document.removeEventListener('keydown', onKey); };
+  }, [moreOpen]);
+  useEffect(() => { if (!narrow) setMoreOpen(false); }, [narrow]);
 
   useEffect(() => {
     if (autoScroll && bodyRef.current) {
@@ -99,6 +139,15 @@ const LiveTranscriptPanel: React.FC<LiveTranscriptPanelProps> = ({
   const isDone = status === 'interrupted' || status === 'stopped';
   const meeting = mode === 'meeting'; // AUG-200
 
+  // AUG-205: secondary actions; inline on wide toolbars, behind More on narrow ones.
+  const copyActions = (
+    <>
+      <button type="button" className="live-panel-btn live-panel-btn--copy" onClick={onCopyAll} disabled={lines.length === 0}>Copy All</button>
+      <button type="button" className="live-panel-btn live-panel-btn--copy" onClick={onCopyAndClear} disabled={lines.length === 0} title="Copy the live transcript and clear the window">Copy &amp; Clear</button>
+      <button type="button" className="live-panel-btn live-panel-btn--clear" onClick={handleClear} disabled={lines.length === 0} title="Clear the live window; recording continues">Clear</button>
+    </>
+  );
+
   return (
     <section className="live-panel" aria-label={meeting ? 'Meeting' : 'Live transcript'}>
       <div className="live-topbar">
@@ -120,18 +169,21 @@ const LiveTranscriptPanel: React.FC<LiveTranscriptPanelProps> = ({
         <div className="live-topbar-actions">
           {!meeting && <button type="button" className="live-panel-btn live-panel-btn--pause" onClick={isPaused ? onResume : onPause} disabled={isDone}>{isPaused ? 'Resume' : 'Pause'}</button>}
           {onToggleMute && (
-            <button type="button" className={`live-panel-btn live-panel-btn--mute${micMuted ? ' live-panel-btn--mute-on' : ''}`} onClick={onToggleMute} aria-pressed={micMuted} title="Mute in August's recording">
+            <button type="button" className={`live-panel-btn live-panel-btn--mute${micMuted ? ' live-panel-btn--mute-on' : ''}`} onClick={onToggleMute} aria-pressed={micMuted} aria-label={micMuted ? 'Unmute mic' : 'Mute mic'} title="Mute in August's recording">
               <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" aria-hidden="true"><rect x="9" y="3" width="6" height="12"/><path d={micMuted ? 'M5 11a7 7 0 0 0 14 0M12 18v3M3 3l18 18' : 'M5 11a7 7 0 0 0 14 0M12 18v3'}/></svg>
-              {' '}{micMuted ? 'Unmute mic' : 'Mute mic'}
+              <span className="live-panel-btn-label">{' '}{micMuted ? 'Unmute mic' : 'Mute mic'}</span>
             </button>
           )}
           {meeting ? (
             <button type="button" className="live-panel-btn live-panel-btn--start" onClick={onStartLive} title="Start live text. Recording continues.">▶&#xFE0E; Start Live Text</button>
           ) : (
             <>
-              <button type="button" className="live-panel-btn live-panel-btn--copy" onClick={onCopyAll} disabled={lines.length === 0}>Copy All</button>
-              <button type="button" className="live-panel-btn live-panel-btn--copy" onClick={onCopyAndClear} disabled={lines.length === 0} title="Copy the live transcript and clear the window">Copy &amp; Clear</button>
-              <button type="button" className="live-panel-btn live-panel-btn--clear" onClick={handleClear} disabled={lines.length === 0} title="Clear the live window; recording continues">Clear</button>
+              {narrow ? (
+                <div className="live-more" ref={moreRef}>
+                  <button type="button" className={`live-panel-btn live-panel-btn--more${moreOpen ? ' live-panel-btn--more-open' : ''}`} aria-haspopup="menu" aria-expanded={moreOpen} onClick={() => setMoreOpen((v) => !v)} title="Copy and clear actions">More ▾</button>
+                  {moreOpen && <div className="live-more-menu" role="menu" onClick={() => setMoreOpen(false)}>{copyActions}</div>}
+                </div>
+              ) : copyActions}
               <HoldToStopButton className="live-panel-btn live-panel-btn--stop" onComplete={onStop} disabled={isDone} title="Hold 1.5 s to stop live text. Recording continues." ariaLabel="Stop Live Text (hold 1.5 seconds)">Stop Live Text</HoldToStopButton>
             </>
           )}
@@ -165,7 +217,7 @@ const LiveTranscriptPanel: React.FC<LiveTranscriptPanelProps> = ({
           {mutedHint && <div className="live-panel-notice live-panel-notice--muted">You're muted in August</div>}
         </div>
       )}
-      <div className="live-panel-main">
+      <div className="live-panel-main" ref={mainRef}>
         <div className="live-panel-canvas">
           <svg className="live-panel-hex-bg" viewBox="0 0 300 800" preserveAspectRatio="none" aria-hidden="true">
             <defs>

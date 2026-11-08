@@ -1,3 +1,4 @@
+// AUG-205: collapsed state may be set by the store's fitting rule (auto); expanding a rail keeps this column open and collapses another if needed.
 // AUG-199: shell of a side column next to the live transcript: header (title, count, shortcut, collapse, hide),
 // left splitter (drag to resize, double-click to reset), 28 px rail when collapsed, nothing when hidden.
 import React, { useRef } from 'react';

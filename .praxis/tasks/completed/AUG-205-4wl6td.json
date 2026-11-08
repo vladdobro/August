@@ -1,0 +1,20 @@
+{
+  "id": "AUG-205-4wl6td",
+  "assignee": "jarvis.json",
+  "priority": "high",
+  "status": "in_progress",
+  "title": "[AUG-205] Live panel: responsive side columns that never overflow the window (UI audit T2)",
+  "why_we_need_this": "UI audit AUG-203 (@docs/reviews/2026-11-ui-audit.md, findings F-01, F-02): with ACTION ITEMS + COPILOT + ASSISTANT open the columns are fixed at 300 + 300 + 380 px after a 360 px canvas, so at the default 1280×866 window the ASSISTANT column ends 76 px past the right edge (its text and SEND are cut) and at the 960×600 minimum a whole column is off-screen, the toolbar wraps to two rows and the pin-bar column toggles break into three lines. A new user does not even learn that a third panel exists.",
+  "acceptance_criteria": "- [ ] At 1280×866 with all three side columns open, every column (including ASSISTANT input and SEND) is fully inside the viewport; no element extends past window width (DOM check `getBoundingClientRect().right <= innerWidth`)\n- [ ] When the sum of open column widths plus the 360 px canvas minimum exceeds the window, the lowest-priority column (COPILOT, then ASSISTANT) auto-collapses to its 28 px rail instead of overflowing; the user can still expand it, which collapses another\n- [ ] Below ~1100 px width only one side column is shown at a time (tabs or rails) and the canvas keeps ≥ 360 px\n- [ ] Live top toolbar stays on one row at 960×600 (overflow goes into a compact / overflow group) and pin-bar toggles `[ ACTION ITEMS ] [ COPILOT ] [ ASSISTANT ]` never wrap (shorter labels allowed)\n- [ ] Column layout preferences in localStorage `august.liveColumns.v1.<s|m|l>` still persist per width class\n- [ ] Screenshots at 960×600, 1280×866 and 1920×1040 attached to the card; Default-mode (meeting) and Live-mode panels both checked\n- [ ] Both platforms unaffected at the shell level (renderer-only change)",
+  "important_constraints": "Repro screenshots: @docs/reviews/2026-11-ui-audit/94-live-panel-default.png, @docs/reviews/2026-11-ui-audit/95-live-panel-min.png. Files: client/src/components/live/LiveColumns.tsx, LiveColumn.tsx, LiveColumnToggles.tsx, client/src/services/liveColumnsStore.ts, LiveTranscriptPanel.tsx, App.css live-column rules. Keep the splitter range 240–560 px and the double-click reset. Decision for the user before starting: whether the 960×600 minimum stays (then re-flow) or rises (then only the default-size overflow needs fixing).\n\nOrder: 3/3 (UI audit AUG-203 layout follow-ups). Depends on: AUG-206 (shared `.pin-toggles` CSS). Related: AUG-204.",
+  "labels": [
+    "ui",
+    "ux",
+    "live",
+    "audit-followup"
+  ],
+  "on_hold_reason": "",
+  "contextRouterIncluded": true,
+  "created_at": 1794173446754,
+  "column_entered_at": 1794175196135
+}
