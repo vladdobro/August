@@ -1,0 +1,19 @@
+{
+  "id": "AUG-203-yp617p",
+  "assignee": "critic.json",
+  "priority": "high",
+  "status": "in_progress",
+  "title": "[AUG-203] UI audit of every August screen through the eyes of a first-time user, with an exec-style report",
+  "why_we_need_this": "Recent releases (AUG-181…AUG-201: Meeting Copilot, ASSISTANT column, Settings → AI assistants, Ghost Caption toggles, compact windows, Praxis modal) changed many screens at once. Nobody has looked at the app as a whole since. Small defects are very likely: text overflowing containers, clipped labels, overlapping columns, broken layouts in narrow and compact windows, unclear states. A new user meets these first and judges the product by them. The team needs one prioritized list of what's broken and what to fix first, written so a manager can decide in a few minutes.",
+  "acceptance_criteria": "- [ ] Inventory of all screens and states is built from the code (main window, sessions list and session/transcript view, live panel and recording states, ACTION ITEMS / ASSISTANT columns, every Settings tab, Setup Guide / diagnostics, Praxis modal, Ghost Mode / Ghost Caption, Dock Strip / Dock Square, compact Copilot and assistant windows, tray, notifications, empty / loading / error states) and included in the report as a coverage table: screen → checked / not checked + reason.\n- [ ] Each screen is checked in the running app (not only by reading code) at the default window size, at the minimum window size and in compact windows; every finding has a screenshot or an exact reproduction (screen, window size, data that triggers it).\n- [ ] Checks per screen cover at least: text overflow / clipping / truncation without tooltip, overlap of elements, long values (long session names, long project paths, non-ASCII / Cyrillic text, long transcripts), unclear labels or jargon, missing empty / error states, unclear next action for a first-time user, brandbook breaks (rounded corners, wrong colors per @project-context/frontend-design/README.md).\n- [ ] First-time user walk-through is done from a clean data state: install/launch → setup → first recording → transcript → Settings; every point where a new user would get stuck or confused is recorded.\n- [ ] Each finding has severity (Blocker / Major / Minor / Cosmetic), screen, short description, user impact and suggested fix.\n- [ ] The report is saved to @docs/reviews/2026-11-ui-audit.md and has two parts: (1) exec summary — ≤250 words, plain business language, no code terms: overall state, top-5 problems, what to fix first and the decision needed; (2) full findings table for the team.\n- [ ] Findings that need a fix are proposed as a grouped list of follow-up implementation tasks (not created automatically — listed in the report for the user to approve).",
+  "important_constraints": "- Critical stance: assume the user has never seen the app; \"it works for us\" is not an argument. Do not soften findings.\n- Audit only: no code changes, no fixes in this task. Do not create follow-up tasks without explicit user approval.\n- Both platforms ship (Windows x64, macOS arm64/x64). Check on the platform available; list macOS-specific screens (native display-media picker, audiotee/BlackHole flows, Library paths) as \"not checked on macOS\" in the coverage table instead of guessing.\n- Several sessions may run dev servers in parallel: start your own server on a free port and stop it by PID, never by image name.\n- Do not use real user data in screenshots in the report beyond what is needed; use a separate clean data dir for the first-time walk-through.\n- Diagnostic details (offsets, dB levels, method names) must not be proposed for user-facing UI.",
+  "labels": [
+    "ui",
+    "audit",
+    "ux"
+  ],
+  "on_hold_reason": "",
+  "contextRouterIncluded": true,
+  "created_at": 1794163120842,
+  "column_entered_at": 1794169655851
+}
