@@ -2,7 +2,7 @@
   "id": "AUG-204-xr1qau",
   "assignee": "jarvis.json",
   "priority": "high",
-  "status": "in_progress",
+  "status": "to_review",
   "title": "[AUG-204] Compact widgets: always-visible way back and non-blocking first-time hint (UI audit T1)",
   "why_we_need_this": "UI audit AUG-203 (@docs/reviews/2026-11-ui-audit.md, findings F-14, F-03, F-15, F-41, F-44): on the first recording the window collapses into a Dock Square or Dock Strip, the one-time hint covers the timer and the action-items header, and the `[ Expand ]` button is clipped at the default 360 px strip width and absent at 280 px. A first-time user cannot find the way back to the full window and believes the app vanished. Ghost Caption controls are 13×16 px icon-only buttons; the Dock Square during Live shows an unlabelled counter. This is the single most damaging first-run moment.",
   "acceptance_criteria": "- [ ] Dock Strip header keeps timer, status, `[ CP ]`, `[ AS ]`, `[ ⇄ ]` and `[ Expand ]` fully visible at every width from 280 to 520 px (header wraps to two rows or the right-aligned cluster never shrinks); verified by screenshots at 280, 360 and 520 px\n- [ ] Dock Square and Dock Strip first-time hint (\"Snap your call into the freed space\") never overlaps the timer, level bars or the ACTION ITEMS header and `[ + ADD ]`; it says that recording continues and names the control that restores the window\n- [ ] Ghost Caption hover tools have hit areas of at least 24×24 px with visible short labels (End, Mute, Expand …); the End control is always visible in red, not hover-only\n- [ ] Dock Square in Live labels its line counter (\"2 lines\") and the `⇄` switch has a visible caption or tooltip\n- [ ] The amber \"Groq off — only manual items\" box is replaced by plain wording (\"Action items: add by hand\" + link to turn automatic items on)\n- [ ] Both platforms: no `process.platform` regression; Ghost window layout verified on Windows and listed as pending on macOS if not checked\n- [ ] Brandbook kept: 0 border-radius, Necron tokens, red only on End / destructive",
@@ -16,5 +16,5 @@
   "on_hold_reason": "",
   "contextRouterIncluded": true,
   "created_at": 1794173433591,
-  "column_entered_at": 1794173717015
+  "column_entered_at": 1794174648267
 }
