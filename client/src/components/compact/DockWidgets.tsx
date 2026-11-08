@@ -36,13 +36,13 @@ export const PanelToggles: React.FC<{ live: boolean; variant: 'dock' | 'ghost' }
             type="button"
             className={variant === 'dock'
               ? `compact-btn compact-btn--icon cp-panel-toggle${on ? ' compact-btn--accent' : ''}`
-              : `ghost-btn ghost-panel-toggle${on ? ' ghost-btn--accent' : ''}`}
+              : `ghost-btn ghost-tool ghost-panel-toggle${on ? ' ghost-btn--accent' : ''}`}
             onClick={() => window.august?.setCompactPanel?.(kind, !on)}
             aria-pressed={on}
             aria-label={label}
             title={label}
           >
-            {variant === 'dock' ? `[ ${short} ]` : <><span className="ghost-br">[ </span>{short}<span className="ghost-br"> ]</span></>}
+            {variant === 'dock' ? `[ ${short} ]` : <span className="ghost-tool-label">{short}</span>}
           </button>
         );
       })}
@@ -64,6 +64,24 @@ export const MicGlyph: React.FC<{ muted: boolean }> = ({ muted }) => (
   </svg>
 );
 
+/// AUG-204: one-time hint, in the layout flow (never over the timer, level bars or action items). Says recording continues and names the way back.
+export const CompactHint: React.FC<{ variant: 'strip' | 'square'; onDismiss: () => void }> = ({ variant, onDismiss }) => (
+  <div className={`compact-hint compact-hint--${variant}`} role="note">
+    {variant === 'strip' ? (
+      <>
+        <span className="compact-hint-tag">[ HINT ]</span>
+        <span className="compact-hint-text">Recording continues. Snap your call into the freed space. [ ⤢ EXPAND ] or Esc brings the full window back.</span>
+        <button type="button" className="compact-btn compact-btn--accent" onClick={onDismiss}>[ GOT IT ]</button>
+      </>
+    ) : (
+      <>
+        <span className="compact-hint-text">Recording continues · ⤢ or Esc opens August</span>
+        <button type="button" className="compact-btn compact-btn--accent compact-btn--small" onClick={onDismiss}>OK</button>
+      </>
+    )}
+  </div>
+);
+
 interface DockProps {
   snap: CompactSnapshot;
   actions: CompactActions | null;
@@ -73,9 +91,10 @@ interface DockProps {
 interface StripProps extends DockProps {
   onSwitch: () => void; // AUG-188
   onSendToPraxis: (ids: string[]) => void; // AUG-188
+  hint: boolean; onHintDismiss: () => void; onEnableAuto: () => void; // AUG-204
 }
 
-export const DockStrip: React.FC<StripProps> = ({ snap, actions, onExpand, onSwitch, onSendToPraxis }) => {
+export const DockStrip: React.FC<StripProps> = ({ snap, actions, onExpand, onSwitch, onSendToPraxis, hint, onHintDismiss, onEnableAuto }) => {
   const bodyRef = useRef<HTMLDivElement>(null);
   const [follow, setFollow] = useState(true);
   const followRef = useRef(true);
@@ -122,14 +141,17 @@ export const DockStrip: React.FC<StripProps> = ({ snap, actions, onExpand, onSwi
           className="compact-strip-head"
           onDoubleClick={(e) => { if (!(e.target as HTMLElement).closest('button')) onExpand(); }}
         >
-          <span className={`compact-rec${paused ? ' compact-rec--paused' : ''}`} aria-hidden="true" />
-          <span className={`compact-timer${paused ? ' compact-timer--paused' : ''}`}>{formatClock(snap.elapsedSeconds)}</span>
-          <span className={`compact-tag compact-tag--${tag.tone}`}>{tag.label}</span>
-          {snap.micMuted && <span className="compact-tag compact-tag--muted">{snap.mutedHint ? "YOU'RE MUTED" : 'MIC OFF'}</span>}
-          <span className="compact-spacer" />
-          <PanelToggles live={snap.live} variant="dock" />
-          <button type="button" className="compact-btn compact-btn--icon" onClick={onSwitch} title="Switch to Dock Square" aria-label="Switch to Dock Square">[ ⇄ ]</button>
-          <button type="button" className="compact-btn compact-btn--icon" onClick={onExpand} title="Expand August (Esc)" aria-label="Expand August">[ ⤢ ]</button>
+          <span className="compact-strip-id">
+            <span className={`compact-rec${paused ? ' compact-rec--paused' : ''}`} aria-hidden="true" />
+            <span className={`compact-timer${paused ? ' compact-timer--paused' : ''}`}>{formatClock(snap.elapsedSeconds)}</span>
+            <span className={`compact-tag compact-tag--${tag.tone}`}>{tag.label}</span>
+            {snap.micMuted && <span className="compact-tag compact-tag--muted">{snap.mutedHint ? "YOU'RE MUTED" : 'MIC OFF'}</span>}
+          </span>
+          <span className="compact-strip-head-actions">
+            <PanelToggles live={snap.live} variant="dock" />
+            <button type="button" className="compact-btn compact-btn--icon" onClick={onSwitch} title="Switch to Dock Square" aria-label="Switch to Dock Square">[ ⇄ ]</button>
+            <button type="button" className="compact-btn compact-btn--accent compact-strip-expand" onClick={onExpand} title="Back to the full window (Esc)" aria-label="Expand August to the full window">[ ⤢ EXPAND ]</button>
+          </span>
         </div>
         <div className="compact-strip-tools">
           <button type="button" className="compact-btn compact-btn--accent" onClick={() => actions?.copyAll()} disabled={snap.lines.length === 0}>[ COPY ALL ]</button>
@@ -150,6 +172,7 @@ export const DockStrip: React.FC<StripProps> = ({ snap, actions, onExpand, onSwi
           </div>
         )}
       </div>
+      {hint && <CompactHint variant="strip" onDismiss={onHintDismiss} />}
 
       {interrupted && (
         <div className="compact-strip-alert compact-strip-alert--error">
@@ -193,6 +216,7 @@ export const DockStrip: React.FC<StripProps> = ({ snap, actions, onExpand, onSwi
             onEdit={(id, p) => actions?.editActionItem(id, p)}
             onDelete={(id) => actions?.deleteActionItem(id)}
             onSendToPraxis={(ids) => onSendToPraxis(ids)}
+            onEnableAuto={onEnableAuto}
           />
         </div>
       )}
@@ -223,9 +247,10 @@ export const DockStrip: React.FC<StripProps> = ({ snap, actions, onExpand, onSwi
 
 interface SquareProps extends DockProps {
   onSwitch: () => void; // AUG-188
+  hint: boolean; onHintDismiss: () => void; // AUG-204
 }
 
-export const DockSquare: React.FC<SquareProps> = ({ snap, actions, onExpand, onSwitch }) => {
+export const DockSquare: React.FC<SquareProps> = ({ snap, actions, onExpand, onSwitch, hint, onHintDismiss }) => {
   const paused = snap.liveStatus === 'paused';
   const interrupted = snap.liveStatus === 'interrupted';
   const lost = snap.captureLost;
@@ -235,7 +260,7 @@ export const DockSquare: React.FC<SquareProps> = ({ snap, actions, onExpand, onS
   const tagTone = lost ? 'error' : paused ? 'pause' : snap.micMuted ? 'muted' : 'idle';
 
   return (
-    <div className="compact-square">
+    <div className={`compact-square${hint ? ' compact-square--hint' : ''}`}>
       <div className="compact-square-top">
         <span className={`compact-rec${paused ? ' compact-rec--paused' : ''}`} aria-hidden="true" />
         <span className={`compact-tag compact-tag--${tagTone} compact-square-tag`}>{tagLabel}</span>
@@ -273,7 +298,7 @@ export const DockSquare: React.FC<SquareProps> = ({ snap, actions, onExpand, onS
           <span className={`compact-square-timer${paused ? ' compact-timer--paused' : ''}`}>{formatClock(snap.elapsedSeconds)}</span>
         )}
         {!lost && (snap.live ? (
-          <button type="button" className="compact-btn compact-btn--count compact-btn--small" onClick={onSwitch} title="Show the transcript here — switch to Dock Strip">▤ {snap.lines.length} ⇄</button>
+          <button type="button" className="compact-btn compact-btn--count compact-btn--small" onClick={onSwitch} title="Show the transcript — switch to Dock Strip" aria-label={`${snap.lines.length} transcript ${snap.lines.length === 1 ? 'line' : 'lines'}, switch to Dock Strip`}>▤ {snap.lines.length} {snap.lines.length === 1 ? 'line' : 'lines'} ⇄</button>
         ) : (
           <button type="button" className="compact-btn compact-btn--solid compact-btn--small" onClick={() => actions?.startLive()} title="Start live text again. Recording continues.">▶&#xFE0E; LIVE</button>
         ))}
@@ -285,6 +310,7 @@ export const DockSquare: React.FC<SquareProps> = ({ snap, actions, onExpand, onS
           <button type="button" className="compact-btn compact-btn--small" onClick={() => actions?.retryLive()}>[ RETRY ]</button>
         )}
       </div>
+      {hint && <CompactHint variant="square" onDismiss={onHintDismiss} />}
 
       <div className="compact-bars" aria-hidden="true">
         {snap.levels.map((level, i) => (

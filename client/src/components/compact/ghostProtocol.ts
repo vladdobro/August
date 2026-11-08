@@ -42,7 +42,8 @@ export type GhostAction =
   | { kind: 'add'; text: string; owner: string }
   | { kind: 'edit'; id: string; patch: { text?: string; owner?: string } }
   | { kind: 'delete'; id: string }
-  | { kind: 'praxis'; ids: string[] }; // AUG-188
+  | { kind: 'praxis'; ids: string[] } // AUG-188
+  | { kind: 'settings' }; // AUG-204: open Settings → Transcription (automatic action items)
 
 export type GhostMessage =
   | { type: 'state'; state: GhostState }

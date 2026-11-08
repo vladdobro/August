@@ -23,6 +23,7 @@ interface CompactLayerProps {
   onPreferenceChange: (patch: Partial<UserPreferences>) => void;
   onBeforeCollapse: () => void;
   onRevealRecording: () => void;
+  onOpenSettings: (tab: 'transcription') => void; // AUG-204: "Turn on automatic items" from compact
 }
 
 type Phase = 'full' | 'compact' | 'done';
@@ -122,6 +123,11 @@ const CompactLayer: React.FC<CompactLayerProps> = (props) => {
       propsRef.current.onRevealRecording();
     }
   }, []);
+
+  // AUG-204: compact "Turn on automatic items" → full window + Settings → Transcription.
+  const openAutoItemsSettings = useCallback(() => {
+    void expand().then(() => propsRef.current.onOpenSettings('transcription'));
+  }, [expand]);
 
   const toggle = useCallback(() => {
     if (phaseRef.current === 'compact' || phaseRef.current === 'done') void expand();
@@ -296,6 +302,7 @@ const CompactLayer: React.FC<CompactLayerProps> = (props) => {
           case 'edit': a?.editActionItem(msg.action.id, msg.action.patch); break;
           case 'delete': a?.deleteActionItem(msg.action.id); break;
           case 'praxis': a?.sendToPraxis(msg.action.ids); void expand(); break;
+          case 'settings': openAutoItemsSettings(); break;
         }
       }
     };
@@ -304,7 +311,7 @@ const CompactLayer: React.FC<CompactLayerProps> = (props) => {
       channelRef.current = null;
     };
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [supported, buildGhostState]);
+  }, [supported, buildGhostState, openAutoItemsSettings]);
 
   const runGhostCommand = (command: GhostCommand) => {
     const actions = compactStore.actions();
@@ -359,6 +366,8 @@ const CompactLayer: React.FC<CompactLayerProps> = (props) => {
   const dockClass = widget === 'dock-strip' ? 'strip' : 'square';
   const actions = compactStore.actions();
   const onExpand = () => { void expand(); };
+  const showHint = hint && phase === 'compact';
+  const dismissHint = () => { setHint(false); props.onPreferenceChange({ compactHintSeen: true }); };
 
   return createPortal(
     <div className={`compact-dock compact-dock--${dockClass}`} role="region" aria-label="August compact mode">
@@ -374,6 +383,9 @@ const CompactLayer: React.FC<CompactLayerProps> = (props) => {
           onExpand={onExpand}
           onSwitch={() => { void switchWidget(); }}
           onSendToPraxis={(ids) => { actions?.sendToPraxis(ids); onExpand(); }}
+          hint={showHint}
+          onHintDismiss={dismissHint}
+          onEnableAuto={openAutoItemsSettings}
         />
       ) : (
         <DockSquare
@@ -381,20 +393,9 @@ const CompactLayer: React.FC<CompactLayerProps> = (props) => {
           actions={actions}
           onExpand={onExpand}
           onSwitch={() => { void switchWidget(); }}
+          hint={showHint}
+          onHintDismiss={dismissHint}
         />
-      )}
-      {hint && phase === 'compact' && (
-        <div className="compact-hint" role="note">
-          <span className="compact-hint-tag">[ HINT ]</span>
-          <span className="compact-hint-text">Snap your call into the freed space</span>
-          <button
-            type="button"
-            className="compact-btn compact-btn--accent"
-            onClick={() => { setHint(false); props.onPreferenceChange({ compactHintSeen: true }); }}
-          >
-            [ GOT IT ]
-          </button>
-        </div>
       )}
     </div>,
     document.body,

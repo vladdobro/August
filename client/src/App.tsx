@@ -466,6 +466,7 @@ const App: React.FC = () => {
         onPreferenceChange={handlePreferenceChange}
         onBeforeCollapse={() => { setOpenOverlay(null); setShowSettings(false); setShowGroqKeyModal(false); }}
         onRevealRecording={() => { setSelectedSessionId(null); setShowDiagnostics(false); setShowArchive(false); setSetupDismissed(true); }}
+        onOpenSettings={(tab) => { setSettingsTab(tab); setShowSettings(true); }}
       />
     </>
   );

@@ -32,6 +32,11 @@ const LiveTextOffGlyph: React.FC = () => (
   </svg>
 );
 
+/// AUG-204: Ghost Caption tool content — glyph plus a short visible label (label hides only in the low-height row).
+const ToolLabel: React.FC<{ glyph: React.ReactNode; label: string }> = ({ glyph, label }) => (
+  <><span className="ghost-tool-glyph" aria-hidden="true">{glyph}</span><span className="ghost-tool-label">{label}</span></>
+);
+
 const GhostCaption: React.FC<GhostCaptionProps> = ({ state, send, sendAction }) => {
   const [hovered, setHovered] = useState(false);
   const [leftHover, setLeftHover] = useState(false);
@@ -238,8 +243,10 @@ const GhostCaption: React.FC<GhostCaptionProps> = ({ state, send, sendAction }) 
                 <button type="button" className="ghost-btn ghost-btn--accent ghost-ctx" onClick={openCopilot} title="Show the Copilot window" aria-label={`${ctx.count} hints, show the Copilot window`}>CTX {ctx.count}</button>
               )}
             </div>
-            <span className={`ghost-tag ghost-tag--${lost ? 'error' : tag.tone}`}>{lost ? 'CAPTURE LOST' : tag.label}</span>
-            {state.micMuted && !lost && <span className="ghost-tag ghost-tag--muted">{state.mutedHint ? "YOU'RE MUTED" : 'MIC OFF'}</span>}
+            <div className="ghost-caption-tags">
+              <span className={`ghost-tag ghost-tag--${lost ? 'error' : tag.tone}`}>{lost ? 'CAPTURE LOST' : tag.label}</span>
+              {state.micMuted && !lost && <span className="ghost-tag ghost-tag--muted">{state.mutedHint ? "YOU'RE MUTED" : 'MIC OFF'}</span>}
+            </div>
             {interrupted && !lost && (
               <div className="ghost-caption-tools ghost-caption-tools--always">
                 <button type="button" className="ghost-btn" onClick={() => send('retry')}>[ RETRY ]</button>
@@ -253,35 +260,35 @@ const GhostCaption: React.FC<GhostCaptionProps> = ({ state, send, sendAction }) 
             )}
             {!alert && (
               <div className={`ghost-caption-tools ghost-caption-tools--grid${showTools ? ' ghost-caption-tools--shown' : ''}`}>
-                <button type="button" className="ghost-btn" onClick={() => send('expand')} title="Expand August" aria-label="Expand August"><span className="ghost-br">[ </span>⤢<span className="ghost-br"> ]</span></button>
-                <button type="button" className="ghost-btn" onClick={() => send('switch')} title="Switch to Ghost Coin" aria-label="Switch to Ghost Coin"><span className="ghost-br">[ </span>⇄<span className="ghost-br"> ]</span></button>
+                <button type="button" className="ghost-btn ghost-tool" onClick={() => send('expand')} title="Back to the full window (Esc)" aria-label="Expand August"><ToolLabel glyph="⤢" label="Expand" /></button>
+                <button type="button" className="ghost-btn ghost-tool" onClick={() => send('switch')} title="Switch to Ghost Coin" aria-label="Switch to Ghost Coin"><ToolLabel glyph="⇄" label="Coin" /></button>
                 {state.live && !interrupted && (
                   <button
                     type="button"
-                    className="ghost-btn ghost-btn--pause"
+                    className="ghost-btn ghost-btn--pause ghost-tool"
                     onClick={() => send(paused ? 'resume' : 'pause')}
                     title={paused ? 'Resume' : 'Pause'}
                     aria-label={paused ? 'Resume' : 'Pause'}
                   >
-                    <span className="ghost-br">[ </span>{paused ? '▶' : '⏸'}<span className="ghost-br"> ]</span>
+                    <ToolLabel glyph={paused ? '▶' : '⏸'} label={paused ? 'Resume' : 'Pause'} />
                   </button>
                 )}
                 <button
                   type="button"
-                  className={`ghost-btn ghost-btn--mute${state.micMuted ? ' ghost-btn--mute-on' : ''}`}
+                  className={`ghost-btn ghost-btn--mute ghost-tool${state.micMuted ? ' ghost-btn--mute-on' : ''}`}
                   onClick={() => send(state.micMuted ? 'unmute' : 'mute')}
                   aria-pressed={state.micMuted}
                   aria-label={state.micMuted ? 'Unmute microphone' : 'Mute microphone'}
                   title="Mute in August's recording"
                 >
-                  <span className="ghost-br">[ </span><MicGlyph muted={state.micMuted} /><span className="ghost-br"> ]</span>
+                  <ToolLabel glyph={<MicGlyph muted={state.micMuted} />} label={state.micMuted ? 'Unmute' : 'Mute'} />
                 </button>
                 {state.live ? (
-                  <HoldToStopButton className="ghost-btn ghost-btn--end" onComplete={() => send('stop-live')} title="Hold 1.5 s to stop live text. Recording continues." ariaLabel="Stop Live Text (hold 1.5 seconds)" hint="HOLD"><span className="ghost-br">[ </span><LiveTextOffGlyph /><span className="ghost-br"> ]</span></HoldToStopButton>
+                  <HoldToStopButton className="ghost-btn ghost-btn--end ghost-tool" onComplete={() => send('stop-live')} title="Hold 1.5 s to stop live text. Recording continues." ariaLabel="Stop Live Text (hold 1.5 seconds)" hint="HOLD"><ToolLabel glyph={<LiveTextOffGlyph />} label="Text off" /></HoldToStopButton>
                 ) : (
-                  <button type="button" className="ghost-btn ghost-btn--solid" onClick={() => send('start-live')} title="Start live text again. Recording continues." aria-label="Start live text"><span className="ghost-br">[ </span>▶&#xFE0E;<span className="ghost-br"> ]</span></button>
+                  <button type="button" className="ghost-btn ghost-btn--solid ghost-tool" onClick={() => send('start-live')} title="Start live text again. Recording continues." aria-label="Start live text"><ToolLabel glyph={'▶︎'} label="Live" /></button>
                 )}
-                <HoldToStopButton className="ghost-btn ghost-btn--end" onComplete={() => send('end')} title="Hold 1.5 s to end the meeting" ariaLabel="End Meeting (hold 1.5 seconds)" hint="HOLD"><span className="ghost-br">[ </span>■<span className="ghost-br"> ]</span></HoldToStopButton>
+                <HoldToStopButton className="ghost-btn ghost-btn--end ghost-tool ghost-tool--pinned" onComplete={() => send('end')} title="Hold 1.5 s to end the meeting" ariaLabel="End Meeting (hold 1.5 seconds)" hint="HOLD"><ToolLabel glyph="■" label="End" /></HoldToStopButton>
                 <PanelToggles live={state.live} variant="ghost" />
               </div>
             )}
@@ -344,6 +351,7 @@ const GhostCaption: React.FC<GhostCaptionProps> = ({ state, send, sendAction }) 
             onEdit={(id, patch) => sendAction({ kind: 'edit', id, patch })}
             onDelete={(id) => sendAction({ kind: 'delete', id })}
             onSendToPraxis={(ids) => sendAction({ kind: 'praxis', ids })}
+            onEnableAuto={() => sendAction({ kind: 'settings' })}
           />
         </div>
       )}

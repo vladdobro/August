@@ -19,6 +19,8 @@ interface ActionItemsPanelProps {
   onSendToPraxis?: (ids: string[], mode: 'separate' | 'common') => void;
   /// AUG-199: inside a LiveColumn, whose header already shows the title and count.
   embedded?: boolean;
+  // AUG-204: compact "Turn on automatic items" link
+  onEnableAuto?: () => void;
 }
 
 /// AUG-166: `AUG-12-ab12cd` -> `AUG-12`.
@@ -151,7 +153,7 @@ const AddItemForm: React.FC<AddItemFormProps> = ({ onAdd, onCancel }) => {
   );
 };
 
-const ActionItemsPanel: React.FC<ActionItemsPanelProps> = ({ items, participants, variant, enabled, offReason, onParticipantsChange, onAdd, onEdit, onDelete, onSendToPraxis, embedded }) => {
+const ActionItemsPanel: React.FC<ActionItemsPanelProps> = ({ items, participants, variant, enabled, offReason, onParticipantsChange, onAdd, onEdit, onDelete, onSendToPraxis, embedded, onEnableAuto }) => {
   const [adding, setAdding] = useState(false);
   const compact = variant === 'compact';
   const exportEnabled = Boolean(onSendToPraxis) && !compact;
@@ -171,11 +173,7 @@ const ActionItemsPanel: React.FC<ActionItemsPanelProps> = ({ items, participants
   const addForm = onAdd && adding ? <AddItemForm onAdd={onAdd} onCancel={() => setAdding(false)} /> : null;
   const itemsOff = offReason === 'items';
   const disabledHint = offReason === 'manual'
-    ? (compact
-      ? 'Live text off — only manual items'
-      : `Live text is off, so action items are not collected automatically.${onAdd ? ' Add them by hand or with → Action item in ASSISTANT.' : ''}`)
-    : compact
-    ? (itemsOff ? 'Live items off — only manual items' : 'Groq off — only manual items')
+    ? `Live text is off, so action items are not collected automatically.${onAdd ? ' Add them by hand or with → Action item in ASSISTANT.' : ''}`
     : itemsOff
       ? `Turn on Collect live action items in Settings → Transcription to collect action items during live recording.${onAdd ? ' You can still add items by hand.' : ''}`
       : `Turn on Online text (Groq) in Settings → Transcription to collect action items during live recording.${onAdd ? ' You can still add items by hand.' : ''}`;
@@ -230,7 +228,14 @@ const ActionItemsPanel: React.FC<ActionItemsPanelProps> = ({ items, participants
       ) : (participants.me || participants.them) ? (
         <div className="action-items-participants action-items-participants--readonly">Me = {participants.me || 'Me'} · Them = {participants.them || 'Them'}</div>
       ) : null)}
-      {enabled === false && <div className="action-items-hint">{disabledHint}</div>}
+      {enabled === false && (compact ? (
+        <div className="action-items-hint action-items-hint--plain">
+          <span>{offReason === 'manual' ? 'Action items: add by hand (live text is off)' : 'Action items: add by hand'}</span>
+          {offReason !== 'manual' && onEnableAuto && (
+            <button type="button" className="action-items-hint-link" onClick={onEnableAuto}>Turn on automatic items</button>
+          )}
+        </div>
+      ) : <div className="action-items-hint">{disabledHint}</div>)}
       {enabled !== false && items.length === 0 && <div className="action-items-empty">{emptyText}</div>}
       <ul className="action-items-list">
         {/* Newest first: right under the Add form, so a just-added item is always in view. */}
