@@ -616,7 +616,7 @@ body {
   flex: 1;
   min-width: 0;
   width: 100%;
-  padding-bottom: 56px;
+  padding-bottom: var(--pin-bar-reserve); /* AUG-206: pin bar height + 16 px gap, see the pin bar block */
   background: var(--main-bg);
   background-image: var(--shell-gradient);
   overflow-y: auto;
@@ -1775,6 +1775,10 @@ body {
 }
 
 .file-upload-host { flex: 1; min-height: 0; display: flex; flex-direction: column; }
+/* AUG-206: the FileUpload host may shrink (min-height: 0) only while the live panel fills the main area.
+   Otherwise it keeps its content height: a shrunk host lets the page overflow it, and the overflow ignores
+   .main-content's bottom padding, so the pin bar covered the link row at 960x600. */
+.file-upload-host:not(:has(.live-open)) { flex: 1 0 auto; }
 .circuit-layout.live-open { max-width: none; margin: 0; padding: 0; flex: 1; min-height: 0; gap: 0; align-items: stretch; }
 .circuit-layout.live-open > :not(.live-panel):not(.mic-notice):not(.upload-error) { display: none; }
 
@@ -8171,11 +8175,8 @@ span.archive-path:hover { text-decoration: none; color: var(--text-primary); }
 .archive-redl-confirm .archive-url { color: var(--accent); word-break: break-all; }
 .archive-acts { display: flex; gap: 8px; margin-top: 8px; flex-wrap: wrap; }
 
-/* bulk bar */
+/* bulk bar — AUG-206: docked below the list (was sticky at bottom: 60px and hid rows at 960x600) */
 .archive-bulk {
-  position: sticky;
-  bottom: 60px;
-  z-index: 10;
   display: flex;
   justify-content: space-between;
   align-items: center;
@@ -8186,7 +8187,6 @@ span.archive-path:hover { text-decoration: none; color: var(--text-primary); }
   border: 1px solid var(--accent);
   border-top-width: 2px;
   border-radius: 0;
-  box-shadow: 0 -8px 24px rgba(0, 0, 0, 0.18);
   margin-top: 16px;
 }
 .archive-bulk-count { font-family: var(--font-terminal); font-size: 12px; font-weight: 700; color: var(--accent); font-variant-numeric: tabular-nums; }
@@ -8241,7 +8241,7 @@ span.archive-path:hover { text-decoration: none; color: var(--text-primary); }
 :root[data-theme='dark'] .archive-cb { background: var(--necron-950); }
 :root[data-theme='dark'] .archive-cb:checked::after { border-color: var(--necron-950); }
 :root[data-theme='dark'] .archive-redl-confirm { background: var(--necron-850); }
-:root[data-theme='dark'] .archive-bulk { background: var(--necron-850); box-shadow: 0 -8px 24px rgba(0, 0, 0, 0.5); }
+:root[data-theme='dark'] .archive-bulk { background: var(--necron-850); }
 :root[data-theme='dark'] .archive-dialog { background: var(--necron-900); }
 :root[data-theme='dark'] .archive-breakdown { background: var(--necron-950); }
 
@@ -8380,12 +8380,15 @@ span.archive-path:hover { text-decoration: none; color: var(--text-primary); }
 .controls-item:disabled:hover { border-color: var(--border-color); }
 .controls-item:disabled .controls-icon { border-color: var(--text-secondary); color: var(--text-secondary); }
 
-.pin-toggles { position: fixed; bottom: 16px; left: 50%; transform: translateX(-50%); z-index: 45; display: flex; gap: 4px; padding: 4px; border: 1px solid var(--border-color); background: var(--card-bg); backdrop-filter: blur(12px); }
+/* AUG-206: one source for the pin bar geometry. --pin-bar-reserve is the bottom space every full-page view keeps
+   free (.main-content padding) so the last control always ends above the bar: offset + bar height + 16 px. */
+:root { --pin-bar-offset: 16px; --pin-bar-height: 38px; --pin-bar-reserve: calc(var(--pin-bar-offset) + var(--pin-bar-height) + 16px); }
+.pin-toggles { position: fixed; bottom: var(--pin-bar-offset); left: 50%; transform: translateX(-50%); z-index: 45; display: flex; gap: 4px; padding: 4px; border: 1px solid var(--border-color); background: var(--card-bg); backdrop-filter: blur(12px); }
 .pin-btn { padding: 6px 14px; font-family: var(--font-terminal); font-size: 11px; font-weight: 700; letter-spacing: 0.06em; text-transform: uppercase; border: 1px solid transparent; border-radius: 0; background: transparent; color: var(--text-secondary); cursor: pointer; transition: color 0.15s ease, border-color 0.15s ease, background 0.15s ease; }
 .pin-btn:hover { color: var(--accent); }
 .pin-btn--active { color: var(--accent); border-color: var(--accent); background: rgba(0, 200, 118, 0.1); }
 :root[data-theme='dark'] .pin-toggles { background: rgba(10, 17, 13, 0.9); border-color: rgba(0, 200, 118, 0.25); }
-@media (max-width: 500px) { .pin-toggles { bottom: 8px; } }
+@media (max-width: 500px) { :root { --pin-bar-offset: 8px; } }
 
 .app-layout--overlay-open .theme-toggle { display: none; }
 
