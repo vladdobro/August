@@ -1,0 +1,19 @@
+{
+  "id": "AUG-208-1kfyuf",
+  "assignee": "jarvis.json",
+  "priority": "high",
+  "status": "in_progress",
+  "title": "[AUG-208] Auto-bind the default Praxis project to Copilot and Assistant when a live session starts",
+  "why_we_need_this": "When a new live session starts, Copilot and Assistant do nothing until the user picks a project with `+` in the ASSISTANT column. The user often forgets to do this, so the meeting runs with no hints and no assistant, and the gap is noticed only later.\n\nThe app already stores a default project: `praxisProjects[].isDefault` (the DEFAULT tag, @client/src/services/preferences.ts). Reusing it means Copilot and Assistant work right away with no extra click, and the user still picks a project by hand when the meeting needs a different one.",
+  "acceptance_criteria": "- [ ] Starting a recording (Live Text mode or Default-mode / meeting-only socket) when a default project exists opens a tab for that project in the ASSISTANT column, with no click from the user.\n- [ ] Copilot binds to the same default project (the per-(liveKey, project) copilotEngine starts) when `aiCopilotMode` is not Off.\n- [ ] The Assistant Claude child starts for the default project only when the Active session is enabled and consent is given (`aiSessionEnabled` + `aiConsent`). If they are off, the tab opens in its normal \"not started\" state and no Claude process is spawned.\n- [ ] Copilot Off, Claude Code not signed in, or PraxisOS unreachable: the tab shows the existing marks (○ / !). No error toast, no crash.\n- [ ] No default project registered: behaviour is the same as today (no tab opens by itself).\n- [ ] Default project folder missing or not a Praxis project: the tab shows `!` unavailable, and the user can still add another project with `+`.\n- [ ] The user can close the auto-opened tab or add other projects. The ≤ 3 Claude child limit still holds.\n- [ ] Reconnects and \"Start Live Text again\" (AUG-188) on the same liveKey do not open a second default tab.\n- [ ] Compact Mode: the Copilot and Assistant windows show the auto-bound project the same way.\n- [ ] Typecheck and existing tests pass. Checked by hand on Windows; the macOS path is reviewed in code (no platform-specific branch is added).",
+  "important_constraints": "- Reuse the existing `isDefault` flag on `praxisProjects`. Do not add a new preference or Settings control unless the implementer finds a blocking reason; if so, ask the user first.\n- Do not bypass consents or modes: auto-binding only picks the project. All aiCopilotMode / aiSessionEnabled / aiConsent / budget rules stay as they are.\n- Keep diagnostics out of the UI (log only).\n- Context: See project-context routes `ai-assistants` (AUG-197/199/200), `frontend-design` (ASSISTANT column, `+` picker), `preferences` (praxisProjects). Key code: @server/src/services/assistantSession.ts, @server/src/routes/assistant.ts, and the ASSISTANT column / assistantStore in @client/src.\n- Cross-platform: Windows + macOS, path handling via existing helpers only.",
+  "labels": [
+    "ai-assistants",
+    "copilot",
+    "ux"
+  ],
+  "on_hold_reason": "",
+  "contextRouterIncluded": true,
+  "created_at": 1794828659765,
+  "column_entered_at": 1794866569021
+}

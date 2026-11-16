@@ -120,6 +120,9 @@ const FileUpload: React.FC<FileUploadProps> = ({ onUploaded, onRecordingChange, 
   const [liveActionOffReason, setLiveActionOffReason] = useState<'groq' | 'items' | 'manual' | null>(null);
   const [liveParticipants, setLiveParticipants] = useState<Participants>({ me: '', them: '' });
   const liveParticipantsRef = useRef<Participants>({ me: '', them: '' });
+  // AUG-208: default Praxis project for auto-binding the ASSISTANT column at meeting start (ref: start callbacks have stable deps).
+  const defaultPraxisProjectRef = useRef<{ path: string; name: string } | null>(null);
+  defaultPraxisProjectRef.current = preferences?.praxisProjects?.find((p) => p.isDefault) ?? null;
   const liveKeyRef = useRef<string | null>(null);
   const [praxisExport, setPraxisExport] = useState<{ ids: string[]; mode: 'separate' | 'common'; liveKey: string } | null>(null);
   const recordingLiveSourceRef = useRef<{ micStream: MediaStream | null; systemStream: MediaStream | null; captureId: string | null } | null>(null); // AUG-188: what Start Live Text needs, kept for the whole recording
@@ -337,6 +340,7 @@ const FileUpload: React.FC<FileUploadProps> = ({ onUploaded, onRecordingChange, 
     meetingClientRef.current = client;
     assistantStore.bind(assistantTransportRef.current);
     assistantStore.setLive(true, false);
+    assistantStore.autoOpenDefault(defaultPraxisProjectRef.current);
     void assistantStore.refreshStatus();
     client.startMeeting(key, liveParticipantsRef.current);
     setMeetingActive(true);
@@ -389,6 +393,7 @@ const FileUpload: React.FC<FileUploadProps> = ({ onUploaded, onRecordingChange, 
       liveClientRef.current = client;
       assistantStore.bind(assistantTransportRef.current);
       assistantStore.setLive(true, true);
+      assistantStore.autoOpenDefault(defaultPraxisProjectRef.current);
       void assistantStore.refreshStatus();
       client.start(micStream, systemStream, language, engine, captureId, liveKeyRef.current, liveParticipantsRef.current);
     },

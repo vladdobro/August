@@ -2,7 +2,7 @@
 // One WebSocket (the live one, owned by FileUpload) carries every frame; this store only reduces them.
 // Never holds or shows money, model names, token counts or tool names.
 import { useSyncExternalStore } from 'react';
-import { fetchAssistantStatus, fetchCopilotRoute, setCopilotMode as postCopilotMode } from '../api';
+import { fetchAssistantStatus, fetchCopilotRoute, setCopilotMode as postCopilotMode, validatePraxisProject } from '../api';
 import type { AiModel, AssistantServerFrame, AssistantState, AssistantStatus, AssistantUnavailableReason, CopilotHintFrame, CopilotMode, CopilotServerFrame, CopilotStatusFrame } from '../types';
 import { patchPreferences } from './preferences';
 import { ASSISTANT_CHANNEL, type AssistantChannelMessage, type AssistantSnapshot, type CompactExchange } from './assistantChannel';
@@ -85,6 +85,9 @@ let state: AssistantStoreState = {
   active: null,
 };
 let transport: AssistantTransport | null = null;
+/// AUG-208: the default project is auto-bound once per meeting (reset() clears it), so reconnects,
+/// Stop Live Text → meeting-only socket and Start Live Text again never open a second default tab.
+let autoBound = false;
 const listeners = new Set<() => void>();
 
 const pathKey = (p: string) => p.replace(/[\\/]+$/, '').replace(/\\/g, '/').toLowerCase();
@@ -382,6 +385,7 @@ const actions = {
   /// End of the meeting: tabs and chats are per meeting.
   reset(): void {
     transport = null;
+    autoBound = false;
     set({ ...state, live: false, transcript: false, tabs: [], active: null, copilot: {}, assistPrefill: null });
   },
   refreshStatus,
@@ -398,6 +402,23 @@ const actions = {
     set({ ...state, tabs: [...state.tabs, tab], active: projectPath });
     if (state.enabled === true) transport?.open(projectPath);
     if (state.copilotMode !== 'off' && state.transcript) transport?.copilotOpen(projectPath);
+  },
+  /// AUG-208: opens the default Praxis project's tab at meeting start, as if picked with `+`.
+  /// Only picks the project: assistant-open / copilot-open keep their own consent and mode gates.
+  autoOpenDefault(project: { path: string; name?: string } | null | undefined): void {
+    if (autoBound) return;
+    autoBound = true;
+    if (!project || !project.path) return;
+    const key = pathKey(project.path);
+    if (state.tabs.some((t) => pathKey(t.projectPath) === key)) return;
+    actions.openTab(project.path, project.name);
+    // Missing folder / not a Praxis project → `!` even while the Active session is off (the server only reports it when on).
+    validatePraxisProject(project.path)
+      .then((r) => {
+        if (r.valid) return;
+        set(mapTab(state, project.path, (t) => (t.state === 'none' ? { ...t, state: 'error', praxis: false } : t)));
+      })
+      .catch(() => {});
   },
   closeTab(projectPath: string): void {
     const key = pathKey(projectPath);
