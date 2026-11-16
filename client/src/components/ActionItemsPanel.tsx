@@ -56,13 +56,34 @@ const InlineField: React.FC<InlineFieldProps> = ({ value, placeholder, ariaLabel
     if (!focusedRef.current) setDraft(value);
   }, [value]);
 
+  // AUG-212: scrollHeight is 0 while an ancestor is display:none (html.compact-dock hides #root, FileUpload stays mounted);
+  // pinning 0px then hid the item text after expanding back to the full window. Keep 'auto' in that case.
+  const fitArea = () => {
+    const el = areaRef.current;
+    if (!el) return;
+    el.style.height = 'auto';
+    const h = el.scrollHeight;
+    if (h > 0) el.style.height = `${h}px`;
+  };
+
+  useEffect(fitArea, [draft]);
+
+  // AUG-212: re-fit when the textarea becomes visible again or its column width changes (text rewraps).
   useEffect(() => {
     const el = areaRef.current;
-    if (el) {
-      el.style.height = 'auto';
-      el.style.height = `${el.scrollHeight}px`;
-    }
-  }, [draft]);
+    if (!el || typeof ResizeObserver === 'undefined') return;
+    let lastWidth = -1;
+    let frame = 0;
+    const ro = new ResizeObserver((entries) => {
+      const w = entries[0]?.contentRect.width ?? 0;
+      if (w === lastWidth) return;
+      lastWidth = w;
+      cancelAnimationFrame(frame);
+      frame = requestAnimationFrame(fitArea);
+    });
+    ro.observe(el);
+    return () => { ro.disconnect(); cancelAnimationFrame(frame); };
+  }, [multiline]);
 
   const commit = () => {
     const next = draft.trim();
@@ -96,11 +117,7 @@ const InlineField: React.FC<InlineFieldProps> = ({ value, placeholder, ariaLabel
       {...common}
       ref={areaRef}
       rows={1}
-      onChange={(e) => {
-        setDraft(e.target.value);
-        e.target.style.height = 'auto';
-        e.target.style.height = `${e.target.scrollHeight}px`;
-      }}
+      onChange={(e) => setDraft(e.target.value)}
     />
   ) : (
     <input type="text" {...common} onChange={(e) => setDraft(e.target.value)} />
