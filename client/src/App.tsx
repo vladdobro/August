@@ -28,6 +28,10 @@ const App: React.FC = () => {
   const [loadError, setLoadError] = useState<string | null>(null);
   const [ffmpegAvailable, setFfmpegAvailable] = useState(false);
   const selectedSessionIdRef = useRef<string | null>(null);
+  // AUG-210: titles just typed by the user, kept over poll results until their PATCH resolves (a poll that started
+  // before the PATCH landed would otherwise flash the old title).
+  const pendingRenamesRef = useRef(new Map<string, { title: string; token: number }>());
+  const renameTokenRef = useRef(0);
   const [healthStatus, setHealthStatus] = useState<HealthStatus | null>(null);
   const [setupDismissed, setSetupDismissed] = useState(false);
   const [showDiagnostics, setShowDiagnostics] = useState(false);
@@ -55,7 +59,11 @@ const App: React.FC = () => {
   const refreshSessions = useCallback(async () => {
     try {
       const list = await fetchSessions();
-      setSessions(list);
+      const pending = pendingRenamesRef.current;
+      setSessions(pending.size === 0 ? list : list.map((s) => {
+        const p = pending.get(s.id);
+        return p ? { ...s, title: p.title } : s;
+      }));
       setLoadError(null);
       return list;
     } catch (err) {
@@ -238,13 +246,24 @@ const App: React.FC = () => {
     setPendingDelete(null);
   };
 
-  const handleRename = async (id: string, title: string) => {
+  /// AUG-210: rejects when the save fails, so TranscriptView can keep the typed text and show its own message.
+  const renameSessionTitle = async (id: string, title: string) => {
+    const token = ++renameTokenRef.current;
+    pendingRenamesRef.current.set(id, { title, token });
     setSessions(prev => prev.map(s => (s.id === id ? { ...s, title } : s)));
     try {
       await renameSession(id, title);
+    } finally {
+      if (pendingRenamesRef.current.get(id)?.token === token) pendingRenamesRef.current.delete(id);
       await refreshSessions();
+    }
+  };
+
+  /// Sidebar rename: the list does not await the result, so a failure is reported in the global error line.
+  const handleRename = async (id: string, title: string) => {
+    try {
+      await renameSessionTitle(id, title);
     } catch (err) {
-      await refreshSessions();
       setLoadError((err as Error).message || 'Failed to rename session');
     }
   };
@@ -376,7 +395,7 @@ const App: React.FC = () => {
           )}
 
           {!needsSetup && !showArchive && selectedSession && (
-            <TranscriptView session={selectedSession} transcript={transcript} onRetranscribe={handleRetranscribe} onCancel={handleCancel} ffmpegAvailable={ffmpegAvailable} praxisProjects={preferences.praxisProjects ?? []} praxisDefaultPromptCustom={Boolean(preferences.praxisDefaultPrompt?.trim())} praxisRecentPaths={preferences.praxisRecentPaths ?? []} onPraxisPreferenceChange={handlePreferenceChange} onRename={(title) => handleRename(selectedSession.id, title)} onRedownload={handleRedownload} />
+            <TranscriptView session={selectedSession} transcript={transcript} onRetranscribe={handleRetranscribe} onCancel={handleCancel} ffmpegAvailable={ffmpegAvailable} praxisProjects={preferences.praxisProjects ?? []} praxisDefaultPromptCustom={Boolean(preferences.praxisDefaultPrompt?.trim())} praxisRecentPaths={preferences.praxisRecentPaths ?? []} onPraxisPreferenceChange={handlePreferenceChange} onRename={(title) => renameSessionTitle(selectedSession.id, title)} onRedownload={handleRedownload} />
           )}
 
           {(showFileUpload || isRecording) && (

@@ -41,6 +41,10 @@ export interface SessionMetadata {
   // AUG-181: mic mute ranges, ms relative to the mic recorder start. Stored for the batch merge; never shown in the UI.
   muteIntervals?: MuteInterval[];
   processingStage?: ProcessingStage; // AUG-189
+  // AUG-210: who set the title. 'auto' = default / file / link name, 'user' = renamed by hand, 'model' = suggestion applied at
+  // completion. Absent (sessions created before AUG-210) counts as 'user': such a session is never renamed automatically.
+  titleSource?: 'auto' | 'user' | 'model';
+  suggestedTitle?: string; // AUG-210: title proposed by the text model after whisper; applied at completion only while titleSource is 'auto'
 }
 
 /// AUG-152: how confidenceScore was derived. 'no-speech-prob' when the binary exported no_speech_prob, 'token-logprob'

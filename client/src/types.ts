@@ -35,6 +35,10 @@ export interface SessionMetadata {
   wavAutoDeletedAt?: string; // AUG-152: converted WAV removed automatically; source audio kept
   participants?: { me: string; them: string }; // AUG-165: names for Me / Them entered at live recording start
   processingStage?: ProcessingStage; // AUG-189
+  // AUG-210: who set the title. 'auto' = default / file / link name, 'user' = renamed by hand, 'model' = suggestion applied at
+  // completion. Absent (sessions created before AUG-210) counts as 'user': such a session is never renamed automatically.
+  titleSource?: 'auto' | 'user' | 'model';
+  suggestedTitle?: string; // AUG-210: title proposed by the text model after whisper; applied at completion only while titleSource is 'auto'
 }
 
 export type SessionSource = 'recording' | 'upload' | 'link' | 'platform';

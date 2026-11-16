@@ -33,11 +33,13 @@
 - If the data folder cannot be renamed (retried ~10 s), the installer quits before changing anything (silent updates leave the old version installed); if it cannot be moved back, the backup folder stays in place with a warning and is never deleted.
 - On restore, entries of the freshly installed data folder (data/tools: WASAPI helper) replace their old copies, so installer-shipped files always come from the new version.
 - The MSI target uses its own uninstall and is not covered by this preservation (MSI has no auto-update).
+- Install folder drift (AUG-207, research): the NSIS installer takes its target folder only from HKCU `Software\{appGuid}` InstallLocation; the old uninstaller deletes that key and the Uninstall key on every update and the installer writes them back at the end, so an update cut in between (BSOD, power loss, kill) leaves a working install with no registry trace, and the next silent update installs into `%LOCALAPPDATA%\Programs\August` with an empty `data` while the real data stays in the old folder.
+- Recommended fix (AUG-207, not implemented): the updater passes `/D=<folder of the running exe>` and the app keeps a data-dir pointer in `%APPDATA%\August` so the data dir no longer follows the install folder; see "Install folder drift and data left behind (AUG-207)".
 - Right-click on a sidebar session calls window.august.revealSession(id) over august:reveal-session; main reveals the folder via shell.showItemInFolder (AUG-124).
 - The Archive page opens the sessions data dir via window.august.revealSessionsDir() over august:reveal-sessions-dir; main calls shell.openPath(sessionsDir()) and takes no path from the renderer (AUG-150). The method is optional in desktop.d.ts; the browser build shows the path as text.
 - Compact Mode (AUG-156): CompactController (electron/src/compact.ts) resizes the main window to a right-edge Dock Strip or a 180×180 Dock Square, or hides it behind a frameless transparent always-on-top ghost window (Ghost Caption / Ghost Coin) loading the same app URL with ?ghost=caption|coin; setCompactMode({ shape: 'none' }) restores the saved bounds, maximized flag and the 960×600 minimum.
 - Always-on-top diverges: macOS setAlwaysOnTop(on, 'floating') + setVisibleOnAllWorkspaces(on, { visibleOnFullScreen: true }); Windows setAlwaysOnTop(on) only.
-- Also known as: reveal sessions folder, open data directory (AUG-150), Compact Mode, dock strip, dock square, ghost window, ghost caption, ghost coin, setCompactMode (AUG-156), nsis update data loss, data-backup, KeepsUserData, customRemoveFiles (AUG-158), update item in ControlsPanel (AUG-160), mute hotkey, Ctrl+Alt+M, Mute microphone tray item, august:toggle-mute (AUG-181), ghost position, free drag, magnetic edges, window-state ghost record, compactCaptionWidth (AUG-176), Reset overlay position, ghostGeometry, square caption tools, caption width resize (AUG-187), august:write-clipboard, writeClipboard bridge, clipboard in Ghost Mode (AUG-188), compact panels, compact Copilot window, compact Assistant window, panelGeometry, setCompactPanel, august:compact-panel (AUG-199), remote debugging port, CDP targets, AUGUST_RENDERER_URL, AUGUST_API_URL, UI audit harness, window-state backup (AUG-203).
+- Also known as: reveal sessions folder, open data directory (AUG-150), Compact Mode, dock strip, dock square, ghost window, ghost caption, ghost coin, setCompactMode (AUG-156), nsis update data loss, data-backup, KeepsUserData, customRemoveFiles (AUG-158), update item in ControlsPanel (AUG-160), mute hotkey, Ctrl+Alt+M, Mute microphone tray item, august:toggle-mute (AUG-181), ghost position, free drag, magnetic edges, window-state ghost record, compactCaptionWidth (AUG-176), Reset overlay position, ghostGeometry, square caption tools, caption width resize (AUG-187), august:write-clipboard, writeClipboard bridge, clipboard in Ghost Mode (AUG-188), compact panels, compact Copilot window, compact Assistant window, panelGeometry, setCompactPanel, august:compact-panel (AUG-199), remote debugging port, CDP targets, AUGUST_RENDERER_URL, AUGUST_API_URL, UI audit harness, window-state backup (AUG-203), install folder drift, data left behind, InstallLocation missing, default install folder after update, interrupted update, installDirectory, data-dir pointer, data-location.json (AUG-207).
 - Key files: electron/build/installer.nsh, electron/src/main.ts, electron/src/compact.ts, electron/src/preload.cts, electron/src/tray.ts, electron/src/hotkey.ts, electron/src/sessionWatcher.ts, electron/src/updater.ts, electron/electron-builder.yml, server/src/app.ts, client/src/desktop.d.ts.
 
 This route documents how August's Electron desktop shell embeds the existing web app instead of replacing it.
@@ -150,6 +152,62 @@ A desktop shell exists so non-technical users get a one-click install with no te
 - gh on the dev machine has two accounts: vladdobro (owner, needed for gh release edit/delete and seeing drafts) and vladdobroc (pull-only); switch with gh auth switch --user vladdobro before touching releases, pushes go over SSH as vladdobro regardless.
 - gh run rerun and workflow_dispatch need admin rights; re-pushing the tag is the way to rerun the workflow without them.
 - Never delete a release while its workflow run is in flight: the running electron-builder jobs keep uploading into the deleted/drafted release.
+
+## Install folder drift and data left behind (AUG-207)
+
+Research only (2026-11-16); nothing below is implemented. No live reproduction was run (user decision: no sandbox, VM or second profile available); scenarios are ruled in or out from the electron-builder 26.15.3 NSIS templates (node_modules/app-builder-lib/templates/nsis) and from forensic evidence on the affected machine.
+
+### How the installer picks the folder
+
+- `initMultiUser` (assistedInstaller.nsh) reads `InstallLocation` from HKLM and HKCU `Software\{appGuid}`; `setInstallModePerUser` (multiUser.nsh) sets `$INSTDIR` to the HKCU value, else to `%LOCALAPPDATA%\Programs\August`; a `/D=<dir>` argument overrides both. Silent `--updated` runs use the same logic and show no page.
+- `uninstallOldVersion` (installUtil.nsh) finds the old copy through the Uninstall key's `UninstallString` and `InstallLocation`; with both missing it returns without uninstalling anything.
+- The old uninstaller ends with `DeleteRegKey` on the Uninstall key and on `Software\{appGuid}` (uninstaller.nsh), on updates too. The installer writes them back in `registryAddInstallInfo` only after the old uninstall and the 7z extraction. Every update therefore has a window (tens of seconds to minutes) in which the files exist and the registry says "not installed".
+- The app derives the Windows data dir from its own exe folder (main.ts configureServerEnv), so a new folder always means an empty `data`.
+
+### Incident 2026-11-09 (0.1.4 → 0.2.0), root cause
+
+- 2026-11-05 13:50:00 UTC: the 0.0.45 → 0.1.4 silent update starts; files in `D:\claude\August\installed` are created 13:52:29–13:52:57.
+- The machine then bugchecks (0x139; System log: Kernel-Power 41 and bugcheck 1001 at the 14:00:59 boot). The installer never relaunched August (`--force-run`); the next start is a manual one at 14:25:28.
+- Result: 0.1.4 fully on disk in D:, shortcuts kept, but neither registry key present (the installer did not reach `registryAddInstallInfo`, or its HKCU writes were not flushed before the crash — inferred, both give the same state).
+- 0.1.4 kept running from D: for four days (main.log AUGUST_DATA_DIR lines).
+- 2026-11-09 22:34:57 UTC: `August-0.2.0-win-x64.exe --updated /S --force-run` finds no InstallLocation, installs into `C:\Users\<user>\AppData\Local\Programs\August` (folder created 22:35:04) and does not uninstall D:. Proof that D: was not touched: `D:\...\installed\August.exe` still has creation time 2026-11-05 13:52:29 after the recovery overwrote it in place.
+- 0.2.1 (22:41) only updated the C: copy; it was not the cause. Recovery: `/S /D=D:\claude\August\installed`.
+- The same machine had 11 more bugchecks between 2026-11-04 and 2026-11-07; only the one inside an update window did damage.
+
+### Scenarios checked
+
+| Scenario | Verdict | Basis |
+|---|---|---|
+| Update interrupted after the old uninstaller, before the registry is rewritten | Cause of the incident | Sources + timestamps + System event log above |
+| Second NSIS install into the default folder by hand | Possible in general, ruled out here | An interactive run pre-fills the folder from InstallLocation; no installer ran between 11-05 and 11-09 (main.log, C: folder creation time) |
+| Interactive reinstall where the user picks another folder | Possible in general (same data loss look), ruled out here | The directory page changes `$INSTDIR`; the old copy is uninstalled keeping its `data`, the new copy starts empty |
+| MSI install changing the key | Ruled out | The MSI template writes no `Software\{appGuid}` value and no MSI product is registered; an MSI copy is a separate install with its own empty `data` |
+| Manual uninstall deleting the key | Ruled out here | It would also remove the D: files and shortcuts; they were intact |
+| Dev or test installer runs | Ruled out here | electron/release holds only ≤ 0.0.41 installers; no install lines in main.log |
+
+### Where data should live
+
+- Keep `<install dir>\data` (current): no migration, user-chosen drive keeps the large audio files; but data follows the install folder, so every folder change (this bug, a manual folder change, NSIS + MSI side by side) strands it. AUG-158 only protects `data` inside one folder.
+- Fixed `%APPDATA%\August\data` (same shape as macOS): removes the class of bugs and most of the AUG-158 installer logic; but needs a one-time move that can be cross-volume and many GB, and puts audio on C: for users who chose another drive on purpose. Rejected as the default for that reason.
+- Pointer file in userData (like model-dir / llm-location.json): data stays where it is, the app remembers the folder. No move, no installer change for the common path. Written as UTF-8 JSON by the app, so the ANSI-codepage problem of NSIS-written files does not apply; 8.3 / non-ASCII handling (toSafePath at the whisper and llama call sites) is unchanged because the folder itself does not change. macOS is untouched (its branch already uses userData/data).
+
+### Prevention options
+
+| Option | Pros | Cons |
+|---|---|---|
+| A. Updater passes `/D=<folder of the running exe>` (`autoUpdater.installDirectory`, NsisUpdater, win32 only) | One line; fixes the incident path exactly; the copy that is running is the copy that gets updated; works with missing keys | Only covers auto-update; a manual reinstall with lost keys still defaults to LocalAppData |
+| B. Data-dir pointer `%APPDATA%\August\data-location.json` written by the app; on start a pointer to an existing folder wins over `<install dir>\data` | Covers every cause of a folder change, also manual reinstall and MSI; no data move; app code only | Data can stay in an old install folder; the manual-uninstall "remove data" prompt only knows `$INSTDIR\data`; a pointer to a missing drive needs a clear fallback rule |
+| C. Installer hardening in installer.nsh: rewrite InstallLocation right after the old uninstaller returns (customUnInstallCheck), warn when an interactive run targets a folder other than one that holds data | Shrinks the crash window from minutes to milliseconds; protects manual reinstalls | NSIS work with silent/elevated branches to test; cannot help when the keys are already gone |
+| D. Move data to fixed `%APPDATA%\August\data` | Simplest end state, matches macOS | Cross-volume migration, ignores the user's drive choice |
+| E. Drop or isolate the MSI target | Removes a second installer without data preservation | Does not address this bug; MSI was not involved |
+
+### Recommendation and proposed impl tasks (not created)
+
+- Recommended: A + B together. A stops the drift at its source; B makes data survive any drift that still happens. C is optional hardening; D and E are not recommended now.
+- Task 1 — updater pins the install folder: electron/src/updater.ts sets `autoUpdater.installDirectory` to the folder of `process.execPath` when `process.platform === 'win32'` and the app is packaged. Check: `/D=` stays the last argument (it does while `disableWebInstaller` is true), per-machine silent elevation still works, Cyrillic folder. macOS: no-op, the property exists only on NsisUpdater.
+- Task 2 — sticky data dir: a small pure module (resolve rule + tests mocking `process.platform` for both values) used by configureServerEnv in electron/src/main.ts, win32 branch only. Rule: no pointer → `<install dir>\data`, write pointer; pointer to an existing folder → use it; pointer to a missing folder → `<install dir>\data`, rewrite pointer, log. installer.nsh customUnInstall deletes the pointer on a manual uninstall. Risks: a temporarily missing drive must not silently start an empty library; never merge two data folders automatically.
+- Task 3 (optional) — installer hardening per option C, verified in a VM with a test appId (this file's customInstall / customUnInstall write to `%APPDATA%\August`, so a test build must not include it unchanged).
+- Verification for all three needs a VM or second Windows profile: install to a custom folder, delete both registry keys, run `--updated /S`, expect the same folder and the same data.
 
 ## Compact Mode (AUG-156)
 

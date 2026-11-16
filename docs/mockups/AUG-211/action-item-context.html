@@ -1,0 +1,483 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Action Item Context</title>
+<style>
+:root {
+  --bg:#f2efe8; --surface:rgba(250,248,244,.92); --line:rgba(45,58,51,.25); --fg:#1e2b24; --muted:#566b5e;
+  --accent:#0d8c5c; --accent-light:rgba(13,140,92,.12); --pause:#d49a00; --danger:#d44040; --them:#9a7a1a;
+  --on-accent:#f2efe8; --body-bg:#e6e2d8; --glow:rgba(13,140,92,.18); --warn:#d4a028; --glass:rgba(250,248,244,.86);
+  --scan:rgba(13,140,92,.04);
+  --mono:'Cascadia Code','Fira Code',Consolas,monospace;
+}
+@media (prefers-color-scheme: dark) { :root:not([data-theme="light"]) {
+  --bg:#0a110d; --surface:rgba(12,20,16,.92); --line:rgba(0,200,118,.18); --fg:#c0cec4; --muted:#5e7d6a;
+  --accent:#00c876; --accent-light:rgba(0,200,118,.10); --pause:#d4a020; --danger:#e05555; --them:#d4a843;
+  --on-accent:#0a110d; --body-bg:#0f1914; --glow:rgba(0,200,118,.3); --glass:rgba(12,20,16,.88); --scan:rgba(0,200,118,.025); color-scheme:dark; } }
+:root[data-theme="dark"] {
+  --bg:#0a110d; --surface:rgba(12,20,16,.92); --line:rgba(0,200,118,.18); --fg:#c0cec4; --muted:#5e7d6a;
+  --accent:#00c876; --accent-light:rgba(0,200,118,.10); --pause:#d4a020; --danger:#e05555; --them:#d4a843;
+  --on-accent:#0a110d; --body-bg:#0f1914; --glow:rgba(0,200,118,.3); --glass:rgba(12,20,16,.88); --scan:rgba(0,200,118,.025); color-scheme:dark; }
+
+* { box-sizing:border-box; border-radius:0; }
+html { scroll-behavior:smooth; }
+body { margin:0; background:var(--bg); color:var(--fg); font-family:var(--mono); font-size:13px; line-height:1.5;
+  padding:0 max(16px,env(safe-area-inset-left,0px)) 48px; overflow-x:hidden; }
+.wrap { max-width:1180px; margin:0 auto; display:grid; grid-template-columns:minmax(0,1fr); gap:24px; }
+.wrap > * { min-width:0; }
+header { padding-top:24px; }
+h1 { margin:0; font-size:20px; text-wrap:balance; }
+h2 { margin:0 0 10px; font-size:13px; letter-spacing:.08em; text-transform:uppercase; color:var(--accent); border-bottom:1px solid var(--line); padding-bottom:6px; display:flex; flex-wrap:wrap; gap:8px; align-items:center; }
+.lead { margin:4px 0 0; color:var(--muted); max-width:75ch; }
+button { font-family:var(--mono); cursor:pointer; }
+button:disabled, input:disabled { opacity:.4; cursor:not-allowed; }
+button:focus-visible, input:focus-visible, textarea:focus-visible, [role="button"]:focus-visible { outline:2px solid var(--accent); outline-offset:2px; }
+
+.bar { position:sticky; top:0; z-index:50; background:var(--bg); border-bottom:1px solid var(--line); padding:10px 0; display:flex; flex-wrap:wrap; gap:10px 16px; align-items:center; }
+.grp { display:flex; align-items:center; gap:6px; flex-wrap:wrap; }
+.grp > span { font-size:10px; text-transform:uppercase; letter-spacing:.06em; color:var(--muted); }
+.seg { display:flex; border:1px solid var(--line); flex-wrap:wrap; }
+.seg button { border:0; background:transparent; color:var(--fg); font-size:11px; padding:6px 10px; }
+.seg button[aria-pressed="true"] { background:var(--accent); color:var(--on-accent); }
+
+.hscroll { overflow-x:auto; }
+.frame { position:relative; height:640px; min-width:960px; border:1px solid var(--line); background:var(--bg); display:flex; flex-direction:column; overflow:hidden; }
+.frame.s { height:720px; min-width:0; }
+.topbar { flex:none; display:flex; align-items:center; gap:12px; padding:6px 16px; border-bottom:1px solid var(--line); background:var(--body-bg); min-height:48px; }
+.topbar b { font-size:14px; }
+.rec { display:inline-flex; align-items:center; gap:8px; font-weight:700; font-size:14px; color:var(--danger); font-variant-numeric:tabular-nums; white-space:nowrap; }
+.spacer { flex:1; }
+.pb { font-size:11px; letter-spacing:.06em; padding:5px 10px; white-space:nowrap; border:1px solid var(--danger); background:var(--danger); color:#fff; }
+.main { flex:1; min-height:0; display:flex; position:relative; }
+.canvas { position:relative; flex:1; min-width:0; overflow:hidden; background:var(--bg); }
+.canvas::before { content:''; position:absolute; inset:0; pointer-events:none; background:repeating-linear-gradient(to bottom,transparent 0,transparent 2px,var(--scan) 2px,var(--scan) 4px); }
+.tpane { position:absolute; inset:0; overflow:auto; }
+.lines { position:relative; padding:14px 18px; font-size:15px; display:flex; flex-direction:column; gap:8px; }
+.ln { padding-left:10px; border-left:3px solid transparent; }
+.ln .who { font-weight:700; margin-right:6px; }
+.ln.me .who { color:var(--accent); } .ln.them .who { color:var(--them); }
+.empty { position:absolute; inset:0; display:flex; align-items:center; justify-content:center; color:var(--muted); padding:20px; text-align:center; }
+
+.hl { background:var(--accent-light); border-left-color:var(--accent) !important; }
+.srcnote { display:inline-block; font-size:10px; letter-spacing:.06em; text-transform:uppercase; color:var(--accent); border:1px solid var(--accent); padding:0 4px; margin:2px 0 2px 0; }
+[data-act="back"] { cursor:pointer; }
+
+.ai-col { width:300px; min-width:300px; flex:none; border-left:1px solid var(--line); background:var(--body-bg); padding:12px; display:flex; flex-direction:column; gap:8px; overflow:hidden; font-size:12px; }
+.ai-h { display:flex; align-items:center; gap:8px; text-transform:uppercase; letter-spacing:.08em; font-size:12px; font-weight:700; color:var(--accent); }
+.cnt { border:1px solid var(--accent); color:var(--accent); font-size:10px; padding:0 6px; letter-spacing:.06em; }
+.add { width:100%; border:1px dashed var(--line); background:transparent; color:var(--fg); font-size:11px; padding:5px; }
+.add:hover { border-color:var(--accent); color:var(--accent); }
+.selrow { display:flex; flex-wrap:wrap; gap:6px; align-items:center; font-size:11px; color:var(--muted); }
+.parts { font-size:11px; color:var(--muted); }
+.ilist { flex:1; min-height:0; overflow:auto; display:flex; flex-direction:column; gap:8px; padding-right:2px; }
+.acard { border:1px solid var(--line); background:var(--surface); padding:12px; display:flex; flex-direction:column; gap:8px; font-size:12px; }
+.acard .list { display:flex; flex-direction:column; gap:8px; }
+
+.btn { border:1px solid var(--line); background:transparent; color:var(--fg); font-size:11px; letter-spacing:.05em; padding:4px 10px; }
+.btn:hover:not(:disabled) { border-color:var(--accent); color:var(--accent); }
+.btn.sm { font-size:10px; padding:1px 6px; letter-spacing:0; }
+.btn.primary { background:var(--accent); border-color:var(--accent); color:var(--on-accent); }
+.btn.primary:hover:not(:disabled) { color:var(--on-accent); }
+.btn.mu { color:var(--muted); }
+.btn.del { color:var(--muted); }
+.btn.del:hover:not(:disabled) { border-color:var(--danger); color:var(--danger); }
+.lnk { border:0; background:transparent; color:var(--fg); font-size:11px; padding:0; text-decoration:underline; }
+
+.it { border:1px solid var(--line); border-left:3px solid var(--accent); background:var(--surface); padding:8px; display:flex; flex-direction:column; gap:4px; flex:none; }
+.it.owned { outline:2px solid var(--accent); outline-offset:-1px; }
+.it .t { display:flex; gap:6px; align-items:flex-start; font-size:13px; font-weight:600; }
+.it .t input { margin:2px 0 0; accent-color:var(--accent); flex:none; }
+.it .c { font-size:12px; color:var(--muted); display:-webkit-box; -webkit-line-clamp:2; line-clamp:2; -webkit-box-orient:vertical; overflow:hidden; }
+.edn { font-size:10px; color:var(--muted); }
+.meta { display:flex; flex-wrap:wrap; align-items:center; gap:4px 6px; font-size:11px; }
+.meta .rt { margin-left:auto; display:flex; gap:4px; flex-wrap:wrap; }
+.tg { font-size:9px; letter-spacing:.06em; padding:0 4px; border:1px solid var(--accent); color:var(--accent); background:transparent; white-space:nowrap; }
+.tg.them { border-color:var(--pause); color:var(--them); }
+.tg.man { border-color:var(--line); color:var(--muted); }
+.mu { color:var(--muted); }
+.exp { border-top:1px solid var(--line); margin-top:4px; padding-top:6px; display:flex; flex-direction:column; gap:6px; font-size:12px; }
+.lbl { font-size:10px; text-transform:uppercase; letter-spacing:.06em; color:var(--muted); display:flex; gap:8px; align-items:center; }
+.exp textarea { width:100%; min-height:60px; font-family:var(--mono); font-size:12px; background:transparent; color:var(--fg); border:1px solid var(--accent); padding:4px; resize:vertical; }
+.quote { border-left:2px solid var(--accent); padding-left:8px; color:var(--fg); }
+.quote.them { border-left-color:var(--pause); }
+.acts { display:flex; flex-wrap:wrap; gap:6px; align-items:center; }
+.warnbox { border:1px solid var(--pause); padding:4px 6px; font-size:11px; }
+
+.sbody { flex:1; min-height:0; overflow:auto; padding:16px; position:relative; }
+.sin { max-width:760px; margin:0 auto; display:flex; flex-direction:column; gap:16px; }
+.sl { border-left:3px solid transparent; padding:2px 0 2px 6px; }
+.srow { display:grid; grid-template-columns:68px minmax(0,1fr); gap:8px; font-size:13px; }
+.srow .ts { color:var(--accent); font-variant-numeric:tabular-nums; }
+.srow b.me { color:var(--accent); } .srow b.them { color:var(--them); }
+.tsec h3 { margin:0 0 8px; font-size:12px; letter-spacing:.08em; color:var(--muted); text-transform:uppercase; }
+.tsec { position:relative; }
+.prog { border:1px solid var(--line); padding:12px; }
+.pbar { height:4px; background:var(--line); flex:1; min-width:80px; }
+.pbar i { display:block; height:100%; background:var(--accent); }
+.player { position:sticky; bottom:-16px; display:flex; flex-wrap:wrap; gap:6px 12px; align-items:center; background:var(--body-bg); border-top:1px solid var(--accent); padding:6px 8px; font-size:12px; margin-top:8px; }
+.notes { font-size:12px; }
+.notes ul { margin:0; padding-left:18px; display:flex; flex-direction:column; gap:4px; }
+@media (max-width:600px) { .frame.s .topbar { padding:6px 10px; flex-wrap:wrap; } .sbody { padding:10px; } }
+</style>
+</head>
+<body>
+<div class="wrap">
+<header>
+  <h1>Action item context</h1>
+  <p class="lead">Mockup for AUG-211. Every action item shows the minimum context to understand it, and links to the exact moment it was said.</p>
+</header>
+
+<div class="bar" id="bar">
+  <div class="grp"><span>View</span><div class="seg" role="group" aria-label="View">
+    <button type="button" data-g="view" data-v="live">Live column</button>
+    <button type="button" data-g="view" data-v="session">Session card</button></div></div>
+  <div class="grp"><span>Scenario</span><div class="seg" role="group" aria-label="Scenario">
+    <button type="button" data-g="sc" data-v="Normal">Normal</button>
+    <button type="button" data-g="sc" data-v="Transcript not ready">Transcript not ready</button>
+    <button type="button" data-g="sc" data-v="Old session">Old session</button>
+    <button type="button" data-g="sc" data-v="Lines cleared">Lines cleared</button></div></div>
+  <div class="grp"><span>Audio</span><div class="seg" role="group" aria-label="Audio">
+    <button type="button" data-g="audio" data-v="Kept">Kept</button>
+    <button type="button" data-g="audio" data-v="Deleted">Deleted</button></div></div>
+  <div class="grp"><span>Theme</span><div class="seg" role="group" aria-label="Theme">
+    <button type="button" data-g="theme" data-v="Auto">Auto</button>
+    <button type="button" data-g="theme" data-v="Light">Light</button>
+    <button type="button" data-g="theme" data-v="Dark">Dark</button></div></div>
+</div>
+
+<div class="hscroll"><div id="stage"></div></div>
+
+<section class="notes">
+  <h2>What to check</h2>
+  <ul>
+    <li>The collapsed card shows the summary without a click.</li>
+    <li>The time chip and Show in transcript jump to and highlight the source line.</li>
+    <li>Clicking the highlighted line leads back to the item.</li>
+    <li>States: no summary (item 3), added by hand (item 6), Transcript not ready, Old session, Lines cleared.</li>
+    <li>Play appears only in a saved session with audio kept.</li>
+  </ul>
+</section>
+</div>
+
+<script>
+'use strict';
+var P = { Me: 'Игорь', Them: 'Анна' };
+var LINES = [
+  ['t1','00:11:52','Them','У нас по этому мерчанту вопрос от банка: откуда приходят деньги и как они доходят до счёта.'],
+  ['t2','00:12:10','Me','Мы это разбирали, там три звена — мерчант, платёжный агент и наш счёт.'],
+  ['t3','00:12:40','Them','Тогда покажите цепочку выводов по этому мерчанту, от агента до банка, чтобы я могла отправить это в банк до пятницы.'],
+  ['t4','00:12:58','Me','Хорошо, покажу, соберу схему с суммами за октябрь.'],
+  ['t5','00:14:05','Me','Для этого нам нужны договор с агентом и выписки за октябрь. Присылайте документы, как только будут.'],
+  ['t6','00:14:21','Them','Договор пришлём сегодня, выписки попрошу у бухгалтерии.'],
+  ['t7','00:17:30','Them','По лимитам я не знаю, это надо получить ответы от Алены или Ольги, они ведут этот банк.'],
+  ['t8','00:17:44','Me','Ок, я им напишу.'],
+  ['t9','00:21:15','Me','И ещё, давайте проводить pre-compliance до подписания договора, а не после, как с этим мерчантом.'],
+  ['t10','00:21:33','Them','Согласна, со следующего клиента так и делаем.'],
+  ['t11','00:24:02','Me','У меня есть мысль, как ускорить проверку. Я подготовлю и предложу вам идею на следующем созвоне.']
+].map(function (a) { return { id: a[0], time: a[1], who: a[2], text: a[3] }; });
+var LN = {}; LINES.forEach(function (l) { LN[l.id] = l; });
+
+function mkItems() {
+  return [
+    { id: 6, title: 'Написать в бухгалтерию про выписки', tag: 'Manual', owner: 'Игорь', time: '00:15:10', line: 't6', manual: true, ctx: '' },
+    { id: 5, title: 'Предложить вам идею', tag: 'Me', owner: 'Игорь', time: '00:24:02', line: 't11', ctx: 'Идея — как ускорить проверку мерчантов. Игорь расскажет на следующем созвоне.' },
+    { id: 4, title: 'Проводить pre-compliance', tag: 'Me', owner: 'Анна', time: '00:21:15', line: 't9', ctx: 'Проверять клиента до подписания договора, а не после. Начинаем со следующего клиента.' },
+    { id: 3, title: 'Получить ответы от Алены или Ольги', tag: 'Them', owner: 'Игорь', time: '00:17:30', line: 't7', ctx: '' },
+    { id: 2, title: 'Присылайте документы', tag: 'Me', owner: 'Анна', time: '00:14:05', line: 't5', ctx: 'Документы — договор с платёжным агентом и выписки за октябрь; нужны, чтобы собрать схему выводов.' },
+    { id: 1, title: 'Показать цепочку выводов', tag: 'Them', owner: 'Игорь', time: '00:12:40', line: 't3', ctx: 'Банк спрашивает, откуда деньги мерчанта: показать путь выводов от агента до банка. Анна отправит это в банк до пятницы.' }
+  ];
+}
+
+var S = { view: 'live', sc: 'Normal', audio: 'Kept', theme: 'Auto', items: mkItems(),
+  sel: {}, exp: {}, hl: null, owner: null, flash: null, editing: null, edited: {}, find: {}, play: null };
+var TOTAL = 31 * 60 + 7;
+var timer = null, flashTimer = null;
+
+function esc(s) { return String(s).replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;').replace(/"/g, '&quot;'); }
+function q(s) { return document.querySelector(s); }
+function fmt(sec) { function p(n) { return (n < 10 ? '0' : '') + n; } return p(Math.floor(sec / 3600)) + ':' + p(Math.floor(sec / 60) % 60) + ':' + p(sec % 60); }
+function toSec(t) { var a = t.split(':'); return (+a[0]) * 3600 + (+a[1]) * 60 + (+a[2]); }
+function getItem(id) { for (var i = 0; i < S.items.length; i++) if (S.items[i].id === id) return S.items[i]; return null; }
+
+function eff() {
+  if (S.sc === 'Transcript not ready' && S.view !== 'session') return 'Normal';
+  if (S.sc === 'Lines cleared' && S.view !== 'live') return 'Normal';
+  if (S.sc === 'Old session' && S.view !== 'session') return 'Normal';
+  return S.sc;
+}
+var MSG_CLEARED = 'The line is no longer on screen. It will be in the transcript after the meeting.';
+var MSG_NOTREADY = 'The transcript is still being made. The jump will work when it is ready.';
+
+function vm(it) {
+  var sc = eff(), old = sc === 'Old session';
+  var reason = sc === 'Lines cleared' ? MSG_CLEARED : (sc === 'Transcript not ready' ? MSG_NOTREADY : '');
+  return {
+    sc: sc, old: old, reason: reason,
+    ctx: old ? '' : (it.ctx || ''),
+    quote: (old || it.manual) ? '' : LN[it.line].text,
+    time: old ? '' : it.time
+  };
+}
+
+/* ---------- item card ---------- */
+function card(it) {
+  var v = vm(it), ex = !!S.exp[it.id], id = it.id;
+  var owned = (S.hl && S.owner === id) || S.flash === id;
+  var tagCls = it.tag === 'Me' ? '' : (it.tag === 'Them' ? ' them' : ' man');
+  var row2 = '';
+  if (!v.old) {
+    if (v.ctx) row2 = esc(v.ctx);
+    else if (v.quote) row2 = '«' + esc(v.quote) + '»';
+    else if (it.manual) row2 = 'Added by hand at ' + it.time;
+  }
+  var dis = v.reason ? ' disabled title="' + esc(v.reason) + '"' : '';
+  var h = '<div class="it' + (owned ? ' owned' : '') + '" data-card="' + id + '">';
+  h += '<div class="t"><input type="checkbox" data-act="sel" data-id="' + id + '" aria-label="Select item"' + (S.sel[id] ? ' checked' : '') + '><span>' + esc(it.title) + '</span></div>';
+  if (row2) h += '<div class="c">' + row2 + '</div>';
+  if (S.edited[id] && !v.old) h += '<div class="edn">Edited by you</div>';
+  h += '<div class="meta"><span class="tg' + tagCls + '">' + it.tag + '</span><span class="mu">→</span><span>' + esc(it.owner) + '</span>';
+  if (v.time) h += '<button type="button" class="btn sm" data-act="jump" data-id="' + id + '" data-k="chip-' + id + '"' + (v.reason ? dis : ' title="Show in transcript"') + '>' + v.time + ' ↗</button>';
+  h += '<span class="rt"><button type="button" class="btn sm" data-act="ctx" data-id="' + id + '" data-k="ctx-' + id + '" aria-expanded="' + ex + '">Context ' + (ex ? '▴' : '▾') + '</button>';
+  h += '<button type="button" class="btn sm mu" data-act="px" data-id="' + id + '">→ Praxis</button>';
+  h += '<button type="button" class="btn sm del" data-act="del" data-id="' + id + '" aria-label="Delete item" title="Delete">×</button></span></div>';
+  if (ex) h += expanded(it, v);
+  return h + '</div>';
+}
+
+function expanded(it, v) {
+  var id = it.id, h = '<div class="exp">';
+  if (v.old) {
+    h += '<div class="mu">No source was saved for this item (recorded before this feature).</div><div class="acts">';
+    var f = S.find[id];
+    if (f === 'searching') h += '<button type="button" class="btn sm" disabled>Searching…</button>';
+    else h += '<button type="button" class="btn sm" data-act="find" data-id="' + id + '" data-k="find-' + id + '">Find in transcript</button>';
+    if (f === 'none') h += '<span class="mu">No matching line found.</span>';
+    return h + '</div></div>';
+  }
+  var showWhy = !(it.manual && !v.ctx && !S.edited[id]);
+  if (showWhy) {
+    h += '<div class="lbl">WHY / WHAT' + (S.editing === id ? '' : '<button type="button" class="btn sm" data-act="edit" data-id="' + id + '" data-k="edit-' + id + '">Edit</button>') + '</div>';
+    if (S.editing === id) h += '<textarea data-act="ta" data-id="' + id + '" data-k="ta-' + id + '" aria-label="Summary">' + esc(it.ctx || '') + '</textarea>';
+    else if (v.ctx) h += '<div>' + esc(v.ctx) + '</div>';
+    else h += '<div class="mu">No summary for this item — the quote below is the source.</div>';
+  }
+  if (it.manual) {
+    h += '<div>Added by hand at ' + it.time + '. No quote — the item was not taken from speech.</div>';
+  } else {
+    var who = LN[it.line].who;
+    h += '<div class="lbl">SAID BY ' + esc(P[who].toUpperCase()) + ' · ' + LN[it.line].time + '</div>';
+    h += '<div class="quote' + (who === 'Them' ? ' them' : '') + '">«' + esc(v.quote) + '»</div>';
+  }
+  if (v.sc === 'Transcript not ready') h += '<div class="warnbox">' + MSG_NOTREADY + '</div>';
+  h += '<div class="acts"><button type="button" class="btn sm" data-act="jump" data-id="' + it.id + '"' + (v.reason ? ' disabled title="' + esc(v.reason) + '"' : '') + '>Show in transcript</button>';
+  if (S.view === 'session' && S.audio === 'Kept' && v.sc === 'Normal' && !it.manual)
+    h += '<button type="button" class="btn sm" data-act="play" data-id="' + id + '">▶ Play from here</button>';
+  if (v.sc === 'Lines cleared') h += '<span class="mu">' + MSG_CLEARED + '</span>';
+  return h + '</div></div>';
+}
+
+/* ---------- panels ---------- */
+function panelInner(listCls) {
+  var n = S.items.length, sel = 0, k;
+  for (k in S.sel) if (S.sel[k]) sel++;
+  var h = '<div class="ai-h">ACTION ITEMS <span class="cnt">' + n + '</span></div>';
+  h += '<button type="button" class="add" data-act="add">+ Add an item</button>';
+  h += '<div class="selrow"><button type="button" class="lnk" data-act="selall">Select all</button><span>· ' + sel + ' selected ·</span>';
+  h += '<button type="button" class="btn sm primary" data-act="sep">Separate tasks</button><button type="button" class="btn sm" data-act="one">One task</button></div>';
+  h += '<div class="parts">Me = ' + P.Me + ' · Them = ' + P.Them + '</div>';
+  h += '<div class="' + listCls + '">' + S.items.map(card).join('') + '</div>';
+  return h;
+}
+
+function srcTag(id) { return S.hl === id ? '<div><span class="srcnote">SOURCE OF ACTION ITEM</span></div>' : ''; }
+function backAttrs(id) { return S.hl === id ? ' role="button" tabindex="0" data-act="back" title="Back to the action item"' : ''; }
+
+function liveView() {
+  var h = '<div class="frame"><div class="topbar"><span class="rec">● REC 00:24:31</span><span class="spacer"></span>' +
+    '<button type="button" class="btn" data-act="noop">PAUSE LIVE TEXT</button><button type="button" class="pb" data-act="noop">END MEETING</button></div>';
+  h += '<div class="main"><div class="canvas">';
+  if (eff() === 'Lines cleared') h += '<div class="empty">Lines cleared — the recording continues</div>';
+  else {
+    h += '<div class="tpane"><div class="lines">';
+    LINES.forEach(function (l) {
+      var on = S.hl === l.id;
+      h += '<div class="ln ' + (l.who === 'Me' ? 'me' : 'them') + (on ? ' hl' : '') + '" data-line="' + l.id + '"' + backAttrs(l.id) + '>' + srcTag(l.id) +
+        '<div><span class="who">' + l.who + ':</span>' + esc(l.text) + '</div></div>';
+    });
+    h += '</div></div>';
+  }
+  h += '</div><aside class="ai-col">' + panelInner('ilist') + '</aside></div></div>';
+  return h;
+}
+
+function sessionView() {
+  var sc = eff();
+  var h = '<div class="frame s"><div class="topbar"><b>Compliance sync · 2026-11-16</b><span class="spacer"></span>' +
+    '<button type="button" class="btn" data-act="noop">Copy</button><button type="button" class="btn" data-act="noop">Export ▾</button></div>';
+  h += '<div class="sbody"><div class="sin"><section class="acard">' + panelInner('list') + '</section>';
+  h += '<section class="tsec"><h3>Transcript</h3>';
+  if (sc === 'Transcript not ready') {
+    h += '<div class="prog"><div style="margin-bottom:8px">Transcribing… 42%</div><div class="pbar" style="width:100%"><i style="width:42%"></i></div></div>';
+  } else {
+    LINES.forEach(function (l) {
+      var on = S.hl === l.id;
+      h += '<div class="sl' + (on ? ' hl' : '') + '" data-line="' + l.id + '"' + backAttrs(l.id) + '>' + srcTag(l.id) +
+        '<div class="srow"><span class="ts">' + l.time + '</span><span><b class="' + (l.who === 'Me' ? 'me' : 'them') + '">' + P[l.who] + '</b> ' + esc(l.text) + '</span></div></div>';
+    });
+  }
+  if (S.play) h += playerHtml();
+  h += '</section></div></div></div>';
+  return h;
+}
+
+function playerHtml() {
+  return '<div class="player"><button type="button" class="btn sm" data-act="stop" data-k="stop">■ Stop</button>' +
+    '<span id="pl-time">' + fmt(S.play.sec) + ' / ' + fmt(TOTAL) + '</span><span class="mu">Playing from the action item</span>' +
+    '<div class="pbar"><i id="pl-bar" style="width:' + (S.play.sec / TOTAL * 100).toFixed(2) + '%"></i></div></div>';
+}
+
+/* ---------- render ---------- */
+function stopTimer() { if (timer) { clearInterval(timer); timer = null; } }
+
+function render(reset) {
+  var keep = {};
+  ['ilist', 'tpane', 'sbody'].forEach(function (c) { var e = q('.' + c); keep[c] = (e && !reset) ? e.scrollTop : 0; });
+  var ae = document.activeElement, fk = ae && ae.dataset ? ae.dataset.k : null;
+  if (S.play && !(S.view === 'session' && S.audio === 'Kept' && eff() === 'Normal' && getItem(S.play.id))) { S.play = null; stopTimer(); }
+  document.querySelectorAll('#bar [data-g]').forEach(function (b) {
+    var g = b.dataset.g, v = b.dataset.v, on = false, dis = false;
+    if (g === 'view') on = S.view === v;
+    else if (g === 'sc') {
+      on = S.sc === v;
+      if (v === 'Transcript not ready') dis = S.view !== 'session';
+      if (v === 'Lines cleared') dis = S.view !== 'live';
+    } else if (g === 'audio') { on = S.audio === v; dis = S.view !== 'session'; }
+    else if (g === 'theme') on = S.theme === v;
+    b.setAttribute('aria-pressed', on ? 'true' : 'false');
+    b.disabled = dis;
+  });
+  q('#stage').innerHTML = S.view === 'live' ? liveView() : sessionView();
+  ['ilist', 'tpane', 'sbody'].forEach(function (c) { var e = q('.' + c); if (e) e.scrollTop = keep[c]; });
+  if (S.editing) { var ta = q('textarea[data-act="ta"]'); if (ta) { ta.focus(); ta.setSelectionRange(ta.value.length, ta.value.length); } }
+  else if (fk) { var el = q('[data-k="' + fk + '"]'); if (el && !el.disabled) el.focus({ preventScroll: true }); }
+}
+
+function scrollCenter(container, el) {
+  if (!container || !el) return;
+  var r = el.getBoundingClientRect(), c = container.getBoundingClientRect();
+  container.scrollTo({ top: container.scrollTop + (r.top - c.top) - container.clientHeight / 2 + r.height / 2, behavior: 'smooth' });
+}
+function paneEl() { return S.view === 'live' ? q('.tpane') : q('.sbody'); }
+
+function jump(id) {
+  var it = getItem(id); if (!it) return;
+  if (vm(it).reason) return;
+  S.hl = it.line; S.owner = id; S.flash = null;
+  render();
+  var fr = q('.frame'); if (fr) fr.scrollIntoView({ block: 'nearest' });
+  scrollCenter(paneEl(), q('[data-line="' + it.line + '"]'));
+}
+
+function back() {
+  var id = S.owner; if (!id) return;
+  S.exp[id] = true; S.hl = null; S.flash = id;
+  render();
+  scrollCenter(S.view === 'live' ? q('.ilist') : q('.sbody'), q('[data-card="' + id + '"]'));
+  clearTimeout(flashTimer);
+  flashTimer = setTimeout(function () { S.flash = null; render(); }, 2000);
+}
+
+function play(id) {
+  var it = getItem(id); if (!it) return;
+  jump(id);
+  S.play = { id: id, sec: toSec(it.time) };
+  stopTimer();
+  render();
+  timer = setInterval(function () {
+    if (!S.play) { stopTimer(); return; }
+    S.play.sec++;
+    if (S.play.sec >= TOTAL) { S.play = null; stopTimer(); render(); return; }
+    var t = q('#pl-time'), b = q('#pl-bar');
+    if (t) t.textContent = fmt(S.play.sec) + ' / ' + fmt(TOTAL);
+    if (b) b.style.width = (S.play.sec / TOTAL * 100).toFixed(2) + '%';
+  }, 1000);
+}
+
+function saveEdit(ta) {
+  var id = S.editing; if (!id || +ta.dataset.id !== id) return;
+  var it = getItem(id); S.editing = null;
+  var val = ta.value.trim();
+  if (it && val !== (it.ctx || '')) { it.ctx = val; S.edited[id] = true; }
+  render();
+}
+
+/* ---------- events ---------- */
+document.getElementById('bar').addEventListener('click', function (e) {
+  var b = e.target.closest('button[data-g]'); if (!b || b.disabled) return;
+  var g = b.dataset.g, v = b.dataset.v;
+  if (g === 'view') {
+    S.view = v; S.hl = null; S.owner = null; S.flash = null; S.editing = null; S.find = {};
+    if (S.sc === 'Transcript not ready' && v !== 'session') S.sc = 'Normal';
+    if (S.sc === 'Lines cleared' && v !== 'live') S.sc = 'Normal';
+    render(true);
+  } else if (g === 'sc') { S.sc = v; S.hl = null; S.owner = null; S.editing = null; S.find = {}; render(true); }
+  else if (g === 'audio') { S.audio = v; render(); }
+  else if (g === 'theme') {
+    S.theme = v;
+    if (v === 'Auto') document.documentElement.removeAttribute('data-theme');
+    else document.documentElement.setAttribute('data-theme', v.toLowerCase());
+    render();
+  }
+});
+
+document.getElementById('stage').addEventListener('click', function (e) {
+  var t = e.target.closest('[data-act]'); if (!t || t.disabled) return;
+  var a = t.dataset.act, id = +t.dataset.id;
+  if (a === 'sel') { S.sel[id] = !S.sel[id]; render(); }
+  else if (a === 'selall') {
+    var all = S.items.every(function (i) { return S.sel[i.id]; });
+    S.items.forEach(function (i) { S.sel[i.id] = !all; });
+    render();
+  }
+  else if (a === 'ctx') { S.exp[id] = !S.exp[id]; if (!S.exp[id] && S.editing === id) S.editing = null; render(); }
+  else if (a === 'jump') jump(id);
+  else if (a === 'play') play(id);
+  else if (a === 'stop') { S.play = null; stopTimer(); render(); }
+  else if (a === 'edit') { S.editing = id; render(); }
+  else if (a === 'back') back();
+  else if (a === 'del') {
+    S.items = S.items.filter(function (i) { return i.id !== id; });
+    delete S.sel[id]; delete S.exp[id];
+    if (S.owner === id) { S.hl = null; S.owner = null; }
+    if (S.play && S.play.id === id) { S.play = null; stopTimer(); }
+    render();
+  }
+  else if (a === 'find') {
+    S.find[id] = 'searching'; render();
+    setTimeout(function () {
+      if (S.find[id] !== 'searching') return;
+      var it = getItem(id);
+      if (!it) return;
+      if (it.manual || id === 3) { S.find[id] = 'none'; render(); }
+      else { S.find[id] = ''; S.hl = it.line; S.owner = id; render(); var fr = q('.frame'); if (fr) fr.scrollIntoView({ block: 'nearest' }); scrollCenter(paneEl(), q('[data-line="' + it.line + '"]')); }
+    }, 600);
+  }
+});
+
+document.getElementById('stage').addEventListener('focusout', function (e) {
+  if (e.target.matches && e.target.matches('textarea[data-act="ta"]')) saveEdit(e.target);
+});
+document.getElementById('stage').addEventListener('keydown', function (e) {
+  var t = e.target;
+  if (t.matches && t.matches('textarea[data-act="ta"]')) {
+    if (e.key === 'Enter' && !e.shiftKey) { e.preventDefault(); saveEdit(t); }
+    else if (e.key === 'Escape') { S.editing = null; render(); }
+  } else if (t.matches && t.matches('[data-act="back"]') && (e.key === 'Enter' || e.key === ' ')) { e.preventDefault(); back(); }
+});
+
+render(true);
+</script>
+</body>
+</html>

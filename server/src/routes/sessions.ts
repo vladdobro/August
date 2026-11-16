@@ -110,6 +110,40 @@ function stageWriter(sessionId: string, isCancelled: () => boolean) {
   };
 }
 
+/// AUG-210: longest title the server stores; the client inputs use the same limit.
+const TITLE_MAX_CHARS = 120;
+
+/// Trims, folds line breaks and repeated spaces into one space, cuts to TITLE_MAX_CHARS. null = nothing usable.
+function normalizeTitle(value: unknown): string | null {
+  if (typeof value !== 'string') return null;
+  const title = value.replace(/\s+/g, ' ').trim().slice(0, TITLE_MAX_CHARS).trim();
+  return title || null;
+}
+
+/// AUG-210: asks the semantic pass for a title only while the session still has its auto title. An accepted suggestion
+/// is stored at once, so the polling client can offer it in the naming pop-up before the session completes.
+async function titleRequest(sessionId: string, session: SessionMetadata | null, isCancelled: () => boolean) {
+  if (session?.titleSource !== 'auto') return undefined;
+  const file = await readSessionActionItems(sessionId).catch(() => null);
+  return {
+    actionItems: (file?.items ?? []).map((item) => item.text),
+    onTitle: async (title: string): Promise<void> => {
+      if (isCancelled()) return;
+      await sessionManager.updateSession(sessionId, { suggestedTitle: title });
+    },
+  };
+}
+
+/// AUG-210: the `completed` write. It runs inside the per-session write queue, so a rename lands either before it
+/// (titleSource 'user' — kept) or after it. The suggestion replaces an auto title only; sessions without titleSource
+/// (created before AUG-210) are never renamed.
+function completedUpdate(base: sessionManager.SessionUpdates, suggestedTitle: string | null) {
+  return (existing: SessionMetadata): sessionManager.SessionUpdates => ({
+    ...base,
+    ...(suggestedTitle && existing.titleSource === 'auto' ? { title: suggestedTitle, titleSource: 'model' as const } : {}),
+  });
+}
+
 /// Runs the whisper transcription + merge/render pipeline for a session in
 /// the background. Never awaited by the caller so the upload endpoint can
 /// respond immediately with status "transcribing".
@@ -138,8 +172,9 @@ async function runTranscription(sessionId: string, audioPath: string, language: 
     const startedAt = session?.createdAt ?? new Date().toISOString();
     const duration = utterances.length > 0 ? utterances[utterances.length - 1].end : 0;
     const audioSec = session?.duration && session.duration > 0 ? session.duration : duration;
-    const { confidence, corrections, model: semanticModel } = await runSemanticPass({
+    const { confidence, corrections, model: semanticModel, suggestedTitle } = await runSemanticPass({
       sessionId, tracks: [kept], utterances, dropped: merged.dropped, audioDurationSec: audioSec, language, isCancelled, onStage: setStage,
+      title: await titleRequest(sessionId, session, isCancelled),
     });
     if (isCancelled()) return;
     console.log(`[session ${sessionId}] confidence ${confidence.score}% (${confidence.detail.source}, coverage ${confidence.detail.coverage}, lowLogProb ${confidence.detail.lowLogProbShare}, dropped ${confidence.detail.dropped}/${confidence.detail.segments})`);
@@ -152,13 +187,13 @@ async function runTranscription(sessionId: string, audioPath: string, language: 
       await writeCorrections(sessionId, { version: 1, createdAt: new Date().toISOString(), model: semanticModel, items: corrections });
     }
 
-    await sessionManager.updateSession(sessionId, {
+    await sessionManager.updateSession(sessionId, completedUpdate({
       status: 'completed',
       processingStage: undefined,
       duration,
       confidenceScore: confidence.score,
       confidenceDetail: confidence.detail,
-    });
+    }, suggestedTitle));
 
     const completedSession = await sessionManager.getSession(sessionId);
     if (completedSession?.transcriptionStartedAt) {
@@ -220,8 +255,9 @@ async function runDualTranscription(
     const audioDuration = tracks ? alignedDualDuration(tracks.mic, tracks.system, systemOffsetMs) : 0;
     const lastEnd = utterances.length > 0 ? Math.max(...utterances.map((u) => u.end)) : 0;
     const duration = Math.max(audioDuration, lastEnd);
-    const { confidence, corrections, model: semanticModel } = await runSemanticPass({
+    const { confidence, corrections, model: semanticModel, suggestedTitle } = await runSemanticPass({
       sessionId, tracks: [micKept, aligned.system], utterances, dropped: merged.dropped, audioDurationSec: duration, language, isCancelled, onStage: setStage,
+      title: await titleRequest(sessionId, session, isCancelled),
     });
     if (isCancelled()) return;
     console.log(`[session ${sessionId}] confidence ${confidence.score}% (${confidence.detail.source}, coverage ${confidence.detail.coverage}, lowLogProb ${confidence.detail.lowLogProbShare}, dropped ${confidence.detail.dropped}/${confidence.detail.segments})`);
@@ -234,13 +270,13 @@ async function runDualTranscription(
       await writeCorrections(sessionId, { version: 1, createdAt: new Date().toISOString(), model: semanticModel, items: corrections });
     }
 
-    await sessionManager.updateSession(sessionId, {
+    await sessionManager.updateSession(sessionId, completedUpdate({
       status: 'completed',
       processingStage: undefined,
       duration,
       confidenceScore: confidence.score,
       confidenceDetail: confidence.detail,
-    });
+    }, suggestedTitle));
 
     const completedSession = await sessionManager.getSession(sessionId);
     if (completedSession?.transcriptionStartedAt) {
@@ -645,12 +681,13 @@ router.post('/:id/redownload', async (req, res) => {
 
 // PATCH /api/sessions/:id
 router.patch('/:id', async (req, res) => {
-  const { title } = req.body as { title?: string };
-  if (!title || typeof title !== 'string' || !title.trim()) {
+  // AUG-210: normalised and capped; a rename by hand is never replaced by a suggested title.
+  const title = normalizeTitle((req.body as { title?: unknown } | undefined)?.title);
+  if (!title) {
     res.status(400).json({ error: 'Title is required' });
     return;
   }
-  const session = await sessionManager.updateSession(req.params.id, { title: title.trim() });
+  const session = await sessionManager.updateSession(req.params.id, { title, titleSource: 'user' });
   if (!session) {
     res.status(404).json({ error: 'Session not found' });
     return;
@@ -878,7 +915,11 @@ async function startPlatformDownload(res: Response, url: string, language: Trans
         if (info.durationSec !== null && info.durationSec > config.ytDlpMaxDurationSec) {
           throw new YtDlpError(`This video is ${formatHours(info.durationSec)} long — the limit is ${formatHours(config.ytDlpMaxDurationSec)}.`);
         }
-        if (info.title) await sessionManager.updateSession(session.id, { title: info.title });
+        // AUG-210: titleSource stays 'auto'; a name the user already typed is kept.
+        if (info.title) {
+          const videoTitle = info.title;
+          await sessionManager.updateSession(session.id, (existing) => (existing.titleSource === 'user' ? {} : { title: videoTitle }));
+        }
 
         const result = await downloadPlatformAudio(info.infoJsonPath, {
           destDir: sessionDir,
@@ -992,7 +1033,9 @@ router.post('/from-url', async (req, res) => {
 
         // Update title from Content-Disposition filename if better
         if (result.fileName && result.fileName !== title) {
-          await sessionManager.updateSession(session.id, { title: result.fileName });
+          const fileTitle = result.fileName;
+          // AUG-210: titleSource stays 'auto'; a name the user already typed is kept.
+          await sessionManager.updateSession(session.id, (existing) => (existing.titleSource === 'user' ? {} : { title: fileTitle }));
         }
 
         // Clear download progress and start transcription
@@ -1125,6 +1168,7 @@ router.post('/:id/retranscribe', async (req, res) => {
       error: undefined,
       confidenceScore: undefined,
       confidenceDetail: undefined,
+        suggestedTitle: undefined, // AUG-210: a new run suggests again
       transcriptionStartedAt: new Date().toISOString(),
       duration: prep.duration > 0 ? prep.duration : undefined,
       ...(prep.estimatedDuration > 0 ? { estimatedDuration: prep.estimatedDuration } : {}),
@@ -1143,6 +1187,7 @@ router.post('/:id/retranscribe', async (req, res) => {
         error: undefined,
         confidenceScore: undefined,
         confidenceDetail: undefined,
+        suggestedTitle: undefined, // AUG-210: a new run suggests again
       });
       res.json(updated ?? session);
       void prepareAndTranscribe(req.params.id, audioFiles.single, language, !!boost);
@@ -1155,6 +1200,7 @@ router.post('/:id/retranscribe', async (req, res) => {
         error: undefined,
         confidenceScore: undefined,
         confidenceDetail: undefined,
+        suggestedTitle: undefined, // AUG-210: a new run suggests again
         transcriptionStartedAt: new Date().toISOString(),
         duration: audioDur > 0 ? audioDur : undefined,
         ...(estDur > 0 ? { estimatedDuration: estDur } : {}),

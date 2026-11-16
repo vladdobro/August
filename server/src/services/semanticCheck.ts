@@ -199,6 +199,55 @@ export function acceptSuggestion(original: string, suggested: string): string | 
   return text;
 }
 
+/// AUG-210: meeting title suggested by the text model the user already switched on. Input = the start of the merged
+/// transcript plus action item texts. Do not raise timeoutMs: it is the most the suggestion may delay `completed`.
+export const TITLE = {
+  inputChars: 2000,
+  maxActionItems: 12,
+  minChars: 3,
+  maxChars: 80,
+  timeoutMs: 20_000,
+} as const;
+
+const TITLE_SYSTEM_PROMPT = `You name a meeting from its transcript.
+Rules:
+- Reply with one short title (3 to 8 words) that says what the meeting was about.
+- Write the title in the language of the transcript.
+- No quotes, no date, no speaker labels, no full stop at the end, no explanations.
+- Reply with the title only, on a single line.`;
+
+export type TitleEngine = 'local' | 'groq';
+
+/// Who suggests the title. Unlike corrections, the local model only has to be downloaded and switched on (llmCorrections
+/// is not needed); Groq needs Online text with a valid consent. Both on → prefs.batchCorrectionEngine; neither → null.
+export function resolveTitleEngine(prefs: PreferencesRecord, localReady: boolean): TitleEngine | null {
+  const groq = groqTextState(prefs).enabled;
+  if (localReady && groq) return prefs.batchCorrectionEngine === 'groq' ? 'groq' : 'local';
+  return localReady ? 'local' : groq ? 'groq' : null;
+}
+
+/// One line of TITLE.minChars..maxChars characters with surrounding quotes stripped; anything else is rejected.
+export function acceptTitle(raw: string): string | null {
+  let text = raw.trim().replace(/^(?:Title|Name)\s*:\s*/i, '').trim();
+  for (const [open, close] of QUOTE_PAIRS) {
+    if (text.length >= 2 && text.startsWith(open) && text.endsWith(close)) { text = text.slice(1, -1).trim(); break; }
+  }
+  if (/[\r\n]/.test(text)) return null;
+  text = text.replace(/\s+/g, ' ').trim();
+  if (text.length < TITLE.minChars || text.length > TITLE.maxChars) return null;
+  return text;
+}
+
+export function buildTitleInput(utterances: MergedUtterance[], actionItems: string[]): string {
+  const text = utterances
+    .map((u) => `${u.role ? `[${u.role}] ` : ''}${u.text}`.trim())
+    .filter(Boolean)
+    .join('\n')
+    .slice(0, TITLE.inputChars);
+  const items = actionItems.map((t) => t.trim()).filter(Boolean).slice(0, TITLE.maxActionItems);
+  return items.length > 0 ? `${text}\n\nAction items:\n${items.map((t) => `- ${t}`).join('\n')}` : text;
+}
+
 /// A flagged whisper segment located inside a transcript line. Single-track lines merge many segments, so the fix
 /// targets the segment's text, not the whole line.
 export interface CorrectionTarget {
@@ -288,6 +337,8 @@ export interface SemanticPassInput {
   isCancelled?: () => boolean;
   /// AUG-189: reports the user-facing stage; must not throw.
   onStage?: (stage: ProcessingStage) => Promise<void>;
+  /// AUG-210: set when the session still has its auto title. onTitle stores an accepted suggestion; must not throw.
+  title?: { actionItems: string[]; onTitle: (title: string) => Promise<void> };
 }
 
 export interface SemanticPassResult {
@@ -295,6 +346,8 @@ export interface SemanticPassResult {
   corrections: CorrectionItem[] | null;
   /// Model that produced the corrections (local model id, or GROQ_CORRECTION_MODEL); for the local pass also when only scoring ran; null when nothing ran.
   model: string | null;
+  /// AUG-210: accepted title suggestion, or null (not requested, no text model, failed, timed out or unusable).
+  suggestedTitle: string | null;
 }
 
 /// AUG-164: same targets, prompt and acceptSuggestion guard as the local path, on Groq's free tier. Never throws: a
@@ -303,6 +356,39 @@ async function suggestGroqCorrections(input: SemanticPassInput, confidence: Conf
   const targets = buildCorrectionTargets(input.tracks, input.utterances, confidence.detail.semantic?.segments ?? []);
   if (targets.length === 0) return [];
   return suggestCorrections(createGroqTextClient({ waitForBudgetMs: 60_000 }), targets, input.isCancelled);
+}
+
+/// AUG-210. Never throws and never takes longer than TITLE.timeoutMs: a failed, slow or unusable reply is dropped with a
+/// log line only — the session completes with the title it has.
+async function suggestTitle(client: LlmClient, input: SemanticPassInput): Promise<string | null> {
+  const request = input.title;
+  if (!request || input.utterances.length === 0 || input.isCancelled?.()) return null;
+  const controller = new AbortController();
+  const timer = setTimeout(() => controller.abort(), TITLE.timeoutMs);
+  try {
+    const res = await client.chat({
+      messages: [
+        { role: 'system', content: TITLE_SYSTEM_PROMPT },
+        { role: 'user', content: buildTitleInput(input.utterances, request.actionItems) },
+      ],
+      temperature: 0.2,
+      maxTokens: 48,
+      timeoutMs: TITLE.timeoutMs,
+      signal: controller.signal,
+    });
+    const title = acceptTitle(res.content);
+    if (!title) {
+      console.log(`[session ${input.sessionId}] title suggestion dropped: unusable reply`);
+      return null;
+    }
+    await request.onTitle(title).catch(() => {});
+    return title;
+  } catch {
+    console.log(`[session ${input.sessionId}] title suggestion skipped`);
+    return null;
+  } finally {
+    clearTimeout(timer);
+  }
 }
 
 /// Computes the confidence score including the semantic term. Never throws: any local-model failure falls back to the
@@ -315,23 +401,34 @@ export async function runSemanticPass(input: SemanticPassInput): Promise<Semanti
     language: input.language,
   };
   const localReady = await localModelReady();
-  const engine = resolveCorrectionEngine(await readPreferences(), localReady);
+  const prefs = await readPreferences();
+  const engine = resolveCorrectionEngine(prefs, localReady);
+  // AUG-210: the title is asked for first, so the naming pop-up can offer it while the rest of the pass runs.
+  const titleEngine = input.title ? resolveTitleEngine(prefs, localReady) : null;
+  let suggestedTitle: string | null = null;
+  const suggestGroqTitle = async (): Promise<void> => {
+    if (titleEngine !== 'groq') return;
+    suggestedTitle = await suggestTitle(createGroqTextClient({ waitForBudgetMs: 10_000 }), input);
+  };
   if (!localReady) {
     await input.onStage?.('checking');
+    await suggestGroqTitle();
     const confidence = computeConfidence(base);
-    if (engine !== 'groq' || input.isCancelled?.()) return { confidence, corrections: null, model: null };
+    if (engine !== 'groq' || input.isCancelled?.()) return { confidence, corrections: null, model: null, suggestedTitle };
     await input.onStage?.('correcting');
     const corrections = await suggestGroqCorrections(input, confidence);
     console.log(`[session ${input.sessionId}] semantic: groq corrections ${corrections.length}`);
-    return { confidence, corrections, model: GROQ_CORRECTION_MODEL };
+    return { confidence, corrections, model: GROQ_CORRECTION_MODEL, suggestedTitle };
   }
 
+  await suggestGroqTitle();
   let corrections: CorrectionItem[] | null = null;
   let model: string | null = null;
   try {
     const confidence = await withBatchSlot(() => withLocalLlm(async (client, modelId) => {
       model = modelId;
       await input.onStage?.('checking');
+      if (titleEngine === 'local') suggestedTitle = await suggestTitle(client, input); // inside the batch slot
       const ppl = await scorePerplexity(client, input.tracks, modelId, input.isCancelled);
       const result = computeConfidence({ ...base, perplexity: ppl });
       if (engine === 'local' && !input.isCancelled?.()) {
@@ -356,7 +453,7 @@ export async function runSemanticPass(input: SemanticPassInput): Promise<Semanti
       (sum ? ` (median PPL ${sum.medianPpl}, scored ${sum.scored}/skipped ${sum.skipped}, ${sum.ms} ms)` : '') +
       `, corrections ${(corrections as CorrectionItem[] | null)?.length ?? 0}`,
     );
-    return { confidence, corrections, model };
+    return { confidence, corrections, model, suggestedTitle };
   } catch (err) {
     const message = err instanceof LlmUnavailableError || err instanceof Error ? err.message : String(err);
     console.warn(`[session ${input.sessionId}] semantic check skipped: ${message}`);
@@ -364,8 +461,8 @@ export async function runSemanticPass(input: SemanticPassInput): Promise<Semanti
     if (engine === 'groq' && !input.isCancelled?.()) {
       await input.onStage?.('correcting');
       const groqItems = await suggestGroqCorrections(input, fallback);
-      return { confidence: fallback, corrections: groqItems, model: GROQ_CORRECTION_MODEL };
+      return { confidence: fallback, corrections: groqItems, model: GROQ_CORRECTION_MODEL, suggestedTitle };
     }
-    return { confidence: fallback, corrections: null, model: null };
+    return { confidence: fallback, corrections: null, model: null, suggestedTitle };
   }
 }

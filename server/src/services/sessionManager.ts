@@ -23,6 +23,12 @@ const SESSION_ID_PATTERN = /^[A-Za-z0-9_-]{1,128}$/;
 /// the *-boosted.wav / *-partial.wav intermediates.
 export const AUDIO_FILE_PATTERN = /^audio(-mic|-system)?[.-]/;
 
+/// AUG-210: file names the client gives its own recordings (recording-<epoch ms>.webm, recovered-<epoch ms>.wav). They are
+/// not names a user chose, so such a session gets the default "Recording <date time>" title. Uploaded files keep their name.
+const RECORDING_FILE_NAME = /^(recording|recovered)-\d+\.[A-Za-z0-9]+$/;
+
+export type SessionUpdates = Partial<Omit<SessionMetadata, 'id'>>;
+
 /// Guards ids that come from the URL before they reach the filesystem (Archive page, AUG-150).
 export function isValidSessionId(id: string): boolean {
   if (!SESSION_ID_PATTERN.test(id)) return false;
@@ -74,13 +80,15 @@ export async function createSession(
   const dir = sessionDir(id);
   await ensureDir(dir);
 
-  const title = originalFileName?.trim()
-    ? originalFileName
+  const fileName = originalFileName?.trim();
+  const title = fileName && !RECORDING_FILE_NAME.test(fileName)
+    ? fileName
     : `Recording ${new Date().toLocaleString()}`;
 
   const session: SessionMetadata = {
     id,
     title,
+    titleSource: 'auto',
     createdAt: new Date().toISOString(),
     duration: 0,
     language,
@@ -116,16 +124,35 @@ export async function listSessions(): Promise<SessionMetadata[]> {
   return sessions;
 }
 
-export async function updateSession(
-  id: string,
-  updates: Partial<Omit<SessionMetadata, 'id'>>,
-): Promise<SessionMetadata | null> {
-  const existing = await readSessionFile(id);
-  if (!existing) return null;
+/// AUG-210: one write chain per session. updateSession is a read-modify-write of session.json; without the chain a rename
+/// that overlapped a pipeline write was lost (the pipeline wrote back its older copy). In-process only, by design: a
+/// tmp-file + rename write can fail with EPERM on Windows while another process holds the file.
+const writeQueues = new Map<string, Promise<unknown>>();
 
-  const updated: SessionMetadata = { ...existing, ...updates };
-  await writeSessionFile(updated);
-  return updated;
+/// `updates` may be a function of the stored session: it runs inside the queue, so a decision that depends on the current
+/// value (e.g. "replace the title only while it is still automatic") cannot be overtaken by another write.
+export function updateSession(
+  id: string,
+  updates: SessionUpdates | ((existing: SessionMetadata) => SessionUpdates),
+): Promise<SessionMetadata | null> {
+  const run = async (): Promise<SessionMetadata | null> => {
+    const existing = await readSessionFile(id);
+    if (!existing) return null;
+
+    const patch = typeof updates === 'function' ? updates(existing) : updates;
+    const updated: SessionMetadata = { ...existing, ...patch };
+    await writeSessionFile(updated);
+    return updated;
+  };
+
+  const previous = writeQueues.get(id) ?? Promise.resolve();
+  const result = previous.then(run, run);
+  const tail = result.catch(() => {});
+  writeQueues.set(id, tail);
+  void tail.then(() => {
+    if (writeQueues.get(id) === tail) writeQueues.delete(id);
+  });
+  return result;
 }
 
 export async function getTranscript(id: string): Promise<string | null> {

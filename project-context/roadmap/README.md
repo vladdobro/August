@@ -88,4 +88,6 @@ Items not yet assigned to a phase.
 - [ ] Team/workspace support for multiple managers sharing meetings and content.
 - [x] Notifications when transcription completes — native desktop notifications in the Electron shell (AUG-114); video/photo pending.
 - [ ] Usage analytics dashboard for managers.
+- [ ] Action item context — every action item shows a one-sentence summary, the source quote, who said it and when, and jumps to the transcript line; research AUG-211 (decision 2026-11-16: context written in the extraction call, quote saved with the item; @docs/mockups/AUG-211/action-item-context.html, @docs/mockups/AUG-211/findings.md) → impl AUG-213 (server) → AUG-214 (client).
+- [ ] Play audio from an action item's moment — audio route and player in TranscriptView; research AUG-211 → impl AUG-215 (after AUG-214, low priority).
 - [x] Compact Mode on recording — Settings → Compact mode; Variant A (Dock Strip / Dock Square, same window) and Variant B (Ghost Caption / Ghost Coin, ghost overlay with August in the tray); designed in AUG-155, implemented in AUG-156 (interactive verification on Windows and macOS pending).

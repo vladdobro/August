@@ -1,6 +1,6 @@
 import React, { useMemo, useState, useRef, useEffect } from 'react';
 import type { ActionItemsFile, CorrectionItem, CorrectionStatus, SessionMetadata } from '../types';
-import { sendActionItemsToPraxis, addActionItem, deleteActionItem, fetchActionItems, fetchCorrectedTranscript, fetchCorrections, setAllCorrectionsStatus, setCorrectionStatus, updateActionItem } from '../api';
+import { sendActionItemsToPraxis, addActionItem, deleteActionItem, fetchActionItems, fetchCorrectedTranscript, fetchCorrections, fetchGroqTextStatus, fetchLlmStatus, setAllCorrectionsStatus, setCorrectionStatus, updateActionItem } from '../api';
 import PraxisModal from './PraxisModal';
 import ConfidenceBadge from './ConfidenceBadge';
 import ActionItemsPanel from './ActionItemsPanel';
@@ -226,7 +226,228 @@ function stageLabel(stage: string | undefined): string {
   return (stage && STAGE_LABELS[stage]) || 'finishing';
 }
 
-const ChronoRing: React.FC<{ session: SessionMetadata }> = ({ session }) => {
+/// AUG-210: session naming. The server applies the same limit and normalisation.
+const TITLE_MAX_CHARS = 120;
+const RENAME_ERROR = 'Could not save the name. Try again.';
+
+function normalizeTitle(value: string): string {
+  return value.replace(/\s+/g, ' ').trim().slice(0, TITLE_MAX_CHARS).trim();
+}
+
+/// Sessions whose naming pop-up was answered or closed. Module-level on purpose: hidden until the app restarts.
+const closedNamePopups = new Set<string>();
+
+const PencilIcon: React.FC = () => (
+  <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="square" aria-hidden="true">
+    <path d="M12 20h9" />
+    <path d="M16.5 3.5l4 4L8 20l-5 1 1-5z" />
+  </svg>
+);
+
+/// AUG-210: click-to-edit header title. Enter and blur save, Esc restores; empty or unchanged input sends nothing.
+/// Rendered with key={session.id}: on a session switch the unmount commits the draft for the session it was typed for.
+const EditableTitle: React.FC<{ session: SessionMetadata; onRename?: (title: string) => Promise<void> }> = ({ session, onRename }) => {
+  const [editing, setEditing] = useState(false);
+  const [draft, setDraft] = useState('');
+  const [failed, setFailed] = useState(false);
+  const savingRef = useRef(false);
+  const skipBlurRef = useRef(false);
+  // The server may still replace the title of a link session while it downloads.
+  const canEdit = !!onRename && session.status !== 'uploading';
+  const latest = useRef({ editing, draft, title: session.title, onRename });
+  latest.current = { editing, draft, title: session.title, onRename };
+
+  useEffect(() => () => {
+    const l = latest.current;
+    const next = normalizeTitle(l.draft);
+    if (l.editing && !savingRef.current && l.onRename && next && next !== l.title) void l.onRename(next).catch(() => {});
+  }, []);
+
+  const start = () => {
+    if (!canEdit) return;
+    skipBlurRef.current = false;
+    setDraft(session.title);
+    setFailed(false);
+    setEditing(true);
+  };
+
+  const cancel = () => {
+    skipBlurRef.current = true;
+    setEditing(false);
+    setFailed(false);
+  };
+
+  const commit = async () => {
+    if (savingRef.current || !onRename) return;
+    const next = normalizeTitle(draft);
+    if (!next || next === session.title) {
+      setEditing(false);
+      setFailed(false);
+      return;
+    }
+    savingRef.current = true;
+    try {
+      await onRename(next);
+      setEditing(false);
+      setFailed(false);
+    } catch {
+      setFailed(true); // stays in edit mode with the typed text
+    } finally {
+      savingRef.current = false;
+    }
+  };
+
+  if (editing) {
+    return (
+      <div className="title-edit">
+        <input
+          type="text"
+          className={`title-edit-input${failed ? ' title-edit-input--error' : ''}`}
+          value={draft}
+          maxLength={TITLE_MAX_CHARS}
+          aria-label="Session name"
+          autoFocus
+          onFocus={(e) => e.currentTarget.select()}
+          onChange={(e) => { setDraft(e.target.value); setFailed(false); }}
+          onKeyDown={(e) => {
+            if (e.key === 'Enter') {
+              e.preventDefault();
+              void commit();
+            } else if (e.key === 'Escape') {
+              e.stopPropagation(); // must not reach the overlay Esc handler in App
+              cancel();
+            }
+          }}
+          onBlur={() => {
+            if (skipBlurRef.current) { skipBlurRef.current = false; return; }
+            void commit();
+          }}
+        />
+        {failed && <div className="title-edit-error" role="alert">{RENAME_ERROR}</div>}
+      </div>
+    );
+  }
+
+  if (!canEdit) return <h2 className="transcript-circuit-title">{session.title}</h2>;
+
+  return (
+    <h2
+      className="transcript-circuit-title transcript-circuit-title--editable"
+      title="Click to rename"
+      tabIndex={0}
+      onClick={start}
+      onKeyDown={(e) => { if (e.key === 'Enter') { e.preventDefault(); start(); } }}
+    >
+      <span className="title-edit-text">{session.title}</span>
+      <span className="title-edit-pen" aria-hidden="true"><PencilIcon /></span>
+    </h2>
+  );
+};
+
+/// AUG-210: corner pop-up on the timer page. Never takes focus on its own; Save / Enter rename, Later / ✕ / Esc hide it
+/// for this session. A typed but unsaved name is committed when the pop-up unmounts (transcription finished, session switch).
+const NamePopup: React.FC<{ session: SessionMetadata; onRename: (title: string) => Promise<void>; onClose: () => void }> = ({ session, onRename, onClose }) => {
+  const [draft, setDraft] = useState('');
+  const [failed, setFailed] = useState(false);
+  const [saving, setSaving] = useState(false);
+  const [textModelOn, setTextModelOn] = useState(false);
+  const inputRef = useRef<HTMLInputElement>(null);
+  const closedRef = useRef(false);
+  const latest = useRef({ draft, title: session.title, onRename });
+  latest.current = { draft, title: session.title, onRename };
+
+  // The waiting line is shown only when a text model can actually produce a suggestion.
+  useEffect(() => {
+    let alive = true;
+    Promise.all([fetchLlmStatus().catch(() => null), fetchGroqTextStatus().catch(() => null)]).then(([llm, groq]) => {
+      if (alive) setTextModelOn((!!llm && llm.enabled && llm.install === 'ready') || !!groq?.enabled);
+    });
+    return () => { alive = false; };
+  }, []);
+
+  useEffect(() => () => {
+    if (closedRef.current) return;
+    const l = latest.current;
+    const next = normalizeTitle(l.draft);
+    if (next && next !== l.title) void l.onRename(next).catch(() => {});
+  }, []);
+
+  const close = () => {
+    closedRef.current = true;
+    onClose();
+  };
+
+  const save = async () => {
+    if (saving) return;
+    const next = normalizeTitle(draft);
+    if (!next) return;
+    if (next === session.title) { close(); return; }
+    setSaving(true);
+    try {
+      await onRename(next);
+      close();
+    } catch {
+      setFailed(true); // keeps the typed text
+      setSaving(false);
+    }
+  };
+
+  const suggestion = session.suggestedTitle;
+
+  return (
+    <div className="name-popup" role="dialog" aria-label="Name this meeting">
+      <div className="name-popup-head">
+        <span className="name-popup-title">Name this meeting</span>
+        <button type="button" className="name-popup-close" aria-label="Close" onClick={close}>✕</button>
+      </div>
+      <input
+        ref={inputRef}
+        type="text"
+        className={`name-popup-input${failed ? ' name-popup-input--error' : ''}`}
+        value={draft}
+        maxLength={TITLE_MAX_CHARS}
+        placeholder={session.title}
+        aria-label="Meeting name"
+        onChange={(e) => { setDraft(e.target.value); setFailed(false); }}
+        onKeyDown={(e) => {
+          if (e.key === 'Enter') {
+            e.preventDefault();
+            void save();
+          } else if (e.key === 'Escape') {
+            e.stopPropagation(); // must not reach the overlay Esc handler in App
+            close();
+          }
+        }}
+      />
+      {failed && <div className="name-popup-error" role="alert">{RENAME_ERROR}</div>}
+      {suggestion ? (
+        <div className="name-popup-sug">
+          <button
+            type="button"
+            className="name-popup-chip"
+            onClick={() => { setDraft(suggestion.slice(0, TITLE_MAX_CHARS)); setFailed(false); inputRef.current?.focus(); }}
+          >
+            <span className="name-popup-chip-key">Suggested</span>
+            <span aria-hidden="true">·</span>
+            <span className="name-popup-chip-name">{suggestion}</span>
+          </button>
+          <div className="name-popup-help">Click to use it</div>
+        </div>
+      ) : textModelOn ? (
+        <div className="name-popup-sug name-popup-wait">
+          <span className="name-popup-dots" aria-hidden="true"><i /><i /><i /></span>
+          A suggested name will appear when the text is ready
+        </div>
+      ) : null}
+      <div className="name-popup-btns">
+        <button type="button" className="name-popup-btn name-popup-btn--primary" onClick={() => void save()} disabled={saving}>Save</button>
+        <button type="button" className="name-popup-btn" onClick={close}>Later</button>
+      </div>
+    </div>
+  );
+};
+
+const ChronoRing: React.FC<{ session: SessionMetadata }> =({ session }) => {
   const [remainMs, setRemainMs] = useState(0);
   const [elapsedMs, setElapsedMs] = useState(0);
   const [progress, setProgress] = useState(0);
@@ -383,6 +604,12 @@ const TranscriptView: React.FC<TranscriptViewProps> = ({ session, transcript, on
   const [actionItems, setActionItems] = useState<ActionItemsFile | null>(null);
   const [correctionBusy, setCorrectionBusy] = useState<number | null>(null);
   const audioDeleted = !!session.audioDeletedAt;
+  // AUG-210: the naming pop-up shows only while the session still has its auto title.
+  const [, bumpNamePopup] = useState(0);
+  const showNamePopup = !!onRename
+    && (session.status === 'preparing' || session.status === 'transcribing')
+    && session.titleSource === 'auto'
+    && !closedNamePopups.has(session.id);
 
   useEffect(() => {
     if (!dropdownOpen) return;
@@ -586,7 +813,7 @@ const TranscriptView: React.FC<TranscriptViewProps> = ({ session, transcript, on
     <div className="transcript-view">
       <div className="transcript-circuit-header">
         <div className="transcript-circuit-info">
-          <h2 className="transcript-circuit-title">{session.title}</h2>
+          <EditableTitle key={session.id} session={session} onRename={onRename} />
           <div className="transcript-circuit-meta">
             <span>{new Date(session.createdAt).toLocaleString()}</span>
             <span className="meta-separator">&bull;</span>
@@ -963,6 +1190,15 @@ const TranscriptView: React.FC<TranscriptViewProps> = ({ session, transcript, on
           </div>
         )}
       </div>
+
+      {showNamePopup && onRename && (
+        <NamePopup
+          key={session.id}
+          session={session}
+          onRename={onRename}
+          onClose={() => { closedNamePopups.add(session.id); bumpNamePopup((n) => n + 1); }}
+        />
+      )}
 
       {showPraxisModal && (
         <PraxisModal

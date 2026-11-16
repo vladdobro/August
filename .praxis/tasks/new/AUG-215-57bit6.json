@@ -1,0 +1,19 @@
+{
+  "id": "AUG-215-57bit6",
+  "assignee": "jarvis.json",
+  "priority": "low",
+  "status": "new",
+  "title": "[AUG-215] Play session audio from an action item's moment in TranscriptView",
+  "why_we_need_this": "Reading the quote of an action item is sometimes not enough: tone, a number or a name can be misheard by transcription, and the user wants to hear the moment itself. Research AUG-211 (@docs/mockups/AUG-211/findings.md, finding 6) showed the app has no audio player and no route that serves session audio, so this cannot be a small addition to the context UI and is a task of its own. The approved mockup @docs/mockups/AUG-211/action-item-context.html shows the `▶ Play from here` button and the player strip.",
+  "acceptance_criteria": "- [ ] The server serves a saved session's audio to the local client with HTTP range support, so playback can start at any second without downloading the whole file; a session without audio answers 404.\n- [ ] In TranscriptView, the expanded action item shows `▶ Play from here` only when the session still has audio and the item has a time; without audio the button is absent (not disabled) and nothing else mentions it.\n- [ ] Clicking it jumps to and highlights the source line and starts playback from the item's time (start within 1 s of the stored time, checked on one real recording).\n- [ ] A player strip at the bottom of the transcript shows `■ Stop`, current time / duration and `Playing from the action item`; Stop ends playback and hides the strip; starting playback from another item restarts it there.\n- [ ] A dual-track recording (microphone + system audio) plays both sides in sync, or the task documents which track is played and why.\n- [ ] After `Delete audio` or automatic WAV deletion (AUG-152) the button disappears without a reload error; after re-download (AUG-150) it comes back.\n- [ ] Works on Windows and on macOS (packaged data dir on both); brandbook rules hold (0 border-radius, outline controls, no technical details in the UI); `npm test` and the client build pass.",
+  "important_constraints": "- Order: 3/3 (optional, lower priority). Depends on: AUG-213-b8mq4z (item time), AUG-214-sn2yg3 (expanded context block and jump). Research: AUG-211-yw2f5w.\n- The audio route is loopback-only like the rest of the API; no audio leaves the machine.\n- Paths through `path.join()`; non-ASCII session paths on Windows must work (see `toSafePath`).\n- Do not change how audio is stored, converted or deleted; this task only reads it.\n- No playback in the live panel (there is no saved audio during a recording).",
+  "labels": [
+    "action-items",
+    "audio",
+    "ux"
+  ],
+  "on_hold_reason": "",
+  "contextRouterIncluded": true,
+  "created_at": 1794842825299,
+  "column_entered_at": 1794842825299
+}

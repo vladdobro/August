@@ -1,0 +1,342 @@
+<!doctype html>
+<html lang="en" data-theme="dark" data-state="idle">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Naming a transcription — AUG-209</title>
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=JetBrains+Mono:wght@400;500;600;700;800&display=swap">
+<style>
+* { box-sizing: border-box; border-radius: 0; }
+:root {
+  --page-bg:#c4cec8; --main-bg:#d0d8d3; --text-primary:#141e18; --text-secondary:#3e5548;
+  --accent:#0a7b50; --accent-light:rgba(10,123,80,.12); --accent-glow:rgba(10,123,80,.20);
+  --border-color:rgba(10,123,80,.22); --status-failed:#d44040; --card-bg:rgba(195,206,200,.88);
+  --warn:#b08820;
+  --mono:'JetBrains Mono','Cascadia Code','Fira Code',Consolas,monospace;
+}
+@media (prefers-color-scheme: dark) {
+  :root:not([data-theme="light"]) {
+    --page-bg:#060b08; --main-bg:#0a110d; --text-primary:#c0cec4; --text-secondary:#5e7d6a;
+    --accent:#00c876; --accent-light:rgba(0,200,118,.10); --accent-glow:rgba(0,200,118,.30);
+    --border-color:rgba(0,200,118,.18); --status-failed:#e05555; --card-bg:rgba(12,20,16,.92); --warn:#d4a020; color-scheme:dark;
+  }
+}
+:root[data-theme="dark"] {
+  --page-bg:#060b08; --main-bg:#0a110d; --text-primary:#c0cec4; --text-secondary:#5e7d6a;
+  --accent:#00c876; --accent-light:rgba(0,200,118,.10); --accent-glow:rgba(0,200,118,.30);
+  --border-color:rgba(0,200,118,.18); --status-failed:#e05555; --card-bg:rgba(12,20,16,.92); --warn:#d4a020; color-scheme:dark;
+}
+html { background: var(--page-bg); }
+body { margin:0; padding:0 16px; background:var(--page-bg); color:var(--text-primary); font-family:var(--mono); font-size:13px; line-height:1.5; }
+.wrap { max-width:960px; margin:0 auto; padding-bottom:64px; }
+h1 { font-size:20px; margin:24px 0 8px; letter-spacing:-.02em; }
+h2 { font-size:15px; margin:40px 0 12px; text-transform:uppercase; letter-spacing:.08em; }
+p.lead { max-width:75ch; color:var(--text-secondary); margin:0; }
+.note { color:var(--text-secondary); font-size:12px; max-width:75ch; margin:0 0 12px; }
+
+/* control bar */
+.bar { position:sticky; top:0; z-index:10; margin:0 -16px; padding:8px 16px; background:var(--page-bg); border-bottom:1px solid var(--border-color); display:flex; flex-wrap:wrap; gap:8px 16px; align-items:center; }
+.grp { display:flex; align-items:center; gap:6px; flex-wrap:wrap; }
+.grp > span { font-size:11px; color:var(--text-secondary); text-transform:uppercase; letter-spacing:.08em; }
+.seg { display:flex; }
+.seg button + button { border-left:0; }
+.bar button { font:11px var(--mono); color:var(--text-primary); background:transparent; border:1px solid var(--border-color); padding:4px 10px; cursor:pointer; }
+.bar button[aria-pressed="true"] { background:var(--accent); color:var(--page-bg); }
+button:focus-visible, input:focus-visible { outline:2px solid var(--accent); outline-offset:1px; }
+
+.frame { border:1px solid var(--border-color); background:var(--main-bg); padding:24px; }
+.transcript-status-panel { display:flex; flex-direction:column; align-items:center; justify-content:center; gap:16px; padding:48px 24px; color:var(--text-secondary); text-align:center; }
+.session-title { font-size:20px; font-weight:800; letter-spacing:-.02em; color:var(--text-primary); margin:0 0 8px; text-align:center; }
+
+/* chrono ring */
+.chrono-container { --chrono-accent:#b08820; --chrono-accent-dim:#8a6a18; --chrono-accent-bright:#9a7a18; --chrono-accent-glow:rgba(160,120,24,.25); --chrono-accent-muted:#8a7a50; --chrono-text:#6a5820; }
+@media (prefers-color-scheme: dark) {
+  :root:not([data-theme="light"]) .chrono-container { --chrono-accent:#d4a028; --chrono-accent-dim:#a07820; --chrono-accent-bright:#f0c040; --chrono-accent-glow:rgba(212,160,40,.35); --chrono-accent-muted:#5a4a1a; --chrono-text:#e8d098; }
+}
+:root[data-theme="dark"] .chrono-container { --chrono-accent:#d4a028; --chrono-accent-dim:#a07820; --chrono-accent-bright:#f0c040; --chrono-accent-glow:rgba(212,160,40,.35); --chrono-accent-muted:#5a4a1a; --chrono-text:#e8d098; }
+.chrono-container { display:flex; flex-direction:column; align-items:center; gap:16px; max-width:100%; }
+.chrono-wrap { position:relative; width:200px; height:200px; }
+.chrono-wrap svg { width:200px; height:200px; transform:rotate(-90deg); overflow:visible; }
+.chrono-tick { stroke:var(--chrono-accent-muted); opacity:.18; }
+.chrono-track { fill:none; stroke:var(--chrono-accent-muted); stroke-width:3; opacity:.25; }
+.chrono-glow { fill:none; stroke:var(--chrono-accent); stroke-width:9; opacity:.1; stroke-linecap:round; }
+.chrono-fill { fill:none; stroke:var(--chrono-accent); stroke-width:3.5; stroke-linecap:round; stroke-dasharray:552.9; stroke-dashoffset:343; filter:drop-shadow(0 0 10px var(--chrono-accent-glow)); }
+.chrono-center { position:absolute; inset:0; display:flex; flex-direction:column; align-items:center; justify-content:center; gap:2px; }
+.chrono-label { font:600 10px var(--mono); letter-spacing:.22em; text-transform:uppercase; color:var(--chrono-accent-muted); }
+.chrono-digits { font:600 32px var(--mono); color:var(--chrono-accent-bright); font-variant-numeric:tabular-nums; text-shadow:0 0 18px var(--chrono-accent-glow); }
+.chrono-pct { font:500 12px var(--mono); color:var(--chrono-accent-dim); }
+.chrono-meta { display:flex; gap:24px; font-size:12px; flex-wrap:wrap; justify-content:center; }
+.chrono-meta .it { display:flex; align-items:center; gap:6px; }
+.chrono-meta .lab { color:var(--chrono-accent-muted); }
+.chrono-meta .val { font-weight:500; color:var(--chrono-text); font-family:var(--mono); }
+.dot { width:6px; height:6px; border-radius:50%; background:var(--chrono-accent); box-shadow:0 0 6px var(--chrono-accent-glow); animation:chrono-dot-pulse 2s infinite; }
+@keyframes chrono-dot-pulse { 0%,100% { opacity:1; } 50% { opacity:.3; } }
+@media (prefers-reduced-motion: reduce) { .dot { animation:none; } }
+.cancel { font:12px var(--mono); text-transform:uppercase; color:var(--text-primary); background:transparent; border:1px solid var(--border-color); padding:6px 16px; cursor:pointer; }
+
+/* state switching */
+.st { display:none; }
+html[data-state="idle"] .st-idle, html[data-state="typing"] .st-typing, html[data-state="saved"] .st-saved, html[data-state="error"] .st-error,
+html[data-state="typing"] .st-edit, html[data-state="error"] .st-edit,
+html[data-state="typing"] .st-val, html[data-state="saved"] .st-val, html[data-state="error"] .st-val,
+html[data-state="idle"] .st-notsaved, html[data-state="typing"] .st-notsaved, html[data-state="error"] .st-notsaved { display:block; }
+html[data-state="idle"] .st-idle.flex, html[data-state="typing"] .st-edit.flex, html[data-state="error"] .st-edit.flex, html[data-state="saved"] .st-saved.flex { display:flex; }
+html:not([data-state="saved"]) .only-saved { display:none; }
+
+/* header block */
+.hdr { text-align:center; padding:20px 24px 16px; border-bottom:1px solid var(--border-color); background:var(--card-bg); }
+.ttl { font-size:20px; font-weight:800; letter-spacing:-.02em; line-height:1.3; }
+.meta { font-size:12px; color:var(--text-secondary); margin-top:4px; }
+.ok { color:var(--accent); font-size:11px; margin-left:8px; }
+.help { font-size:11px; color:var(--text-secondary); margin-top:6px; }
+.help.err { color:var(--status-failed); }
+.help.good { color:var(--accent); }
+.pen { display:inline-flex; vertical-align:middle; margin-left:8px; color:var(--text-secondary); }
+.pen svg { display:block; }
+
+/* name block (T1, T3) */
+.nb { width:360px; max-width:100%; text-align:left; }
+.nb label { display:block; font-size:10px; text-transform:uppercase; letter-spacing:.22em; color:var(--text-secondary); margin-bottom:6px; }
+.nb input { width:100%; max-width:100%; height:36px; padding:0 10px; background:transparent; border:1px solid var(--border-color); font:13px var(--mono); color:var(--text-primary); }
+.nb input::placeholder { color:var(--text-secondary); opacity:.8; }
+html[data-state="typing"] .nb input.st-val { border-color:var(--accent); box-shadow:0 0 0 1px var(--accent); }
+html[data-state="error"] .nb input.st-val { border-color:var(--status-failed); }
+.chips { display:flex; flex-wrap:wrap; justify-content:center; gap:6px; margin-top:10px; }
+.chip { font:11px var(--mono); text-transform:uppercase; padding:3px 10px; background:transparent; border:1px solid var(--border-color); color:var(--text-secondary); cursor:pointer; }
+html:not([data-state="idle"]) .chip.sel { border-color:var(--accent); color:var(--accent); }
+
+/* title as control (T2, S1, S2) */
+.t-edit { color:var(--text-primary); border-bottom:1px dashed transparent; }
+.dim .t-edit { color:var(--text-secondary); border-bottom-color:var(--border-color); }
+.hov { cursor:text; }
+.hov:hover .t-edit { border-bottom-color:var(--border-color); }
+.hov .pen { visibility:hidden; }
+.hov:hover .pen { visibility:visible; color:var(--warn); }
+.pen.half { opacity:.5; }
+.warn-chip { display:inline-block; margin-top:8px; font-size:10px; text-transform:uppercase; letter-spacing:.12em; color:var(--warn); border:1px solid var(--warn); padding:2px 8px; line-height:1.5; }
+.ttl-in { font:800 20px var(--mono); letter-spacing:-.02em; text-align:center; width:420px; max-width:100%; min-width:0; padding:2px 4px; background:transparent; color:var(--text-primary); border:0; border-bottom:2px solid var(--accent); }
+html[data-state="error"] .ttl-in { border-bottom-color:var(--status-failed); }
+.trow:not(.st) { display:flex; }
+.trow { align-items:center; justify-content:center; gap:8px; }
+.sq { flex:none; width:26px; height:26px; display:inline-flex; align-items:center; justify-content:center; padding:0; background:transparent; border:1px solid var(--border-color); color:var(--text-primary); cursor:pointer; font:13px var(--mono); }
+.sq.go { border-color:var(--accent); color:var(--accent); }
+.sq .pen { margin:0; color:inherit; }
+.lines { padding:20px 24px; font-size:13px; }
+.lines div { margin:4px 0; }
+.lines b { font-weight:400; color:var(--text-secondary); }
+/* pop-ups (P1-P3) */
+.cap { font-size:11px; text-transform:uppercase; letter-spacing:.08em; color:var(--text-secondary); margin:12px 0 6px; }
+.mock { position:relative; }
+.mock .transcript-status-panel.tall { min-height:520px; }
+.mock .lines.tall { min-height:300px; }
+.pop { width:340px; max-width:100%; background:#0a110d; background:var(--main-bg); border:1px solid var(--accent); padding:16px; text-align:left; box-shadow:0 12px 34px rgba(0,0,0,.35); }
+:root[data-theme="light"] .pop { background:#d0d8d3; background:var(--main-bg); }
+.pop.corner { position:absolute; right:16px; bottom:16px; }
+.pop-head { display:flex; align-items:center; justify-content:space-between; gap:8px; }
+.pop-title { font-size:11px; font-weight:700; text-transform:uppercase; letter-spacing:.12em; color:var(--text-primary); }
+.pop-x { background:transparent; border:0; padding:0 2px; font:13px var(--mono); color:var(--text-secondary); cursor:pointer; }
+.pop-lab { display:block; margin-top:10px; font-size:10px; text-transform:uppercase; letter-spacing:.22em; color:var(--warn); }
+.pop input { display:block; width:100%; max-width:100%; height:36px; padding:0 10px; margin-top:10px; background:transparent; border:1px solid var(--border-color); font:13px var(--mono); color:var(--text-primary); }
+.pop-lab + input { margin-top:6px; }
+.pop input::placeholder { color:var(--text-secondary); opacity:.8; }
+.pop-sug { margin-top:8px; }
+.pop-btns { display:flex; justify-content:flex-end; flex-wrap:wrap; gap:8px; margin-top:14px; }
+.pop-btns button { font:11px var(--mono); text-transform:uppercase; padding:6px 14px; cursor:pointer; background:transparent; color:var(--text-primary); border:1px solid var(--border-color); }
+.pop-btns button.pri { background:var(--accent); color:var(--page-bg); border-color:var(--accent); }
+.sug { display:inline-flex; gap:6px; font:11px var(--mono); color:var(--warn); border:1px solid var(--warn); padding:3px 8px; background:transparent; cursor:pointer; text-align:left; }
+.sug .k { text-transform:uppercase; letter-spacing:.12em; }
+.sug .n { color:var(--text-primary); }
+.sug-help { font-size:11px; color:var(--text-secondary); margin-top:4px; }
+.sug-wait { display:flex; align-items:center; gap:8px; font-size:11px; color:var(--text-secondary); }
+.sqs { display:flex; flex:none; gap:3px; }
+.sqs i { width:4px; height:4px; background:var(--warn); opacity:.25; animation:blink 1.2s steps(1) infinite; }
+.sqs i:nth-child(2) { animation-delay:.4s; } .sqs i:nth-child(3) { animation-delay:.8s; }
+@keyframes blink { 0% { opacity:1; } 33%,100% { opacity:.25; } }
+@media (prefers-reduced-motion: reduce) { .sqs i { animation:none; opacity:1; } }
+.backdrop { position:absolute; inset:0; background:rgba(0,0,0,.55); display:flex; align-items:center; justify-content:center; padding:16px; }
+@media (max-width:600px) { .pop.corner { position:static; margin:16px auto 0; } }
+@media (max-width:600px) { .frame { padding:12px; } .transcript-status-panel { padding:32px 8px; } .hdr { padding:16px 12px 12px; } }
+</style>
+</head>
+<body>
+<div class="bar" role="toolbar" aria-label="Mockup controls">
+  <div class="grp"><span>Theme</span><div class="seg" data-g="theme"><button data-v="dark" aria-pressed="true">Dark</button><button data-v="light" aria-pressed="false">Light</button></div></div>
+  <div class="grp"><span>State</span><div class="seg" data-g="state"><button data-v="idle" aria-pressed="true">Idle</button><button data-v="typing" aria-pressed="false">Typing</button><button data-v="saved" aria-pressed="false">Saved</button><button data-v="error" aria-pressed="false">Error</button></div></div>
+</div>
+<div class="wrap">
+<h1>Naming a transcription</h1>
+<p class="lead">Pop-up variants P1–P3 offer a name suggested by the language model. T1–T3 and S1–S2 are the inline alternatives. Naming is always optional.</p>
+
+<h2>P1 · Pop-up when transcription starts (corner)</h2>
+<p class="note">Appears on the timer page, does not cover the ring, never takes keyboard focus. The model can only suggest a name once the text exists, so the suggestion arrives near the end.</p>
+<div class="cap">While transcribing</div>
+<div class="frame"><div class="mock">
+  <div class="hdr"><div class="ttl">Recording 16.11.2026, 14:32:08</div><div class="meta">16.11.2026, 14:32 • 47:05 • Auto • transcribing</div></div>
+  <div class="transcript-status-panel tall"><div class="chrono-container"><i data-ring></i><button class="cancel">Cancel</button></div></div>
+  <div class="pop corner" role="dialog" aria-label="Name this meeting">
+    <div class="pop-head"><span class="pop-title">Name this meeting</span><button class="pop-x" aria-label="Close">✕</button></div>
+    <input type="text" placeholder="Recording 16.11.2026, 14:32:08" aria-label="Meeting name" readonly>
+    <div class="pop-sug sug-wait"><span class="sqs"><i></i><i></i><i></i></span>A suggested name will appear when the text is ready</div>
+    <div class="pop-btns"><button class="pri">Save</button><button>Later</button></div>
+  </div>
+</div></div>
+<div class="cap">Suggestion ready</div>
+<div class="frame"><div class="mock">
+  <div class="hdr"><div class="ttl">Recording 16.11.2026, 14:32:08</div><div class="meta">16.11.2026, 14:32 • 47:05 • Auto • transcribing</div></div>
+  <div class="transcript-status-panel tall"><div class="chrono-container"><i data-ring></i><button class="cancel">Cancel</button></div></div>
+  <div class="pop corner" role="dialog" aria-label="Name this meeting">
+    <div class="pop-head"><span class="pop-title">Name this meeting</span><button class="pop-x" aria-label="Close">✕</button></div>
+    <input type="text" placeholder="Recording 16.11.2026, 14:32:08" aria-label="Meeting name" readonly>
+    <div class="pop-sug"><button class="sug"><span class="k">Suggested</span> · <span class="n">Pricing call with Acme</span></button><div class="sug-help">Click to use it</div></div>
+    <div class="pop-btns"><button class="pri">Save</button><button>Later</button></div>
+  </div>
+</div></div>
+
+<h2>P2 · Pop-up when the transcript is ready (corner)</h2>
+<p class="note">Appears once, on the finished transcript, with the suggested name already in the field. One click to accept.</p>
+<div class="frame"><div class="mock">
+  <div class="hdr"><div class="ttl">Recording 16.11.2026, 14:32:08</div><div class="meta">16.11.2026, 14:32 • 47:05 • Auto • completed • 92%</div></div>
+  <div class="lines tall"><div><b>[00:00:04] Me:</b> Thanks for joining…</div><div><b>[00:00:09] Them:</b> Happy to be here.</div><div><b>[00:00:15] Me:</b> Let's start with pricing.</div><div><b>[00:00:22] Them:</b> We have three plans in mind.</div><div><b>[00:00:31] Me:</b> Which one fits a team of ten?</div><div><b>[00:00:38] Them:</b> Probably the middle one.</div><div><b>[00:00:47] Me:</b> And what about the annual discount?</div><div><b>[00:00:55] Them:</b> Fifteen percent if you sign this month.</div></div>
+  <div class="pop corner" role="dialog" aria-label="Name this meeting">
+    <div class="pop-head"><span class="pop-title">Name this meeting</span><button class="pop-x" aria-label="Close">✕</button></div>
+    <span class="pop-lab">Suggested name</span>
+    <input type="text" value="Pricing call with Acme" aria-label="Meeting name" readonly>
+    <div class="pop-btns"><button class="pri">Use this name</button><button>Keep current</button></div>
+  </div>
+</div></div>
+
+<h2>P3 · Dialog when the transcript is ready (centered)</h2>
+<p class="note">Same content as P2 as a centered dialog over a dimmed page. Harder to miss, but it interrupts reading until answered or closed.</p>
+<div class="frame"><div class="mock">
+  <div class="hdr"><div class="ttl">Recording 16.11.2026, 14:32:08</div><div class="meta">16.11.2026, 14:32 • 47:05 • Auto • completed • 92%</div></div>
+  <div class="lines tall"><div><b>[00:00:04] Me:</b> Thanks for joining…</div><div><b>[00:00:09] Them:</b> Happy to be here.</div><div><b>[00:00:15] Me:</b> Let's start with pricing.</div><div><b>[00:00:22] Them:</b> We have three plans in mind.</div><div><b>[00:00:31] Me:</b> Which one fits a team of ten?</div><div><b>[00:00:38] Them:</b> Probably the middle one.</div><div><b>[00:00:47] Me:</b> And what about the annual discount?</div><div><b>[00:00:55] Them:</b> Fifteen percent if you sign this month.</div></div>
+  <div class="backdrop"><div class="pop" role="dialog" aria-modal="true" aria-label="Name this meeting">
+    <div class="pop-head"><span class="pop-title">Name this meeting</span><button class="pop-x" aria-label="Close">✕</button></div>
+    <span class="pop-lab">Suggested name</span>
+    <input type="text" value="Pricing call with Acme" aria-label="Meeting name" readonly>
+    <div class="pop-btns"><button class="pri">Use this name</button><button>Keep current</button></div>
+  </div></div>
+</div></div>
+
+<h2>T1 · Field under the ring</h2>
+<p class="note">A quiet input between the timer and Cancel. Not focused by default.</p>
+<div class="frame">
+  <div class="hdr">
+    <div class="ttl"><span class="only-saved">Pricing call — Acme</span><span class="st-notsaved st">Recording 16.11.2026, 14:32:08</span></div>
+    <div class="meta">16.11.2026, 14:32 • 47:05 • Auto • transcribing</div>
+  </div>
+  <div class="transcript-status-panel"><div class="chrono-container">
+    <i data-ring></i>
+    <div class="nb">
+      <label for="t1">Name this transcription</label>
+      <input id="t1" class="st st-idle" type="text" placeholder="Recording 16.11.2026, 14:32:08" readonly>
+      <input id="t1v" class="st st-val" type="text" value="Pricing call — Acme" readonly>
+      <div class="help st st-idle">Optional. Enter saves, Esc cancels.</div>
+      <div class="help st st-typing">Enter to save</div>
+      <div class="help good st st-saved">Saved</div>
+      <div class="help err st st-error">Could not save the name. Try again.</div>
+    </div>
+    <button class="cancel">Cancel</button>
+  </div></div>
+</div>
+
+<h2>T2 · Editable title in the header</h2>
+<p class="note">The title itself is the input. Same control stays on the page after transcription finishes.</p>
+<div class="frame">
+  <div class="hdr">
+    <div class="st st-idle"><div class="ttl dim" style="cursor:text"><span class="t-edit">Recording 16.11.2026, 14:32:08</span><i class="pen" data-pen></i></div><div class="warn-chip">Unnamed — click to name</div></div>
+    <div class="st st-edit"><input class="ttl-in" type="text" value="Pricing call — Acme" aria-label="Transcription name" readonly><div class="help st-typing st">Enter to save · Esc to cancel</div><div class="help err st st-error">Could not save the name. Try again.</div></div>
+    <div class="st st-saved"><div class="ttl"><span class="t-edit">Pricing call — Acme</span><i class="pen half" data-pen></i></div></div>
+    <div class="meta">16.11.2026, 14:32 • 47:05 • Auto • transcribing<span class="ok only-saved">Saved</span></div>
+  </div>
+  <div class="transcript-status-panel"><div class="chrono-container"><i data-ring></i><button class="cancel">Cancel</button></div></div>
+</div>
+
+<h2>T3 · Field with quick-name chips</h2>
+<p class="note">Same field as T1 plus one-click starters. Chips only prefill the field; the transcript is not ready yet, so they are templates, not content-based suggestions.</p>
+<div class="frame">
+  <div class="hdr">
+    <div class="ttl"><span class="only-saved">Call — Acme</span><span class="st-notsaved st">Recording 16.11.2026, 14:32:08</span></div>
+    <div class="meta">16.11.2026, 14:32 • 47:05 • Auto • transcribing</div>
+  </div>
+  <div class="transcript-status-panel"><div class="chrono-container">
+    <i data-ring></i>
+    <div class="nb">
+      <label for="t3">Name this transcription</label>
+      <input id="t3" class="st st-idle" type="text" placeholder="Recording 16.11.2026, 14:32:08" readonly>
+      <input id="t3v" class="st st-val" type="text" value="Call — Acme" readonly>
+      <div class="chips"><button class="chip">Meeting</button><button class="chip">1:1</button><button class="chip">Interview</button><button class="chip">Demo</button><button class="chip sel">Call</button></div>
+      <div class="help st st-idle">Optional. Enter saves, Esc cancels.</div>
+      <div class="help st st-typing">Enter to save</div>
+      <div class="help good st st-saved">Saved</div>
+      <div class="help err st st-error">Could not save the name. Try again.</div>
+    </div>
+    <button class="cancel">Cancel</button>
+  </div></div>
+</div>
+
+<h2>S1 · Click the title to rename</h2>
+<p class="note">Completed session. Hover shows the title is editable; click turns it into an input.</p>
+<div class="frame">
+  <div class="hdr">
+    <div class="st st-idle"><div class="ttl hov"><span class="t-edit">Recording 16.11.2026, 14:32:08</span><i class="pen" data-pen></i></div></div>
+    <div class="st st-edit"><input class="ttl-in" type="text" value="Pricing call — Acme" aria-label="Transcription name" readonly><div class="help st st-typing">Enter to save · Esc to cancel</div><div class="help err st st-error">Could not save the name. Try again.</div></div>
+    <div class="st st-saved"><div class="ttl hov"><span class="t-edit">Pricing call — Acme</span><i class="pen" data-pen></i></div></div>
+    <div class="meta">16.11.2026, 14:32 • 47:05 • Auto • completed • 92%<span class="ok only-saved">Saved</span></div>
+  </div>
+  <div class="lines"><div><b>[00:00:04] Me:</b> Thanks for joining…</div><div><b>[00:00:09] Them:</b> Happy to be here.</div><div><b>[00:00:15] Me:</b> Let's start with pricing.</div></div>
+</div>
+
+<h2>S2 · Pencil button next to the title</h2>
+<p class="note">Always-visible button. Easier to discover, one more control in the header.</p>
+<div class="frame">
+  <div class="hdr">
+    <div class="trow st st-idle flex"><div class="ttl">Recording 16.11.2026, 14:32:08</div><button class="sq" aria-label="Rename"><i class="pen" data-pen></i></button></div>
+    <div class="st st-edit"><div class="trow"><input class="ttl-in" type="text" value="Pricing call — Acme" aria-label="Transcription name" readonly><button class="sq go" aria-label="Save name">✓</button><button class="sq" aria-label="Cancel">✕</button></div><div class="help st st-typing">Enter to save · Esc to cancel</div><div class="help err st st-error">Could not save the name. Try again.</div></div>
+    <div class="trow st st-saved flex"><div class="ttl">Pricing call — Acme</div><button class="sq" aria-label="Rename"><i class="pen" data-pen></i></button></div>
+    <div class="meta">16.11.2026, 14:32 • 47:05 • Auto • completed • 92%<span class="ok only-saved">Saved</span></div>
+  </div>
+  <div class="lines"><div><b>[00:00:04] Me:</b> Thanks for joining…</div><div><b>[00:00:09] Them:</b> Happy to be here.</div><div><b>[00:00:15] Me:</b> Let's start with pricing.</div></div>
+</div>
+</div>
+
+<template id="ring">
+  <div class="chrono-wrap">
+    <svg viewBox="0 0 220 220" aria-hidden="true"><g class="ticks"></g>
+      <circle class="chrono-track" cx="110" cy="110" r="88"/><circle class="chrono-glow" cx="110" cy="110" r="88"/>
+      <circle class="chrono-fill" cx="110" cy="110" r="88"/>
+    </svg>
+    <div class="chrono-center"><div class="chrono-label">remaining</div><div class="chrono-digits">00:03:42</div><div class="chrono-pct">38%</div></div>
+  </div>
+  <div class="chrono-meta"><div class="it"><span class="dot"></span><span class="lab">Elapsed</span><span class="val">02:16</span></div><div class="it"><span class="lab">Audio</span><span class="val">47:05</span></div></div>
+</template>
+<script>
+(function () {
+  var H = document.documentElement, NS = 'http://www.w3.org/2000/svg';
+  var tpl = document.getElementById('ring');
+  document.querySelectorAll('[data-ring]').forEach(function (s) { s.replaceWith(tpl.content.cloneNode(true)); });
+  document.querySelectorAll('.ticks').forEach(function (g) {
+    for (var i = 0; i < 60; i++) {
+      var a = i / 60 * Math.PI * 2, major = i % 5 === 0, r1 = major ? 96 : 98, r2 = 104;
+      var l = document.createElementNS(NS, 'line');
+      l.setAttribute('class', 'chrono-tick');
+      l.setAttribute('x1', 110 + r1 * Math.cos(a)); l.setAttribute('y1', 110 + r1 * Math.sin(a));
+      l.setAttribute('x2', 110 + r2 * Math.cos(a)); l.setAttribute('y2', 110 + r2 * Math.sin(a));
+      l.setAttribute('stroke-width', major ? 1.5 : 1);
+      g.appendChild(l);
+    }
+  });
+  var PEN = '<svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="square" aria-hidden="true"><path d="M12 20h9"/><path d="M16.5 3.5l4 4L8 20l-5 1 1-5z"/></svg>';
+  document.querySelectorAll('[data-pen]').forEach(function (e) { e.innerHTML = PEN; });
+  document.querySelectorAll('.sq .pen').forEach(function (e) { e.innerHTML = PEN; });
+  document.querySelectorAll('[data-g] button').forEach(function (b) {
+    b.addEventListener('click', function () {
+      var g = b.parentNode.dataset.g;
+      H.dataset[g] = b.dataset.v;
+      b.parentNode.querySelectorAll('button').forEach(function (x) { x.setAttribute('aria-pressed', String(x === b)); });
+    });
+  });
+})();
+</script>
+</body>
+</html>

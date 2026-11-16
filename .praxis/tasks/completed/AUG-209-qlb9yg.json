@@ -1,0 +1,19 @@
+{
+  "id": "AUG-209-qlb9yg",
+  "assignee": "storm.json",
+  "priority": "medium",
+  "status": "to_review",
+  "title": "[AUG-209] Research: naming a transcription on the timer page while it transcribes",
+  "why_we_need_this": "While a recording is transcribing, the user sits on the timer page (Chronometer Ring) with nothing to do, and the session keeps its auto title. Today a title can only be changed by double-clicking it in the sidebar (PATCH /api/sessions/:id { title }) or as a side effect of a Praxis export (PraxisModal → onRenameSession). Most sessions stay unnamed, which makes the sidebar and Archive hard to scan. The wait on the timer page is the natural moment to ask for a name, and the session page itself should let the user rename it. Before building, we need to know where the title lives, how it flows between client and server, and which UX fits the brutalist design without blocking the timer.",
+  "acceptance_criteria": "- [ ] Current state documented with file:line refs: where the default session title is generated (server + client), every place it is shown (timer page, transcript header, sidebar, Archive, compact/Dock Strip, tray tooltip, Praxis modal), and every rename path (sidebar double-click, PraxisModal onRenameSession, TranscriptView onRename prop)\n- [ ] Data flow of a rename described: PATCH endpoint, optimistic sessions state, what happens if the rename lands while the session is still `transcribing` (status polling, Electron 5 s poller, transcription finishing and writing session.json — any race that overwrites the title)\n- [ ] 2–3 UX variants for the timer page \"name this transcription\" prompt (e.g. inline input under the ring with placeholder = auto title; focused input on enter; suggestion chip), each with an HTML mockup in the app style (0 border-radius, color priority schema) and a file:/// link for review\n- [ ] 1–2 variants for in-page rename on the session/transcript page (click-to-edit title in the header), mockups included\n- [ ] Rules defined: save trigger (Enter / blur / debounce), Esc cancels, empty input keeps the auto title, max length, validation, keyboard focus not stolen from hotkeys, behavior in Compact mode / Dock Strip\n- [ ] Cross-platform check noted (Windows + macOS): any Electron/tray/title-sync impact\n- [ ] Recommendation chosen with the user via AskUserQuestion; findings saved to project-context (frontend-design / architecture routes)\n- [ ] The implementation task card is updated with the chosen variant, exact files to touch and final acceptance criteria",
+  "important_constraints": "- Research only: no production code changes; mockups go to artifacts/ as HTML.\n- Must not block or slow the transcription timer; naming is optional, never a required step.\n- Follow brandbook: 0 border-radius, green=top / yellow=high / outline=normal / red=danger only.\n- No diagnostics in user UI.\n- Order: 1/2. Blocks: AUG-210-ev839k (implementation) — at the end, update AUG-210 with the chosen variant, files and final criteria.\n\n## Result (2026-11-16)\n- Findings: @docs/mockups/AUG-209/findings.md · Mockup: @docs/mockups/AUG-209/naming.html (the repo has no artifacts/ folder; mockups live in docs/mockups/).\n- Chosen by the user: P1 corner pop-up on the timer page with a model-suggested name; the suggestion is applied automatically if the user does not answer; S1 click-to-edit title with a yellow hover pencil; default title `Recording <date time>` for recordings.\n- Found: `updateSession` read-modify-write race that can overwrite a rename; fix specified in AUG-210.\n- The mockup was reviewed as code, not rendered in a browser by the agent.",
+  "labels": [
+    "research",
+    "ux",
+    "frontend"
+  ],
+  "on_hold_reason": "",
+  "contextRouterIncluded": true,
+  "created_at": 1794829071818,
+  "column_entered_at": 1794843010321
+}

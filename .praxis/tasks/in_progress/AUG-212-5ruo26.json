@@ -1,0 +1,20 @@
+{
+  "id": "AUG-212-5ruo26",
+  "assignee": "jarvis.json",
+  "priority": "high",
+  "status": "in_progress",
+  "title": "[AUG-212] Fix: live full-window Action items column shows only owner, item text missing",
+  "why_we_need_this": "In a live session in full-window mode the Action items column renders each card with only the checkbox and the owner line (\"Them → Влад\") and Praxis/delete buttons — the item text (title) is empty. In Compact Mode the same items show their text (\"перезапросить анкеты…\", \"получить более полную картину…\"), so the data exists in the store and the bug is in the full-window rendering of ActionItemsPanel (live column). Without the text the column is useless during the meeting: the user can't read, select or export items to Praxis with confidence.",
+  "acceptance_criteria": "- [ ] Root cause found and named in the card (which component/prop/CSS hides or drops the item text in the full-window live column vs Compact Mode)\n- [ ] In a live session, full-window mode, every action item card shows its text, the owner line, checkbox, → Praxis and × controls\n- [ ] Item text is the same in full-window and Compact Mode for the same session (same store, no divergence)\n- [ ] Inline editing of the item text works in the full-window column\n- [ ] Saved-session TranscriptView Action items card still shows text (no regression)\n- [ ] Compact Mode Action items unchanged\n- [ ] Checked on Windows; macOS path not affected (no platform-specific code changed, or both branches verified)",
+  "important_constraints": "- Related: AUG-211 (research on action item context/structure, in progress) — check whether its in-flight changes touched ActionItemsPanel before fixing; don't revert another agent's work.\n- Entry points: ActionItemsPanel (live column + TranscriptView card), liveColumnsStore / LiveTranscriptPanel (AUG-205 column fitting — narrow width may collapse the text block).\n- Repro (screenshots from user, 2026-11-16): full-window live, 4 items, each card shows \"Them → Влад\", \"→ Praxis\", \"×\", text area blank; Compact Mode same session shows 5 items with text.\n- Brandbook: 0 border-radius; no diagnostics in UI.\n- Commit straight to master.",
+  "labels": [
+    "bug",
+    "frontend",
+    "action-items",
+    "live"
+  ],
+  "on_hold_reason": "",
+  "contextRouterIncluded": true,
+  "created_at": 1794838115496,
+  "column_entered_at": 1794872539003
+}
