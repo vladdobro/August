@@ -1,5 +1,5 @@
 import { describe, test, expect } from 'vitest';
-import { ChunkAccumulator, LivePcmFeeder, parseLiveControlFrame, CHUNK_SAMPLES, OVERLAP_SAMPLES, SAMPLE_RATE, hasEnoughSpeech, speechDurationMs } from './liveChunking.js';
+import { ChunkAccumulator, LivePcmFeeder, parseLiveControlFrame, CHUNK_SAMPLES, OVERLAP_SAMPLES, SAMPLE_RATE, hasEnoughSpeech, speechDurationMs, chunkStartMs } from './liveChunking.js';
 
 function sine(samples: number, amplitude = 0.5, freq = 440): Float32Array {
   const out = new Float32Array(samples);
@@ -211,5 +211,22 @@ describe('parseLiveControlFrame meetingOnly (AUG-200)', () => {
   });
   test('omits meetingOnly when absent', () => {
     expect(parseLiveControlFrame('{"type":"action-items-init","liveKey":"abcd1234-ef"}')).not.toHaveProperty('meetingOnly');
+  });
+});
+
+describe('AUG-213 frames and timing', () => {
+  test('action-items-init passes a valid recordingStartedAt and drops an invalid one', () => {
+    expect(parseLiveControlFrame('{"type":"action-items-init","liveKey":"abcd1234-ef","recordingStartedAt":1700000000000}')).toMatchObject({ recordingStartedAt: 1700000000000 });
+    for (const bad of ['"x"', '-1', '0']) {
+      expect(parseLiveControlFrame(`{"type":"action-items-init","liveKey":"abcd1234-ef","recordingStartedAt":${bad}}`)).not.toHaveProperty('recordingStartedAt');
+    }
+  });
+  test('action-item-edit with only context is accepted', () => {
+    expect(parseLiveControlFrame('{"type":"action-item-edit","id":"ai_1","context":"why"}')).toEqual({ type: 'action-item-edit', id: 'ai_1', context: 'why' });
+    expect(parseLiveControlFrame('{"type":"action-item-edit","id":"ai_1","context":5}')).toBeNull();
+  });
+  test('chunkStartMs is arrival minus chunk duration', () => {
+    expect(chunkStartMs(100_000, 64_000)).toBe(96_000);
+    expect(chunkStartMs(100_000, SAMPLE_RATE / 2)).toBe(99_500);
   });
 });

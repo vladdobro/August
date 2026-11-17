@@ -1,9 +1,11 @@
 import React, { useMemo, useState, useRef, useEffect } from 'react';
-import type { ActionItemsFile, CorrectionItem, CorrectionStatus, SessionMetadata } from '../types';
+import type { ActionItem, ActionItemsFile, CorrectionItem, CorrectionStatus, SessionMetadata } from '../types';
 import { sendActionItemsToPraxis, addActionItem, deleteActionItem, fetchActionItems, fetchCorrectedTranscript, fetchCorrections, fetchGroqTextStatus, fetchLlmStatus, setAllCorrectionsStatus, setCorrectionStatus, updateActionItem } from '../api';
 import PraxisModal from './PraxisModal';
 import ConfidenceBadge from './ConfidenceBadge';
-import ActionItemsPanel from './ActionItemsPanel';
+import ActionItemsPanel, { type ActionItemSourceNav } from './ActionItemsPanel';
+import { MSG_TRANSCRIPT_NOT_READY, findBestLine, formatClock, scrollBehavior } from '../services/actionItemSource';
+import { useSessionAudioPlayer } from '../services/sessionAudioPlayer';
 import type { PraxisProject, UserPreferences } from '../services/preferences';
 
 interface TranscriptViewProps {
@@ -699,21 +701,24 @@ const TranscriptView: React.FC<TranscriptViewProps> = ({ session, transcript, on
   }, [session.id, session.status, transcript]);
 
   // AUG-165: action items collected during a live recording (any session status).
+  // AUG-214: re-read when the status changes — the server sets anchor.line when it writes the transcript.
   useEffect(() => {
     let alive = true;
     fetchActionItems(session.id)
       .then((f) => { if (alive) setActionItems(f); })
       .catch(() => { if (alive) setActionItems(null); });
     return () => { alive = false; };
-  }, [session.id]);
+  }, [session.id, session.status]);
 
-  const handleActionEdit = (itemId: string, patch: { text?: string; owner?: string }) => {
+  const handleActionEdit = (itemId: string, patch: { text?: string; owner?: string; context?: string }) => {
     updateActionItem(session.id, itemId, patch).then(setActionItems).catch(() => {});
   };
   const handleActionAdd = (text: string, owner: string) => {
     addActionItem(session.id, { text, owner: owner || undefined }).then(setActionItems).catch(() => {});
   };
   const handleActionDelete = (itemId: string) => {
+    if (audio.playback?.itemId === itemId) audio.stop();
+    if (sourceHl?.itemId === itemId) setSourceHl(null);
     deleteActionItem(session.id, itemId).then(setActionItems).catch(() => {});
   };
 
@@ -728,6 +733,82 @@ const TranscriptView: React.FC<TranscriptViewProps> = ({ session, transcript, on
     let k = -1;
     return parsedLines.map((l) => (l.timestamp ? ++k : -1));
   }, [parsedLines]);
+
+  // AUG-214: jump from an action item to its transcript line and back. anchor.line is an utterance index
+  // (k-th timestamp line); accepted fixes change a line's text, never the index, so it holds for the text shown.
+  const [sourceHl, setSourceHl] = useState<{ itemId: string; index: number; n: number } | null>(null);
+  const [itemReveal, setItemReveal] = useState<{ id: string; n: number } | null>(null);
+  const [flashItemId, setFlashItemId] = useState<string | null>(null);
+  const flashTimerRef = useRef<number | undefined>(undefined);
+  const linesRef = useRef<HTMLDivElement>(null);
+  useEffect(() => () => window.clearTimeout(flashTimerRef.current), []);
+  useEffect(() => { setSourceHl(null); }, [session.id, transcript]);
+  const lineIndexByUtterance = useMemo(() => {
+    const map: number[] = [];
+    utteranceIndexByLine.forEach((k, i) => { if (k >= 0) map[k] = i; });
+    return map;
+  }, [utteranceIndexByLine]);
+  const sourceIndex = sourceHl?.index ?? -1;
+  const sourceN = sourceHl?.n ?? 0;
+  useEffect(() => {
+    if (sourceIndex < 0) return;
+    const frame = requestAnimationFrame(() => {
+      linesRef.current?.querySelector<HTMLElement>('.transcript-line--source')?.scrollIntoView({ block: 'center', behavior: scrollBehavior() });
+    });
+    return () => cancelAnimationFrame(frame);
+  }, [sourceIndex, sourceN]);
+  const showSourceLine = (item: ActionItem, index: number) => {
+    setFlashItemId(null);
+    setSourceHl((prev) => ({ itemId: item.id, index, n: (prev?.n ?? 0) + 1 }));
+  };
+  const handleSourceBack = () => {
+    if (!sourceHl) return;
+    const id = sourceHl.itemId;
+    setSourceHl(null);
+    setItemReveal((r) => ({ id, n: (r?.n ?? 0) + 1 }));
+    setFlashItemId(id);
+    window.clearTimeout(flashTimerRef.current);
+    flashTimerRef.current = window.setTimeout(() => setFlashItemId(null), 2000);
+  };
+  const transcriptReady = session.status === 'completed';
+  // AUG-215: play from an action item's moment. The key changes when audio is deleted, auto-deleted or re-downloaded.
+  const audioKey = `${session.audioDeletedAt ?? ''}|${session.wavAutoDeletedAt ?? ''}|${(session.audioDeletedFiles ?? []).length}`;
+  const audio = useSessionAudioPlayer(session.id, transcriptReady, audioKey);
+  const sourceNav: ActionItemSourceNav = {
+    target: (item) => {
+      if (!transcriptReady) return item.anchor ? 'jump' : item.manual ? 'none' : 'find';
+      const line = item.anchor?.line;
+      if (line !== undefined && lineIndexByUtterance[line] !== undefined) return 'jump';
+      return item.manual ? 'none' : 'find';
+    },
+    blocked: () => (transcriptReady
+      ? null
+      : session.status === 'failed'
+        ? { text: 'There is no transcript for this session.' }
+        : { text: MSG_TRANSCRIPT_NOT_READY, warn: true }),
+    go: (item) => {
+      const line = item.anchor?.line;
+      const index = line !== undefined ? lineIndexByUtterance[line] : undefined;
+      if (index !== undefined) showSourceLine(item, index);
+    },
+    find: (item) => {
+      const index = findBestLine(item.text, parsedLines.map((l) => (l.timestamp ? l.text : '')));
+      if (index < 0) return false;
+      showSourceLine(item, index);
+      return true;
+    },
+    canPlay: (item) => audio.available && !item.manual && typeof item.anchor?.atMs === 'number',
+    play: (item) => {
+      const atMs = item.anchor?.atMs;
+      if (typeof atMs !== 'number') return;
+      const line = item.anchor?.line;
+      const index = line !== undefined ? lineIndexByUtterance[line] : undefined;
+      if (index !== undefined) showSourceLine(item, index);
+      audio.playFrom(item.id, atMs);
+    },
+    ownerId: sourceHl?.itemId ?? flashItemId,
+    reveal: itemReveal,
+  };
 
   const handleCorrection = async (item: CorrectionItem, status: CorrectionStatus) => {
     if (correctionBusy !== null) return;
@@ -958,6 +1039,7 @@ const TranscriptView: React.FC<TranscriptViewProps> = ({ session, transcript, on
               onAdd={handleActionAdd}
               onEdit={handleActionEdit}
               onDelete={handleActionDelete}
+              source={sourceNav}
               onSendToPraxis={(ids, mode) => setPraxisExport({ ids, mode })}
             />
           </div>
@@ -1132,7 +1214,7 @@ const TranscriptView: React.FC<TranscriptViewProps> = ({ session, transcript, on
         )}
 
         {session.status === 'completed' && (
-          <div className="transcript-lines">
+          <div className="transcript-lines" ref={linesRef}>
             {pendingCount > 0 && (
               <div className="corrections-bar" role="status">
                 <span className="corrections-bar-text">{pendingCount === 1 ? '1 suggested fix' : `${pendingCount} suggested fixes`}</span>
@@ -1151,13 +1233,28 @@ const TranscriptView: React.FC<TranscriptViewProps> = ({ session, transcript, on
               const lineItems = (utteranceIndexByLine[index] >= 0 ? correctionsByIndex.get(utteranceIndexByLine[index]) : undefined)
                 ?.filter((c) => line.text.includes(c.original)) ?? [];
               const shownText = applyItemsToText(line.text, lineItems);
+              const lineRow = (
+                <div className="transcript-line">
+                  {line.timestamp && <span className="transcript-timestamp">{line.timestamp}</span>}
+                  {line.role && <span className={`transcript-role transcript-role-${line.role.toLowerCase()}`}>{line.role}</span>}
+                  <span className="transcript-text">{shownText}</span>
+                </div>
+              );
               return (
                 <React.Fragment key={index}>
-                  <div className="transcript-line">
-                    {line.timestamp && <span className="transcript-timestamp">{line.timestamp}</span>}
-                    {line.role && <span className={`transcript-role transcript-role-${line.role.toLowerCase()}`}>{line.role}</span>}
-                    <span className="transcript-text">{shownText}</span>
-                  </div>
+                  {index === sourceIndex ? (
+                    <div
+                      className="transcript-line--source source-line"
+                      role="button"
+                      tabIndex={0}
+                      title="Back to the action item"
+                      onClick={handleSourceBack}
+                      onKeyDown={(e) => { if (e.key === 'Enter' || e.key === ' ') { e.preventDefault(); handleSourceBack(); } }}
+                    >
+                      <div className="source-line-tag-row"><span className="source-line-tag">Source of action item</span></div>
+                      {lineRow}
+                    </div>
+                  ) : lineRow}
                   {lineItems.map((item) => {
                     const busy = correctionBusy === item.id || correctionBusy === -1;
                     if (item.status !== 'pending') {
@@ -1187,6 +1284,19 @@ const TranscriptView: React.FC<TranscriptViewProps> = ({ session, transcript, on
                 </React.Fragment>
               );
             })}
+          </div>
+        )}
+
+        {audio.playback && (
+          <div className="transcript-player" role="group" aria-label="Audio player">
+            <button type="button" className="action-item-chip" onClick={audio.stop}>■ Stop</button>
+            <span className="transcript-player-time">
+              {formatClock(audio.playback.currentSec * 1000)} / {audio.playback.durationSec !== null ? formatClock(audio.playback.durationSec * 1000) : '--:--:--'}
+            </span>
+            <span className="transcript-player-note" role="status">{audio.playback.failed ? 'This audio cannot be played.' : 'Playing from the action item'}</span>
+            <div className="transcript-player-bar" aria-hidden="true">
+              <i style={{ width: `${audio.playback.durationSec ? Math.min(100, (audio.playback.currentSec / audio.playback.durationSec) * 100).toFixed(2) : 0}%` }} />
+            </div>
           </div>
         )}
       </div>

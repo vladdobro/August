@@ -292,6 +292,33 @@ export async function listStorage(): Promise<StorageSummary> {
   };
 }
 
+export type AudioTrack = 'single' | 'mic' | 'system';
+const TRACK_BASE: Record<AudioTrack, string> = { single: 'audio', mic: 'audio-mic', system: 'audio-system' };
+const NOT_PLAYABLE_EXT = new Set(['', '.json', '.part', '.tmp']);
+
+/// AUG-215: file each track is played from (name inside the session folder). The converted WAV is preferred — exact
+/// seeking and a known length; once AUG-152 removed it the source file is played. Boosted / partial intermediates
+/// (audio-boosted.wav, audio-partial.wav) never match because the base name must be exactly the track's.
+export async function findPlayableAudio(id: string): Promise<Partial<Record<AudioTrack, string>>> {
+  if (!isValidSessionId(id)) return {};
+  let names: string[];
+  try {
+    const entries = await fs.readdir(sessionAudioDir(id), { withFileTypes: true });
+    names = entries.filter((e) => e.isFile()).map((e) => e.name);
+  } catch {
+    return {};
+  }
+  const found: Partial<Record<AudioTrack, string>> = {};
+  for (const track of Object.keys(TRACK_BASE) as AudioTrack[]) {
+    const own = names
+      .filter((n) => path.basename(n, path.extname(n)) === TRACK_BASE[track] && !NOT_PLAYABLE_EXT.has(path.extname(n).toLowerCase()))
+      .sort();
+    const pick = own.find((n) => path.extname(n).toLowerCase() === '.wav') ?? own[0];
+    if (pick) found[track] = pick;
+  }
+  return found;
+}
+
 /// Removes audio files from a session (all of them, or the single `fileName`), keeping transcript.md and
 /// session.json. Names and sizes are remembered in audioDeletedFiles; audioDeletedAt is set once no audio is left.
 export async function deleteSessionAudio(

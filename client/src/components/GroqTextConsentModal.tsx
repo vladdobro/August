@@ -30,7 +30,7 @@ const GroqTextConsentModal: React.FC<GroqTextConsentModalProps> = ({ groqAvailab
           <li>B) It needs your own Groq API key (GROQ_API_KEY).{!groqAvailable && ' No key is set yet.'}</li>
         </ol>
         <p className="groq-setup-hint">
-          Only Groq&apos;s free tier is used. When the free limit runs out, checks are skipped silently. Live lines are fixed in place. During live recordings it also collects action items (tasks and agreements) next to the transcript; they are saved with the session. After a recording, doubtful lines are sent too and come back as suggestions you accept or reject; the original transcript is never changed.
+          Only Groq&apos;s free tier is used. When the free limit runs out, checks are skipped silently. Live lines are fixed in place. During live recordings it also collects action items (tasks and agreements) next to the transcript; they are saved with the session, each with a short quote of the moment it was said. After a recording, doubtful lines are sent too and come back as suggestions you accept or reject; the original transcript is never changed.
         </p>
         {error && <div className="groq-setup-error">{error}</div>}
         <div className="groq-setup-actions">

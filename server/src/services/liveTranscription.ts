@@ -25,7 +25,7 @@
 //
 // AUG-200: action-items-init with meetingOnly (a recording without Live Text) joins only the action-items store and the meeting assistant: no audio, capture, corrector, extractor, LiveFeed or copilot.
 //
-// AUG-165: with an action-items-init frame (liveKey per recording) the connection joins that recording's action-items store; when online text correction is active a LiveActionItemsExtractor collects items. Items and participants are persisted (pending file -> session folder on upload); live text still is not. AUG-168: the extractor knows the live engine to space local fallback calls (120 s on local whisper).
+// AUG-165: with an action-items-init frame (liveKey per recording) the connection joins that recording's action-items store; when online text correction is active a LiveActionItemsExtractor collects items. Items and participants are persisted (pending file -> session folder on upload); live text still is not, except the short quote kept in an item's anchor (AUG-213). AUG-168: the extractor knows the live engine to space local fallback calls (120 s on local whisper).
 
 import { randomUUID } from 'node:crypto';
 import type { Server as HttpServer } from 'node:http';
@@ -38,7 +38,7 @@ import { runWhisper } from './whisper.js';
 import { FILLER_ONLY_TEXTS, isHallucination, normalize, stripCreditHallucination } from './transcriptMerger.js';
 import { transcribeWithGroq, GroqRateLimitError, GroqApiError } from './groqTranscription.js';
 import { attachLiveSink, CaptureError, type LiveSinkHandle } from './systemCapture.js';
-import { LivePcmFeeder, parseLiveControlFrame, SAMPLE_RATE } from './liveChunking.js';
+import { LivePcmFeeder, chunkStartMs, parseLiveControlFrame, SAMPLE_RATE } from './liveChunking.js';
 import { liveGroqTextFeatures } from './groqText.js';
 import { LiveTextCorrector } from './liveTextCorrection.js';
 import { openLiveActionItems, releaseLiveActionItems, LiveActionItemsExtractor, type LiveActionItemsStore } from './liveActionItems.js';
@@ -151,6 +151,7 @@ interface QueuedChunk {
   speaker: Speaker;
   language: string;
   samples: Float32Array;
+  at: number; // AUG-213: arrival time (epoch ms)
 }
 
 export function setupLiveTranscription(server: HttpServer): void {
@@ -316,7 +317,7 @@ export function setupLiveTranscription(server: HttpServer): void {
               const id = randomUUID();
               send({ type: 'transcript', id, speaker: chunk.speaker, text: cleaned });
               corrector?.add(id, cleaned);
-              actionExtractor?.addTranscript(id, chunk.speaker, cleaned);
+              actionExtractor?.addTranscript(id, chunk.speaker, cleaned, chunkStartMs(chunk.at, chunk.samples.length));
               feed?.push({ id, speaker: chunk.speaker, text: cleaned });
             }
           }
@@ -347,7 +348,7 @@ export function setupLiveTranscription(server: HttpServer): void {
       }
       const feeder = new LivePcmFeeder((samples) => {
         if (stopped) return;
-        queue.push({ speaker: 'Them', language, samples });
+        queue.push({ speaker: 'Them', language, samples, at: Date.now() });
         void processQueue();
       });
       try {
@@ -375,7 +376,7 @@ export function setupLiveTranscription(server: HttpServer): void {
         try {
           const chunk = decodeChunkMessage(data);
           if (chunk.samples.length > 0) {
-            queue.push(chunk);
+            queue.push({ ...chunk, at: Date.now() });
             void processQueue();
           }
         } catch {
@@ -416,6 +417,7 @@ export function setupLiveTranscription(server: HttpServer): void {
           void openLiveActionItems(frame.liveKey).then((store) => {
             if (stopped) { releaseLiveActionItems(frame.liveKey); return; }
             actionStore = store;
+            if (frame.recordingStartedAt) store.setRecordingStartedAt(frame.recordingStartedAt);
             if (frame.participants) store.setParticipants(frame.participants);
             unsubscribeActions = store.subscribe(sendActionItems);
             maybeStartExtractor();
@@ -426,7 +428,7 @@ export function setupLiveTranscription(server: HttpServer): void {
           actionStore?.setParticipants({ me: frame.me, them: frame.them });
           break;
         case 'action-item-edit':
-          actionStore?.editItem(frame.id, { text: frame.text, owner: frame.owner });
+          actionStore?.editItem(frame.id, { text: frame.text, owner: frame.owner, context: frame.context });
           break;
         case 'action-item-delete':
           actionStore?.removeItem(frame.id);

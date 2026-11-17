@@ -1,17 +1,18 @@
-/// Live action items (AUG-165): cloud model (Groq, inside the AUG-164 consent) extracts NEW items behind a cheap gate; the local model (AUG-162), when enabled and downloaded, returns merge/delete operations by id every 20 s; without it the cloud call carries the dedup in the same request. User-edited fields are locked. Items persist continuously (pending file per liveKey, moved into the session folder on upload). Transcript text and items are never logged. AUG-168: when a Groq call is refused (rate-limited, error/timeout, blocked, or rate-budget for > 30 s) and the local model is ready, the same window is extracted locally (one live local call app-wide, >= 60/120 s apart, backoff on timeout).
+/// Live action items (AUG-165): cloud model (Groq, inside the AUG-164 consent) extracts NEW items behind a cheap gate; the local model (AUG-162), when enabled and downloaded, returns merge/delete operations by id every 20 s; without it the cloud call carries the dedup in the same request. User-edited fields are locked. Items persist continuously (pending file per liveKey, moved into the session folder on upload). Transcript text and items are never logged. AUG-168: when a Groq call is refused (rate-limited, error/timeout, blocked, or rate-budget for > 30 s) and the local model is ready, the same window is extracted locally (one live local call app-wide, >= 60/120 s apart, backoff on timeout). AUG-213: every item keeps a source anchor (time, speaker, verbatim quote from the server's buffer) and, from Groq only, a one-sentence context.
 
 import { randomUUID } from 'node:crypto';
 import fs from 'node:fs/promises';
 import path from 'node:path';
 
 import { config } from '../config.js';
-import type { ActionItem, ActionItemSource, ActionItemsFile, Participants } from '../types.js';
+import type { ActionItem, ActionItemAnchor, ActionItemSource, ActionItemsFile, Participants } from '../types.js';
 import { GroqTextSkipError, createGroqTextClient, isGroqTextBlocked, type GroqTextSkipReason } from './groqText.js';
 import { LlmClientError, type ChatCompletionRequest, type ChatCompletionResult, type LlmClient } from './llmClient.js';
 import { llmInstallState, readLlmSettings } from './llmInstaller.js';
 import { LlmUnavailableError, withLocalLlm } from './llmServer.js';
 import * as sessionManager from './sessionManager.js';
 import { syncTranscriptActionItems } from './transcriptActionItems.js';
+import { TIMESTAMP_LINE } from './transcriptCorrections.js';
 
 export const ACTION_ITEMS_FILE = 'action-items.json';
 export const ACTION_PENDING_DIR = path.resolve(config.sessionsDir, '..', 'live-action-items');
@@ -34,6 +35,12 @@ export const ACTION_LOCAL_TIMEOUT_MS = 45_000;
 const MAX_TEXT = 300;
 const MAX_OWNER = 60;
 const MAX_NAME = 60;
+const MAX_CONTEXT = 240;
+const MAX_QUOTE = 400;
+const MAX_LINE_IDS = 3;
+export const ACTION_CLOUD_MAX_TOKENS = 900;
+export const ANCHOR_WINDOW_MS = 45_000;
+export const ANCHOR_MIN_OVERLAP = 0.5;
 const PENDING_MAX_AGE_MS = 7 * 24 * 3600_000;
 
 /// Phrases that suggest an agreement or a task. Lower-case substrings; checked on lower-cased text.
@@ -68,7 +75,18 @@ export function actionGateOpen(s: { newWords: number; triggerSeen: boolean; sinc
 export type DedupOp = { op: 'merge'; into: string; from: string } | { op: 'delete'; id: string };
 
 export function isLocked(item: ActionItem): boolean {
-  return !!(item.locked?.text || item.locked?.owner);
+  return !!(item.locked?.text || item.locked?.owner || item.locked?.context);
+}
+
+/// AUG-213: one-sentence context, whitespace collapsed, cut to 240 chars.
+export function cleanContext(v: unknown): string {
+  if (typeof v !== 'string') return '';
+  return v.replace(/\s+/g, ' ').trim().slice(0, MAX_CONTEXT);
+}
+
+/// AUG-213: anchor of an item added by hand or by the assistant: the moment it was added.
+export function addedAnchor(recordingStartedAt: number | undefined, nowMs: number): ActionItemAnchor {
+  return { kind: 'added', ...(recordingStartedAt ? { atMs: Math.max(0, Math.round(nowMs - recordingStartedAt)) } : {}) };
 }
 
 /// AUG-183: minimum Jaccard word overlap for a model merge to be applied. Conservative on purpose: a missed merge leaves a visible duplicate, a wrong merge silently loses an agreed task.
@@ -108,6 +126,8 @@ export function applyDedupOps(items: ActionItem[], ops: DedupOp[]): { items: Act
     if (actionTextSimilarity(into.text, from.text) < ACTION_MERGE_MIN_SIMILARITY) { rejected++; continue; }
     const [survivor, removed] = isLocked(from) && !isLocked(into) ? [from, into] : [into, from];
     if (survivor.owner === '' && !survivor.locked?.owner) survivor.owner = removed.owner;
+    if (!survivor.anchor && removed.anchor) survivor.anchor = removed.anchor;
+    if (!survivor.context && !survivor.locked?.context && removed.context) survivor.context = removed.context;
     list = list.filter((i) => i !== removed);
     applied++;
   }
@@ -134,7 +154,8 @@ function sanitizeOps(raw: unknown, knownIds: Set<string>): DedupOp[] {
 export function parseExtractionResponse(
   content: string,
   knownIds: Set<string>,
-): { newItems: Array<{ text: string; owner: string; source: ActionItemSource }>; ops: DedupOp[] } | null {
+  opts: { allowContext?: boolean } = {},
+): { newItems: Array<{ text: string; owner: string; source: ActionItemSource; lines?: number[]; context?: string }>; ops: DedupOp[] } | null {
   const start = content.indexOf('{');
   const end = content.lastIndexOf('}');
   if (start < 0 || end <= start) return null;
@@ -146,7 +167,7 @@ export function parseExtractionResponse(
   }
   if (!parsed || typeof parsed !== 'object' || Array.isArray(parsed)) return null;
   const o = parsed as Record<string, unknown>;
-  const newItems: Array<{ text: string; owner: string; source: ActionItemSource }> = [];
+  const newItems: Array<{ text: string; owner: string; source: ActionItemSource; lines?: number[]; context?: string }> = [];
   if (Array.isArray(o.new)) {
     for (const r of o.new) {
       if (!r || typeof r !== 'object') continue;
@@ -156,7 +177,16 @@ export function parseExtractionResponse(
       if (!text) continue;
       const owner = typeof n.owner === 'string' ? n.owner.trim().slice(0, MAX_OWNER) : '';
       const source: ActionItemSource = n.source === 'Me' || n.source === 'Them' ? n.source : 'Them';
-      newItems.push({ text, owner, source });
+      const item: { text: string; owner: string; source: ActionItemSource; lines?: number[]; context?: string } = { text, owner, source };
+      if (Array.isArray(n.lines)) {
+        const lines = n.lines.filter((x): x is number => Number.isInteger(x));
+        if (lines.length > 0) item.lines = lines;
+      }
+      if (opts.allowContext) {
+        const context = cleanContext(n.context);
+        if (context) item.context = context;
+      }
+      newItems.push(item);
     }
   }
   return { newItems, ops: sanitizeOps(o.ops, knownIds) };
@@ -177,7 +207,7 @@ export function parseDedupResponse(content: string, knownIds: Set<string>): Dedu
 }
 
 /// Applies a user edit; edited fields become locked. Returns false when the id is unknown or nothing valid changed.
-export function applyUserEdit(items: ActionItem[], id: string, patch: { text?: unknown; owner?: unknown }): boolean {
+export function applyUserEdit(items: ActionItem[], id: string, patch: { text?: unknown; owner?: unknown; context?: unknown }): boolean {
   const item = items.find((i) => i.id === id);
   if (!item) return false;
   let changed = false;
@@ -192,6 +222,13 @@ export function applyUserEdit(items: ActionItem[], id: string, patch: { text?: u
   if (typeof patch.owner === 'string') {
     item.owner = patch.owner.trim().slice(0, MAX_OWNER);
     item.locked = { ...item.locked, owner: true };
+    changed = true;
+  }
+  if (typeof patch.context === 'string') {
+    const c = cleanContext(patch.context);
+    if (c) item.context = c;
+    else delete item.context;
+    item.locked = { ...item.locked, context: true };
     changed = true;
   }
   return changed;
@@ -221,8 +258,9 @@ export type AssistantItemResult = { status: 'created' | 'duplicate'; id: string 
 /// AUG-199: item added by the meeting assistant (MCP tool, REST mirror, "→ Action item"). Duplicate = exact normalized text or similar wording; a duplicate with praxisTaskId gets that task attached. Pure: mutates `items` in place and reports whether it changed.
 export function addAssistantItemToList(
   items: ActionItem[],
-  raw: { text?: unknown; owner?: unknown; praxisTaskId?: unknown; projectPath?: unknown },
+  raw: { text?: unknown; owner?: unknown; praxisTaskId?: unknown; projectPath?: unknown; context?: unknown },
   now: Date = new Date(),
+  extra: { anchor?: ActionItemAnchor } = {},
 ): { result: AssistantItemResult | null; changed: boolean } {
   if (typeof raw.text !== 'string') return { result: null, changed: false };
   const text = raw.text.trim();
@@ -252,12 +290,33 @@ export function addAssistantItemToList(
     assistant: { projectPath, at },
   };
   if (taskId) item.praxis = { taskId, projectPath, sentAt: at };
+  const context = cleanContext(raw.context);
+  if (context) item.context = context;
+  if (extra.anchor) item.anchor = extra.anchor;
   items.push(item);
   return { result: { status: 'created', id: item.id }, changed: true };
 }
 
 function emptyFile(): ActionItemsFile {
   return { version: 1, participants: { me: '', them: '' }, items: [], updatedAt: new Date().toISOString() };
+}
+
+function sanitizeAnchor(raw: unknown): ActionItemAnchor | null {
+  if (!raw || typeof raw !== 'object') return null;
+  const a = raw as Record<string, unknown>;
+  if (a.kind !== 'said' && a.kind !== 'added') return null;
+  const anchor: ActionItemAnchor = { kind: a.kind };
+  if (typeof a.atMs === 'number' && Number.isFinite(a.atMs) && a.atMs >= 0) anchor.atMs = Math.round(a.atMs);
+  if (a.kind === 'said') {
+    if (a.speaker === 'Me' || a.speaker === 'Them') anchor.speaker = a.speaker;
+    if (typeof a.quote === 'string' && a.quote.trim()) anchor.quote = a.quote.trim().slice(0, MAX_QUOTE);
+  }
+  if (Array.isArray(a.lineIds)) {
+    const ids = a.lineIds.filter((x): x is string => typeof x === 'string' && x.length >= 1 && x.length <= 64).slice(0, MAX_LINE_IDS);
+    if (ids.length > 0) anchor.lineIds = ids;
+  }
+  if (typeof a.line === 'number' && Number.isInteger(a.line) && a.line >= 0) anchor.line = a.line;
+  return anchor;
 }
 
 /// Tolerant reader: keeps valid items only.
@@ -267,6 +326,7 @@ export function sanitizeActionItemsFile(raw: unknown): ActionItemsFile {
   const o = raw as Record<string, unknown>;
   file.participants = normalizeParticipants(o.participants);
   if (typeof o.updatedAt === 'string') file.updatedAt = o.updatedAt;
+  if (typeof o.recordingStartedAt === 'number' && Number.isFinite(o.recordingStartedAt) && o.recordingStartedAt > 0) file.recordingStartedAt = o.recordingStartedAt;
   if (Array.isArray(o.items)) {
     for (const r of o.items) {
       if (!r || typeof r !== 'object') continue;
@@ -280,9 +340,17 @@ export function sanitizeActionItemsFile(raw: unknown): ActionItemsFile {
         createdAt: typeof i.createdAt === 'string' ? i.createdAt : file.updatedAt,
       };
       const lk = i.locked && typeof i.locked === 'object' ? (i.locked as Record<string, unknown>) : null;
-      if (lk && (lk.text === true || lk.owner === true)) {
-        item.locked = { ...(lk.text === true ? { text: true as const } : {}), ...(lk.owner === true ? { owner: true as const } : {}) };
+      if (lk && (lk.text === true || lk.owner === true || lk.context === true)) {
+        item.locked = {
+          ...(lk.text === true ? { text: true as const } : {}),
+          ...(lk.owner === true ? { owner: true as const } : {}),
+          ...(lk.context === true ? { context: true as const } : {}),
+        };
       }
+      const ctx = cleanContext(i.context);
+      if (ctx) item.context = ctx;
+      const anchor = sanitizeAnchor(i.anchor);
+      if (anchor) item.anchor = anchor;
       if (i.manual === true) item.manual = true;
       const px = i.praxis && typeof i.praxis === 'object' ? (i.praxis as Record<string, unknown>) : null;
       if (px && typeof px.taskId === 'string' && typeof px.projectPath === 'string' && typeof px.sentAt === 'string') {
@@ -324,6 +392,11 @@ function normalizeForCompare(text: string): string {
 
 type Listener = (file: ActionItemsFile) => void;
 
+/// AUG-213: live line ids mean nothing once the store lives in the session folder.
+function dropLineIds(items: ActionItem[]): void {
+  for (const i of items) if (i.anchor) delete i.anchor.lineIds;
+}
+
 export class LiveActionItemsStore {
   file: ActionItemsFile;
   version = 0;
@@ -350,7 +423,15 @@ export class LiveActionItemsStore {
     this.changed();
   }
 
-  addItems(raw: Array<{ text: string; owner: string; source: ActionItemSource }>): number {
+  /// AUG-213: recording start (epoch ms), same base as muteIntervals; anchors store ms relative to it.
+  setRecordingStartedAt(ms: unknown): void {
+    if (typeof ms !== 'number' || !Number.isFinite(ms) || ms <= 0) return;
+    if (ms === this.file.recordingStartedAt) return;
+    this.file.recordingStartedAt = ms;
+    this.changed();
+  }
+
+  addItems(raw: Array<{ text: string; owner: string; source: ActionItemSource; context?: string; anchor?: ActionItemAnchor }>): number {
     let added = 0;
     for (const r of raw) {
       const key = normalizeForCompare(r.text);
@@ -361,6 +442,8 @@ export class LiveActionItemsStore {
         owner: r.owner,
         source: r.source,
         createdAt: new Date().toISOString(),
+        ...(r.context ? { context: r.context } : {}),
+        ...(r.anchor ? { anchor: r.anchor } : {}),
       });
       added++;
     }
@@ -371,13 +454,14 @@ export class LiveActionItemsStore {
   addManualItem(raw: { text?: unknown; owner?: unknown }): ActionItem | null {
     const item = createManualItem(raw);
     if (!item) return null;
+    if (!this.sessionId) item.anchor = addedAnchor(this.file.recordingStartedAt, Date.now());
     this.file.items.push(item);
     this.changed();
     return item;
   }
 
-  addAssistantItem(raw: { text?: unknown; owner?: unknown; praxisTaskId?: unknown; projectPath?: unknown }): AssistantItemResult | null {
-    const { result, changed } = addAssistantItemToList(this.file.items, raw);
+  addAssistantItem(raw: { text?: unknown; owner?: unknown; praxisTaskId?: unknown; projectPath?: unknown; context?: unknown }): AssistantItemResult | null {
+    const { result, changed } = addAssistantItemToList(this.file.items, raw, new Date(), this.sessionId ? {} : { anchor: addedAnchor(this.file.recordingStartedAt, Date.now()) });
     if (changed) this.changed();
     return result;
   }
@@ -391,7 +475,21 @@ export class LiveActionItemsStore {
     return { applied, rejected };
   }
 
-  editItem(id: string, patch: { text?: unknown; owner?: unknown }): boolean {
+  /// AUG-213: a live line was corrected (AUG-164); keep the quotes of items anchored to it in step. Locks do not apply.
+  correctQuoteLine(lineId: string, oldText: string, newText: string): boolean {
+    if (!oldText || oldText === newText) return false;
+    let any = false;
+    for (const item of this.file.items) {
+      const a = item.anchor;
+      if (!a?.quote || !a.lineIds?.includes(lineId) || !a.quote.includes(oldText)) continue;
+      a.quote = a.quote.replace(oldText, newText).slice(0, MAX_QUOTE);
+      any = true;
+    }
+    if (any) this.changed();
+    return any;
+  }
+
+  editItem(id: string, patch: { text?: unknown; owner?: unknown; context?: unknown }): boolean {
     const ok = applyUserEdit(this.file.items, id, patch);
     if (ok) this.changed();
     return ok;
@@ -406,8 +504,8 @@ export class LiveActionItemsStore {
   }
 
   /// Runs `fn` on the live items; persists and notifies when it returns true.
-  mutate(fn: (items: ActionItem[]) => boolean): boolean {
-    const did = fn(this.file.items);
+  mutate(fn: (items: ActionItem[], file: ActionItemsFile) => boolean): boolean {
+    const did = fn(this.file.items, this.file);
     if (did) this.changed();
     return did;
   }
@@ -417,6 +515,7 @@ export class LiveActionItemsStore {
     const old = this.targetPath;
     this.targetPath = targetPath;
     this.sessionId = sessionId;
+    dropLineIds(this.file.items);
     this.changed();
     await this.flush();
     if (old !== targetPath) await fs.unlink(old).catch(() => {}); // ENOENT or locked: best effort
@@ -517,6 +616,7 @@ export async function attachLiveActionItemsToSession(liveKey: string, sessionId:
   const pending = pendingPath(liveKey);
   const file = await readFileIfExists(pending);
   if (!file) return null;
+  dropLineIds(file.items);
   await writeJsonAtomic(target, file);
   await fs.unlink(pending).catch(() => {});
   return file;
@@ -542,7 +642,7 @@ export async function readSessionActionItems(sessionId: string): Promise<ActionI
 
 export async function mutateSessionActionItems(
   sessionId: string,
-  mutate: (items: ActionItem[]) => boolean,
+  mutate: (items: ActionItem[], file: ActionItemsFile) => boolean,
   opts: { createIfMissing?: boolean } = {},
 ): Promise<ActionItemsFile | null> {
   const store = findStoreForSession(sessionId);
@@ -561,7 +661,7 @@ export async function mutateSessionActionItems(
       if (session?.participants) file.participants = normalizeParticipants(session.participants);
     }
     if (!file) return null;
-    if (mutate(file.items)) {
+    if (mutate(file.items, file)) {
       file.updatedAt = new Date().toISOString();
       await writeJsonAtomic(p, file);
       await syncTranscriptActionItems(sessionId, file).catch((err) => console.warn(`[actionItems] transcript section not updated: ${(err as Error).message}`));
@@ -583,7 +683,7 @@ export async function readLiveActionItems(liveKey: string): Promise<ActionItemsF
   return readFileIfExists(pendingPath(liveKey));
 }
 
-export async function mutateLiveActionItems(liveKey: string, mutate: (items: ActionItem[]) => boolean): Promise<ActionItemsFile | null> {
+export async function mutateLiveActionItems(liveKey: string, mutate: (items: ActionItem[], file: ActionItemsFile) => boolean): Promise<ActionItemsFile | null> {
   const entry = registry.get(liveKey);
   if (entry) {
     entry.store.mutate(mutate);
@@ -592,11 +692,70 @@ export async function mutateLiveActionItems(liveKey: string, mutate: (items: Act
   const p = pendingPath(liveKey);
   const file = await readFileIfExists(p);
   if (!file) return null;
-  if (mutate(file.items)) {
+  if (mutate(file.items, file)) {
     file.updatedAt = new Date().toISOString();
     await writeJsonAtomic(p, file);
   }
   return file;
+}
+
+// ---------------------------------------------------------------------------
+// Anchor resolution against the final transcript (AUG-213)
+
+/// AUG-213: sets anchor.line (0-based utterance index, same key as corrections) for every item with anchor.atMs. Returns true when anything changed.
+export function resolveAnchorLines(items: ActionItem[], transcriptMd: string, shiftMs = 0): boolean {
+  const lines: Array<{ k: number; ms: number; role: string | null; text: string }> = [];
+  let k = 0;
+  for (const raw of transcriptMd.split('\n')) {
+    const m = TIMESTAMP_LINE.exec(raw.endsWith('\r') ? raw.slice(0, -1) : raw);
+    if (!m) continue;
+    const [hh, mm, ss] = m[1].split(':').map(Number);
+    lines.push({ k, ms: (hh * 3600 + mm * 60 + ss) * 1000, role: m[2] ?? null, text: m[3] });
+    k++;
+  }
+  const hasRoles = lines.some((l) => l.role !== null);
+  let changed = false;
+  for (const item of items) {
+    const a = item.anchor;
+    if (!a) continue;
+    let next: number | undefined;
+    if (typeof a.atMs === 'number' && lines.length > 0) {
+      const t = a.atMs + shiftMs;
+      if (a.quote) {
+        const qs = textStems(a.quote);
+        let best: { k: number; score: number; dist: number } | null = null;
+        for (const l of lines) {
+          const dist = Math.abs(l.ms - t);
+          if (dist > ANCHOR_WINDOW_MS) continue;
+          if (hasRoles && a.speaker && l.role !== a.speaker) continue;
+          const ls = textStems(l.text);
+          const min = Math.min(qs.size, ls.size);
+          if (min === 0) continue;
+          let common = 0;
+          for (const s of qs) if (ls.has(s)) common++;
+          const score = common / min;
+          if (common < 2 || score < ANCHOR_MIN_OVERLAP) continue;
+          if (!best || score > best.score || (score === best.score && dist < best.dist)) best = { k: l.k, score, dist };
+        }
+        if (best) next = best.k;
+      }
+      if (next === undefined) {
+        for (const l of lines) if (l.ms <= t) next = l.k;
+      }
+    }
+    if (next === undefined) {
+      if (a.line !== undefined) { delete a.line; changed = true; }
+    } else if (a.line !== next) {
+      a.line = next;
+      changed = true;
+    }
+  }
+  return changed;
+}
+
+/// Session-level wrapper used by the transcription path; a session without action items is a no-op.
+export async function resolveSessionAnchors(sessionId: string, transcriptMd: string, shiftMs = 0): Promise<void> {
+  await mutateSessionActionItems(sessionId, (items) => resolveAnchorLines(items, transcriptMd, shiftMs));
 }
 
 // ---------------------------------------------------------------------------
@@ -618,10 +777,10 @@ export function speechLanguage(texts: string[]): string | null {
 
 export const EXTRACT_SYSTEM_PROMPT = `You track action items (agreements, tasks, promises) in a live meeting transcript.
 Speakers: "Me" is the app user (microphone), "Them" is the other side. Participant names, when known, are in "participants".
-Input JSON: {"participants":{"Me":string|null,"Them":string|null},"items":[{"id","text","owner"}],"context":[{"speaker","text"}],"transcript":[{"speaker","text"}],"dedup":boolean,"language":string|null}.
-"items" are already known. "transcript" is only the new speech since the last call. "context" is the speech right before it, already processed: use it only to understand what "transcript" refers to (a commitment can start in "context" and be confirmed in "transcript").
-Return only NEW action items made or confirmed in "transcript" that are not already in "items". Each new item: {"text": a short task in the transcript's language with the deadline if one was said, e.g. "Подготовить отчёт к пятнице", "owner": who must do it — "Me", "Them", or a person's name said explicitly, "source": the speaker who said it, "Me" or "Them"}.
-If "language" is set, write every "text" in that language, even when the speech mixes in English words; keep names as said.
+Input JSON: {"participants":{"Me":string|null,"Them":string|null},"items":[{"id","text","owner"}],"context":[{"n","speaker","text"}],"transcript":[{"n","speaker","text"}],"dedup":boolean,"language":string|null}.
+"items" are already known. "transcript" is only the new speech since the last call. "context" is the speech right before it, already processed: use it only to understand what "transcript" refers to (a commitment can start in "context" and be confirmed in "transcript"). Every entry of "context" and "transcript" has a number "n".
+Return only NEW action items made or confirmed in "transcript" that are not already in "items". Each new item: {"text": a short task in the transcript's language with the deadline if one was said, e.g. "Подготовить отчёт к пятнице", "owner": who must do it — "Me", "Them", or a person's name said explicitly, "source": the speaker who said it, "Me" or "Them", "lines": the numbers "n" of the 1-3 entries where the task was said or confirmed, "context": one sentence in the transcript's language that makes the task understandable on its own — what it refers to, who asked whom, why, the deadline if it was said; only facts that were said, nothing invented; "" when the text needs nothing more}.
+If "language" is set, write every "text" and "context" in that language, even when the speech mixes in English words; keep names as said.
 Resolve pronouns by speaker: when Me says "you will do X", the owner is Them; when Me says "I will do X", the owner is Me; the other way round when Them speaks.
 Only concrete commitments or assignments; skip ideas, questions and small talk. If there is nothing new, return an empty list.
 If "dedup" is true, also return merge operations for "items" that describe the same task: {"op":"merge","into":"<id>","from":"<id>"} keeps "into" and removes "from". Never merge different tasks, never delete items, never invent ids.
@@ -634,14 +793,34 @@ Reply with only a JSON array of operations.`;
 
 /// AUG-168: small local models invent content (AUG-161), so the local prompt allows explicit commitments only and never asks for dedup.
 export const LOCAL_EXTRACT_SYSTEM_PROMPT = `You find action items in a fragment of a live meeting transcript.
-Speakers: "Me" is the app user, "Them" is the other side. Input JSON: {"participants":{"Me":string|null,"Them":string|null},"items":[{"id","text","owner"}],"context":[{"speaker","text"}],"transcript":[{"speaker","text"}],"language":string|null}.
-"items" are already known; "context" is earlier speech for reference only.
+Speakers: "Me" is the app user, "Them" is the other side. Input JSON: {"participants":{"Me":string|null,"Them":string|null},"items":[{"id","text","owner"}],"context":[{"n","speaker","text"}],"transcript":[{"n","speaker","text"}],"language":string|null}.
+"items" are already known; "context" is earlier speech for reference only. Every entry of "context" and "transcript" has a number "n".
 Add an item only when someone in "transcript" explicitly promises to do something or explicitly assigns a task. Never invent tasks, names or deadlines that were not said. Skip ideas, questions, small talk and anything already in "items". When in doubt, add nothing.
-Each item: {"text": a short task in the transcript's language with the deadline if one was said, "owner": "Me", "Them" or a name said explicitly, "source": the speaker who said it, "Me" or "Them"}. When Me says "I will", the owner is Me; when Me says "you will", the owner is Them; the other way round for Them.
+Each item: {"text": a short task in the transcript's language with the deadline if one was said, "owner": "Me", "Them" or a name said explicitly, "source": the speaker who said it, "Me" or "Them", "lines": the numbers "n" of the 1-3 entries where it was said}. When Me says "I will", the owner is Me; when Me says "you will", the owner is Them; the other way round for Them.
 If "language" is set, write every "text" in that language, even when the speech mixes in English words; keep names as said.
 Reply with only JSON: {"new":[...]}.`;
 
-interface BufferEntry { id: string; speaker: ActionItemSource; text: string }
+export interface BufferEntry { id: string; speaker: ActionItemSource; text: string; at?: number } // at = epoch ms of the line start
+
+/// AUG-213: anchor of an extracted item from the model's line numbers. `numbered` are the entries as numbered in the prompt (n = index + 1), `firstSent` the first entry of "transcript". Invalid or missing numbers -> time of the first sent line, no quote.
+export function buildSaidAnchor(lines: number[] | undefined, numbered: BufferEntry[], firstSent: BufferEntry | undefined, recordingStartedAt: number | undefined): ActionItemAnchor {
+  const valid = [...new Set((lines ?? []).filter((n) => Number.isInteger(n) && n >= 1 && n <= numbered.length))].sort((a, b) => a - b).slice(0, MAX_LINE_IDS);
+  const rel = (e: BufferEntry | undefined): number | undefined =>
+    recordingStartedAt && typeof e?.at === 'number' ? Math.max(0, Math.round(e.at - recordingStartedAt)) : undefined;
+  if (valid.length === 0) {
+    const atMs = rel(firstSent);
+    return { kind: 'said', ...(atMs !== undefined ? { atMs } : {}) };
+  }
+  const entries = valid.map((n) => numbered[n - 1]);
+  const atMs = rel(entries[0]);
+  const quote = entries.map((e) => e.text.trim()).join(' ').slice(0, MAX_QUOTE);
+  return {
+    kind: 'said',
+    ...(atMs !== undefined ? { atMs } : {}),
+    speaker: entries[0].speaker,
+    ...(quote ? { quote, lineIds: entries.map((e) => e.id) } : {}),
+  };
+}
 
 /// AUG-168: one live local LLM call at a time app-wide — local fallback extraction and local dedup of every session share it. Non-blocking: a busy slot skips the call. The batch semantic pass (semanticCheck, AUG-163) is deliberately not covered.
 export const liveLocalSlot = {
@@ -724,6 +903,7 @@ export class LiveActionItemsExtractor {
   private controller = new AbortController();
   private gateTimer: NodeJS.Timeout | null = null;
   private dedupTimer: NodeJS.Timeout | null = null;
+  private quoteLines = new Map<string, string>(); // AUG-213: line id -> current text of lines referenced by anchors
 
   constructor(private readonly store: LiveActionItemsStore, private readonly deps: ExtractorDeps = defaultDeps, private readonly opts: { liveEngine?: () => 'local' | 'groq' } = {}) {}
 
@@ -749,10 +929,11 @@ export class LiveActionItemsExtractor {
     this.controller.abort();
     this.buffer = [];
     this.context = [];
+    this.quoteLines.clear();
   }
 
-  addTranscript(id: string, speaker: ActionItemSource, text: string): void {
-    this.buffer.push({ id, speaker, text });
+  addTranscript(id: string, speaker: ActionItemSource, text: string, at?: number): void {
+    this.buffer.push({ id, speaker, text, at: at ?? this.deps.now() });
     let total = this.buffer.reduce((n, e) => n + e.text.length, 0);
     while (total > ACTION_MAX_BUFFER_CHARS && this.buffer.length > 1) {
       total -= this.buffer.shift()!.text.length;
@@ -763,6 +944,26 @@ export class LiveActionItemsExtractor {
   noteCorrection(id: string, text: string): void {
     const entry = this.buffer.find((e) => e.id === id);
     if (entry) entry.text = text;
+    const ctxEntry = this.context.find((e) => e.id === id);
+    if (ctxEntry) ctxEntry.text = text;
+    const old = this.quoteLines.get(id);
+    if (old !== undefined) {
+      this.store.correctQuoteLine(id, old, text);
+      this.quoteLines.set(id, text);
+    }
+  }
+
+  private withAnchors(newItems: Array<{ text: string; owner: string; source: ActionItemSource; lines?: number[]; context?: string }>, numbered: BufferEntry[], firstSent: BufferEntry | undefined) {
+    return newItems.map(({ lines, ...rest }) => {
+      const anchor = buildSaidAnchor(lines, numbered, firstSent, this.store.file.recordingStartedAt);
+      for (const id of anchor.lineIds ?? []) {
+        const e = numbered.find((x) => x.id === id);
+        if (!e) continue;
+        this.quoteLines.set(id, e.text.trim());
+        if (this.quoteLines.size > 300) this.quoteLines.delete(this.quoteLines.keys().next().value as string);
+      }
+      return { ...rest, anchor };
+    });
   }
 
   private async refreshLocalReady(): Promise<void> {
@@ -793,6 +994,8 @@ export class LiveActionItemsExtractor {
 
     this.inFlight = true;
     const snapshot = this.buffer.slice();
+    const numbered = [...this.context, ...snapshot]; // AUG-213: captured before the await (dropSent changes this.context)
+    const ctxLen = this.context.length;
     const reason = triggerSeen && newWords >= ACTION_MIN_NEW_WORDS ? 'trigger' : 'timeout';
     let keepPending = false;
     try {
@@ -802,8 +1005,8 @@ export class LiveActionItemsExtractor {
       const payload = {
         participants: { Me: p.me || null, Them: p.them || null },
         items: sentItems,
-        context: this.context.map(({ speaker, text }) => ({ speaker, text })),
-        transcript: snapshot.map(({ speaker, text }) => ({ speaker, text })),
+        context: this.context.map(({ speaker, text }, i) => ({ n: i + 1, speaker, text })),
+        transcript: snapshot.map(({ speaker, text }, i) => ({ n: ctxLen + i + 1, speaker, text })),
         dedup,
         language: speechLanguage([...this.context, ...snapshot].map((e) => e.text)),
       };
@@ -813,7 +1016,7 @@ export class LiveActionItemsExtractor {
           { role: 'user', content: JSON.stringify(payload) },
         ],
         temperature: 0,
-        maxTokens: 600,
+        maxTokens: ACTION_CLOUD_MAX_TOKENS,
         timeoutMs: 20_000,
         signal: this.controller.signal,
       });
@@ -822,11 +1025,11 @@ export class LiveActionItemsExtractor {
       this.lastCallAt = this.deps.now();
       this.gateOpenedAt = 0;
       this.dropSent(snapshot);
-      const parsed = parseExtractionResponse(result.content, new Set(sentItems.map((i) => i.id)));
+      const parsed = parseExtractionResponse(result.content, new Set(sentItems.map((i) => i.id)), { allowContext: true });
       if (!parsed) {
         console.log(`[actionItems] cloud call #${this.cloudCalls} (${reason}): unparseable`);
       } else {
-        const added = this.store.addItems(parsed.newItems);
+        const added = this.store.addItems(this.withAnchors(parsed.newItems, numbered, snapshot[0]));
         const { applied, rejected } = dedup ? this.store.applyOps(parsed.ops) : { applied: 0, rejected: 0 };
         const guard = rejected > 0 ? `, ${rejected} rejected by guard` : '';
         console.log(`[actionItems] cloud call #${this.cloudCalls} (${reason}, dedup=${dedup ? 'cloud' : this.localReady ? 'local' : 'none'}): +${added} new, ${applied} op(s)${guard}, ${this.store.file.items.length} total`);
@@ -870,13 +1073,15 @@ export class LiveActionItemsExtractor {
     const n = ++this.localCalls;
     try {
       const { sent, transcript } = takeLocalChunk(snapshot, ACTION_LOCAL_MAX_CHARS);
+      const ctx = this.context.slice();
+      const numbered = [...ctx, ...sent];
       const sentItems = this.store.file.items.slice(-ACTION_MAX_ITEMS_IN_PROMPT).map(({ id, text, owner }) => ({ id, text, owner }));
       const p = this.store.file.participants;
       const payload = {
         participants: { Me: p.me || null, Them: p.them || null },
         items: sentItems,
-        context: this.context.map(({ speaker, text }) => ({ speaker, text })),
-        transcript,
+        context: ctx.map(({ speaker, text }, i) => ({ n: i + 1, speaker, text })),
+        transcript: transcript.map((e, i) => ({ n: ctx.length + i + 1, ...e })),
         language: speechLanguage([...this.context.map((e) => e.text), ...transcript.map((e) => e.text)]),
       };
       const content = (
@@ -899,7 +1104,7 @@ export class LiveActionItemsExtractor {
       const parsed = parseExtractionResponse(content, new Set(sentItems.map((i) => i.id)));
       if (!parsed) console.log(`[actionItems] local fallback #${n} (${trigger}): unparseable`);
       else {
-        const added = this.store.addItems(parsed.newItems);
+        const added = this.store.addItems(this.withAnchors(parsed.newItems, numbered, sent[0]));
         console.log(`[actionItems] local fallback #${n} (${trigger}): +${added} new, ${this.store.file.items.length} total`);
       }
     } catch (err) {

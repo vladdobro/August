@@ -381,6 +381,8 @@ FunctionEnd
   ${ifNot} ${isUpdated}
     Delete "$APPDATA\August\model-dir"
     Delete "$APPDATA\August\gpu-engine"
+    ; Data-folder pointer written by the app (AUG-216). Kept on updates so the data folder survives a folder change.
+    Delete "$APPDATA\August\data-location.json"
     ; Remove downloaded CUDA files if present
     RMDir /r "$APPDATA\August\whisper\bin\win-x64-cuda"
     RMDir /r "$APPDATA\August\whisper\win-x64-cuda.update-backup"

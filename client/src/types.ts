@@ -178,7 +178,16 @@ export interface CorrectionsFile {
 
 // AUG-165: live action items
 export type ActionItemSource = 'Me' | 'Them';
-export interface ActionItemLock { text?: true; owner?: true }
+export interface ActionItemLock { text?: true; owner?: true; context?: true }
+/// AUG-213: where an item came from. said = taken from speech; added = moment it was added by hand or by the assistant.
+export interface ActionItemAnchor {
+  kind: 'said' | 'added';
+  atMs?: number; // ms from recording start to the start of the first source line
+  speaker?: ActionItemSource; // said only
+  quote?: string; // said only: verbatim text of the source lines, <= 400 chars
+  lineIds?: string[]; // live only: ids of the live lines (LiveLinePart.id)
+  line?: number; // saved session only: 0-based utterance index in transcript.md (k-th timestamp line, same key as corrections)
+}
 export interface ActionItemPraxisRef { taskId: string; projectPath: string; sentAt: string }
 export interface ActionItem {
   id: string; // stable, server-assigned: `ai_` + 8 hex
@@ -190,9 +199,15 @@ export interface ActionItem {
   manual?: true; // AUG-165: added by the user by hand; always fully locked
   praxis?: ActionItemPraxisRef; // AUG-166: set when the item was sent to Praxis (last send wins)
   assistant?: { projectPath: string; at: string }; // AUG-199: created by the meeting assistant (AI tag)
+  context?: string; // AUG-213: <= 240 chars, one-sentence summary
+  anchor?: ActionItemAnchor;
 }
 export interface Participants { me: string; them: string }
-export interface ActionItemsFile { version: 1; participants: Participants; items: ActionItem[]; updatedAt: string }
+export interface ActionItemsFile { version: 1; participants: Participants; items: ActionItem[]; updatedAt: string; recordingStartedAt?: number }
+
+/// AUG-215: playable audio of a saved session. systemOffsetMs: the system track started that many ms after the mic track.
+export type SessionAudioTrack = 'single' | 'mic' | 'system';
+export interface SessionAudioInfo { tracks: SessionAudioTrack[]; systemOffsetMs: number }
 
 export type AiModel = 'haiku' | 'sonnet' | 'opus';
 export type CopilotMode = 'off' | 'local' | 'claude' | 'always';

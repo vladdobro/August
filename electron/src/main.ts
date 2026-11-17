@@ -20,6 +20,7 @@ import {
 
 import { CompactController, isPanelKind, parseCompactRequest, type CompactEvent } from './compact.js';
 import { applyMuteHotkey, applyRecordHotkey } from './hotkey.js';
+import { DATA_LOCATION_FILE, directoryExists, readDataLocation, resolveDataDir, writeDataLocation } from './installLocation.js';
 import { installFileLogger } from './log.js';
 import { startSessionWatcher } from './sessionWatcher.js';
 import { DEFAULT_MUTE_HOTKEY, DEFAULT_RECORD_HOTKEY, SettingsStore } from './settings.js';
@@ -89,8 +90,37 @@ function ensureToolPaths(): void {
   process.env.PATH = [...current, ...extra].join(':');
 }
 
-/// Environment for the embedded server. Packaged Windows builds keep data under the per-user
-/// NSIS install dir; packaged macOS builds keep it under userData/data, since the install
+/// Windows data folder (AUG-216): <install dir>\data, unless %APPDATA%\August\data-location.json names another
+/// existing folder — then that folder wins, so data survives an install-folder change (AUG-207). The app writes the
+/// pointer itself as UTF-8 JSON (NSIS FileWrite would use the ANSI codepage). Folders are never merged, moved or
+/// deleted here. Known limit: a pointer to a temporarily missing drive falls back to <install dir>\data and is rewritten.
+function resolveWindowsDataDir(userData: string, installDataDir: string): string {
+  // An explicit AUGUST_DATA_DIR wins over everything and is not recorded: the pointer tracks only the app's own choice.
+  if (process.platform !== 'win32' || process.env.AUGUST_DATA_DIR !== undefined) return installDataDir;
+  const pointerFile = path.join(userData, DATA_LOCATION_FILE);
+  const resolved = resolveDataDir({
+    platform: process.platform,
+    installDataDir,
+    pointerRaw: readDataLocation(pointerFile),
+    dirExists: directoryExists,
+  });
+  if (resolved.source === 'pointer') {
+    console.log(`[data-location] Using the data folder from ${pointerFile}: ${resolved.dataDir} (install folder data: ${installDataDir})`);
+  } else if (resolved.source === 'pointer-missing') {
+    console.warn(`[data-location] The data folder from ${pointerFile} is missing: ${resolved.pointerDir}; using ${installDataDir}`);
+  }
+  if (resolved.writePointer) {
+    try {
+      writeDataLocation(pointerFile, resolved.dataDir);
+    } catch (err) {
+      console.warn(`[data-location] Could not write ${pointerFile}:`, err);
+    }
+  }
+  return resolved.dataDir;
+}
+
+/// Environment for the embedded server. Packaged Windows builds keep data under the NSIS install dir, or in the
+/// folder remembered in userData/data-location.json (AUG-216); packaged macOS builds keep it under userData/data, since the install
 /// dir is the signed August.app bundle, replaced on every update/reinstall. Both take whisper-cli,
 /// ffmpeg, ffprobe and yt-dlp from resources/; unpackaged runs reuse the repo layout (server/data, whisper/bin,
 /// whisper/models) so `npm run electron:start` shares state with `npm run dev`.
@@ -102,7 +132,7 @@ function configureServerEnv(): void {
   // Windows keeps data next to the per-user NSIS install (0.0.13). On macOS the install dir is the signed
   // August.app bundle — replaced on every update/reinstall — so data lives in ~/Library/Application Support/August/data.
   const dataDir = process.platform === 'win32'
-    ? path.join(path.resolve(process.resourcesPath, '..'), 'data')
+    ? resolveWindowsDataDir(userData, path.join(path.resolve(process.resourcesPath, '..'), 'data'))
     : path.join(userData, 'data');
   let modelsDir = path.join(userData, 'whisper', 'models');
   try {

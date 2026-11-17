@@ -2,6 +2,7 @@ import { randomUUID } from 'node:crypto';
 
 import { getLiveFeed, type LiveFeed } from './liveFeed.js';
 import { getOpenLiveActionItems, type LiveActionItemsStore } from './liveActionItems.js';
+import { formatTimestamp } from './transcriptMerger.js';
 
 /// AUG-199: the "august" MCP server (Streamable HTTP, JSON responses) that the assistant's Claude child talks to. One token per tab child -> {liveKey, projectPath}.
 /// Arguments and results are never logged.
@@ -54,7 +55,7 @@ const TOOLS = [
   },
   {
     name: 'add_action_item',
-    description: 'Record one action item (1-300 characters). Duplicates are detected and reported, not added twice.',
+    description: 'Record one action item (1-300 characters) with an optional one-sentence context. Duplicates are detected and reported, not added twice.',
     inputSchema: {
       type: 'object',
       properties: {
@@ -62,6 +63,7 @@ const TOOLS = [
         owner: { type: 'string', enum: ['Me', 'Them'] },
         praxisTaskId: { type: 'string', description: 'Id of the Praxis task created for this item, if any.' },
         projectPath: { type: 'string' },
+        context: { type: 'string', maxLength: 240, description: 'Optional one-sentence context (up to 240 characters) that makes the item understandable on its own; only facts that were said.' },
       },
       required: ['text'],
     },
@@ -102,6 +104,9 @@ function callTool(
             text: i.text,
             owner: i.owner,
             ...(i.praxis ? { praxisTaskId: i.praxis.taskId } : {}),
+            ...(i.context ? { context: i.context } : {}),
+            ...(typeof i.anchor?.atMs === 'number' ? { said_at: formatTimestamp(i.anchor.atMs / 1000) } : {}),
+            ...(i.anchor?.quote ? { quote: i.anchor.quote } : {}),
           })),
         },
       };
@@ -113,6 +118,7 @@ function callTool(
         text: args.text,
         owner: args.owner,
         praxisTaskId: args.praxisTaskId,
+        context: args.context,
         projectPath: typeof args.projectPath === 'string' && args.projectPath ? args.projectPath : token.projectPath,
       });
       if (!r) return { error: { code: -32602, message: 'text must be 1-300 characters' } };

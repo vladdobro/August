@@ -27,6 +27,11 @@ export const SPEECH_FRAME_RMS_THRESHOLD = 0.006;
 export const MIN_SPEECH_RUN_MS = 160;
 export const MIN_SPEECH_MS = 200;
 
+/// AUG-213: start time of a live line = chunk arrival minus chunk duration.
+export function chunkStartMs(arrivalMs: number, sampleCount: number): number {
+  return arrivalMs - Math.round((sampleCount / SAMPLE_RATE) * 1000);
+}
+
 /// Milliseconds of speech in `samples`: the summed length of loud-frame runs that last at least MIN_SPEECH_RUN_MS.
 export function speechDurationMs(samples: Float32Array): number {
   const minRunFrames = MIN_SPEECH_RUN_MS / SPEECH_FRAME_MS;
@@ -138,9 +143,9 @@ export type LiveControlFrame =
   | { type: 'resume' }
   | { type: 'config'; engine: 'local' | 'groq' }
   | { type: 'attach-capture'; captureId: string; language: string }
-  | { type: 'action-items-init'; liveKey: string; participants: { me: string; them: string } | null; meetingOnly?: true }
+  | { type: 'action-items-init'; liveKey: string; participants: { me: string; them: string } | null; meetingOnly?: true; recordingStartedAt?: number }
   | { type: 'participants'; me: string; them: string }
-  | { type: 'action-item-edit'; id: string; text?: string; owner?: string }
+  | { type: 'action-item-edit'; id: string; text?: string; owner?: string; context?: string }
   | { type: 'action-item-delete'; id: string }
   | { type: 'action-item-add'; text: string; owner?: string; assistant?: { projectPath: string; messageId?: string } }
   // AUG-199: meeting assistant
@@ -162,7 +167,7 @@ const frameProjectPath = (v: unknown): string | null => (typeof v === 'string' &
 /// types, a config frame with an unknown engine, or an attach-capture frame
 /// without a non-empty string captureId. attach-capture's language defaults to 'auto'.
 /// AUG-165: also action-items-init (valid liveKey, optional participants; AUG-200: optional meetingOnly), participants, action-item-edit
-/// (valid id and a string text and/or owner), action-item-delete (valid id) and action-item-add (non-empty string text,
+/// (valid id and a string text, owner and/or context; AUG-213: action-items-init may carry a positive finite recordingStartedAt), action-item-delete (valid id) and action-item-add (non-empty string text,
 /// optional string owner); anything else is null.
 export function parseLiveControlFrame(text: string): LiveControlFrame | null {
   let msg: unknown;
@@ -192,7 +197,13 @@ export function parseLiveControlFrame(text: string): LiveControlFrame | null {
       const participants = p && typeof p === 'object'
         ? { me: frameName((p as Record<string, unknown>).me), them: frameName((p as Record<string, unknown>).them) }
         : null;
-      return { type: 'action-items-init', liveKey: o.liveKey, participants, ...(o.meetingOnly === true ? { meetingOnly: true as const } : {}) };
+      return {
+        type: 'action-items-init',
+        liveKey: o.liveKey,
+        participants,
+        ...(o.meetingOnly === true ? { meetingOnly: true as const } : {}),
+        ...(typeof o.recordingStartedAt === 'number' && Number.isFinite(o.recordingStartedAt) && o.recordingStartedAt > 0 ? { recordingStartedAt: o.recordingStartedAt } : {}),
+      };
     }
     case 'participants':
       return { type: 'participants', me: frameName(o.me), them: frameName(o.them) };
@@ -200,10 +211,12 @@ export function parseLiveControlFrame(text: string): LiveControlFrame | null {
       if (typeof o.id !== 'string' || !ACTION_ITEM_ID_RE.test(o.id)) return null;
       const hasText = typeof o.text === 'string';
       const hasOwner = typeof o.owner === 'string';
-      if (!hasText && !hasOwner) return null;
+      const hasContext = typeof o.context === 'string';
+      if (!hasText && !hasOwner && !hasContext) return null;
       return {
         type: 'action-item-edit',
         id: o.id,
+        ...(hasContext ? { context: o.context as string } : {}),
         ...(hasText ? { text: o.text as string } : {}),
         ...(hasOwner ? { owner: o.owner as string } : {}),
       };

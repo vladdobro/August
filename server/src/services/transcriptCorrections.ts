@@ -12,7 +12,7 @@ const CORRECTIONS_FILE = 'transcript.corrected.json';
 const CORRECTED_MD_FILE = 'transcript.corrected.md';
 const TRANSCRIPT_FILE = 'transcript.md';
 
-const TIMESTAMP_LINE = /^\[(\d{2}:\d{2}:\d{2})\] (?:\[(Me|Them)\] )?(.*)$/;
+export const TIMESTAMP_LINE = /^\[(\d{2}:\d{2}:\d{2})\] (?:\[(Me|Them)\] )?(.*)$/;
 
 /// Pure. Applies the accepted items of one line in order: each replaces the first occurrence of its `original` (the flagged
 /// segment's text) inside `text`; an item whose original is no longer found is skipped.

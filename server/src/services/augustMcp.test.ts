@@ -51,6 +51,22 @@ describe('august MCP without a live feed', () => {
     expect(store.file.items).toHaveLength(1);
   });
 
+  it('list_action_items returns context, said_at and quote when present', () => {
+    store.file.items.push({ id: 'a1', text: 'Send it', owner: 'Me', source: 'Them', createdAt: 'x', context: 'For Q3', anchor: { kind: 'said', atMs: 60_000, quote: 'please send it' } });
+    store.file.items.push({ id: 'a2', text: 'Plain', owner: '', source: 'Me', createdAt: 'x' });
+    const items = payload(call('list_action_items', {})).items;
+    expect(items[0]).toMatchObject({ context: 'For Q3', said_at: '00:01:00', quote: 'please send it' });
+    expect(items[1]).toEqual({ id: 'a2', text: 'Plain', owner: '' });
+  });
+
+  it('add_action_item passes context through and tools/list exposes it', () => {
+    payload(call('add_action_item', { text: 'Send the deck', context: 'Asked by Anna on Monday' }));
+    expect(store.file.items[0].context).toBe('Asked by Anna on Monday');
+    const list = handleMcpPost(token, { jsonrpc: '2.0', id: 2, method: 'tools/list' }, deps());
+    const tool = (list.json as any).result.tools.find((t: any) => t.name === 'add_action_item');
+    expect(tool.inputSchema.properties.context.maxLength).toBe(240);
+  });
+
   it('an unknown token is 404', () => {
     const r = handleMcpPost('nope', { jsonrpc: '2.0', id: 1, method: 'ping' }, deps());
     expect(r.status).toBe(404);

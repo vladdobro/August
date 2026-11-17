@@ -1,5 +1,35 @@
+import { spawn, type StdioOptions } from 'node:child_process';
+
 import { app, Notification } from 'electron';
-import electronUpdater from 'electron-updater';
+import electronUpdater, { type NsisUpdater } from 'electron-updater';
+
+import { pinnedInstallDir, verbatimInstallerSpawn, windowsCommandLine } from './installLocation.js';
+
+type SpawnLog = (cmd: string, args?: string[], env?: NodeJS.ProcessEnv, stdio?: StdioOptions) => Promise<boolean>;
+
+/// AUG-217: electron-updater (written against 6.8.9) starts the installer through BaseUpdater.spawnLog, and Node
+/// quotes `/D=<dir>` when dir has a space. This instance-level override keeps spawnLog's contract (detached,
+/// unref, resolve once a pid exists, reject on 'error' so NsisUpdater's EACCES -> elevate.exe fallback still runs)
+/// and only switches to a verbatim command line when verbatimInstallerSpawn says so; every other call goes to the original.
+function pinVerbatimInstallerStart(installDir: string): void {
+  const updater = autoUpdater as unknown as { spawnLog: SpawnLog };
+  const original: SpawnLog = updater.spawnLog.bind(autoUpdater);
+  updater.spawnLog = (cmd, args = [], env, stdio = 'ignore') => {
+    const verbatim = verbatimInstallerSpawn(process.platform, cmd, args, installDir);
+    if (!verbatim) return original(cmd, args, env, stdio);
+    console.log(`[updater] Executing (verbatim): ${windowsCommandLine(verbatim)}`);
+    return new Promise<boolean>((resolve, reject) => {
+      try {
+        const child = spawn(cmd, verbatim.args, { stdio, env, detached: true, argv0: verbatim.argv0, windowsVerbatimArguments: true });
+        child.on('error', reject);
+        child.unref();
+        if (child.pid !== undefined) resolve(true);
+      } catch (error) {
+        reject(error);
+      }
+    });
+  };
+}
 
 const { autoUpdater } = electronUpdater;
 const CHECK_INTERVAL_MS = 4 * 60 * 60 * 1000;
@@ -39,6 +69,18 @@ export function setupAutoUpdater(hooks: UpdaterHooks): UpdaterControls & { start
   autoUpdater.autoDownload = true;
   autoUpdater.autoInstallOnAppQuit = true;
   autoUpdater.disableWebInstaller = true;
+  // AUG-216: update the copy that is running. Without /D= the NSIS installer takes its folder only from the
+  // registry and falls back to %LOCALAPPDATA%\Programs\August when an interrupted update lost the key (AUG-207).
+  // /D= must be the last installer argument: keep disableWebInstaller true (a web installer appends --package-file).
+  if (process.platform === 'win32' && app.isPackaged) {
+    const installDir = pinnedInstallDir(process.platform, app.isPackaged, process.execPath);
+    if (installDir) {
+      (autoUpdater as NsisUpdater).installDirectory = installDir;
+      pinVerbatimInstallerStart(installDir);
+    } else {
+      console.log('[updater] Install folder not pinned (path contains a quote); the installer uses its registry location');
+    }
+  }
 
   let state: UpdateState = { phase: 'idle' };
   let manual = false;

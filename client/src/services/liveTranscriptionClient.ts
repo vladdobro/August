@@ -9,7 +9,7 @@
 // AUG-113: when the system track is a server capture, start() receives its captureId; the client then sends an attach-capture control frame instead of tapping a system MediaStream, so only mic chunks travel over the socket.
 // AUG-199: assistant-* frames go to onAssistant; assistantOpen/Ask/Task/Stop send them; onSocketOpen fires once the socket is ready so the assistant tabs can be (re)opened.
 // AUG-200: startMeeting() opens a control-only socket (meetingOnly action-items-init, no audio) for a recording without Live Text.
-// AUG-165: start() also receives a liveKey (UUID per recording) and the participant names; an action-items-init frame joins the server-side action-items store, action-items frames come back, and edits/deletes/participant names go out as control frames.
+// AUG-165: start() also receives a liveKey (UUID per recording) and the participant names; an action-items-init frame joins the server-side action-items store, action-items frames come back, and edits/deletes/participant names go out as control frames. AUG-213: the init frame carries recordingStartedAt, the same base as muteIntervals.
 
 import type { ActionItem, AiModel, AssistantServerFrame, CopilotMode, CopilotServerFrame, Participants } from '../types';
 
@@ -167,6 +167,7 @@ export class LiveTranscriptionClient {
   private liveKey: string | null = null;
   private participants: Participants | null = null;
   private meetingOnly = false;
+  private recordingStartedAt: number | null = null;
   private callbacks: LiveTranscriptionCallbacks;
 
   constructor(callbacks: LiveTranscriptionCallbacks) {
@@ -174,12 +175,13 @@ export class LiveTranscriptionClient {
   }
 
   /// AUG-200: control-only socket for a recording without Live Text: joins the action-items store and the meeting assistant, sends no audio.
-  startMeeting(liveKey: string, participants: Participants | null): void {
+  startMeeting(liveKey: string, participants: Participants | null, recordingStartedAt: number | null = null): void {
     this.meetingOnly = true;
-    this.start(null, null, 'auto', 'local', null, liveKey, participants);
+    this.start(null, null, 'auto', 'local', null, liveKey, participants, recordingStartedAt);
   }
 
-  start(micStream: MediaStream | null, systemStream: MediaStream | null, language: string, engine: LiveEngine = 'local', captureId: string | null = null, liveKey: string | null = null, participants: Participants | null = null): void {
+  start(micStream: MediaStream | null, systemStream: MediaStream | null, language: string, engine: LiveEngine = 'local', captureId: string | null = null, liveKey: string | null = null, participants: Participants | null = null, recordingStartedAt: number | null = null): void {
+    this.recordingStartedAt = recordingStartedAt;
     this.language = language;
     this.engine = engine;
     this.captureId = captureId;
@@ -198,7 +200,7 @@ export class LiveTranscriptionClient {
     ws.onopen = () => {
       if (this.stopped) { ws.close(); return; }
       if (this.meetingOnly) {
-        ws.send(JSON.stringify({ type: 'action-items-init', liveKey: this.liveKey, participants: this.participants, meetingOnly: true }));
+        ws.send(JSON.stringify({ type: 'action-items-init', liveKey: this.liveKey, participants: this.participants, meetingOnly: true, ...(this.recordingStartedAt ? { recordingStartedAt: this.recordingStartedAt } : {}) }));
         this.callbacks.onStatusChange('listening');
         this.callbacks.onSocketOpen?.();
         return;
@@ -210,7 +212,7 @@ export class LiveTranscriptionClient {
         ws.send(JSON.stringify({ type: 'attach-capture', captureId: this.captureId, language: this.language }));
       }
       if (this.liveKey) {
-        ws.send(JSON.stringify({ type: 'action-items-init', liveKey: this.liveKey, participants: this.participants }));
+        ws.send(JSON.stringify({ type: 'action-items-init', liveKey: this.liveKey, participants: this.participants, ...(this.recordingStartedAt ? { recordingStartedAt: this.recordingStartedAt } : {}) }));
       }
       this.callbacks.onStatusChange('listening');
       this.callbacks.onSocketOpen?.();
@@ -341,7 +343,7 @@ export class LiveTranscriptionClient {
     }
   }
 
-  editActionItem(id: string, patch: { text?: string; owner?: string }): void {
+  editActionItem(id: string, patch: { text?: string; owner?: string; context?: string }): void {
     if (this.ws?.readyState === WebSocket.OPEN) {
       this.ws.send(JSON.stringify({ type: 'action-item-edit', id, ...patch }));
     }

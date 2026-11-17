@@ -2,6 +2,7 @@ import { Router } from 'express';
 
 import {
   addAssistantItemToList,
+  addedAnchor,
   getOpenLiveActionItems,
   isValidLiveKey,
   mutateLiveActionItems,
@@ -20,7 +21,7 @@ router.post('/:liveKey/action-items', async (req, res) => {
     return;
   }
   const body = req.body && typeof req.body === 'object' ? (req.body as Record<string, unknown>) : {};
-  const raw = { text: body.text, owner: body.owner, praxisTaskId: body.praxisTaskId, projectPath: body.projectPath };
+  const raw = { text: body.text, owner: body.owner, praxisTaskId: body.praxisTaskId, projectPath: body.projectPath, context: body.context };
   try {
     const store = getOpenLiveActionItems(liveKey);
     let result: AssistantItemResult | null;
@@ -28,8 +29,8 @@ router.post('/:liveKey/action-items', async (req, res) => {
       result = store.addAssistantItem(raw);
     } else {
       let captured: AssistantItemResult | null = null;
-      const file = await mutateLiveActionItems(liveKey, (items) => {
-        const r = addAssistantItemToList(items, raw);
+      const file = await mutateLiveActionItems(liveKey, (items, file) => {
+        const r = addAssistantItemToList(items, raw, new Date(), { anchor: addedAnchor(file.recordingStartedAt, Date.now()) });
         captured = r.result;
         return r.changed;
       });

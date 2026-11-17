@@ -6,7 +6,7 @@
 - App version source of truth is the root `version` file; npm run build syncs it into package.json via version:sync.
 - The renderer is the same React client loaded from http://127.0.0.1:<free port>/ served by the embedded server; no IPC replaces REST/WebSocket.
 - Packaged macOS builds keep session data in ~/Library/Application Support/August/data, never inside August.app, because the signed bundle is replaced on every update/reinstall (AUG-121).
-- Packaged Windows builds keep session data in <install dir>/data next to the per-user NSIS install; models, settings and logs stay under userData on both platforms; paths reach the server via AUGUST_DATA_DIR, WHISPER_MODEL_PATH, WHISPER_BIN_PATH and FFMPEG_PATH set before the server module is imported.
+- Packaged Windows builds keep session data in <install dir>/data next to the per-user NSIS install, unless the pointer %APPDATA%/August/data-location.json names another existing folder, which then wins (AUG-216); models, settings and logs stay under userData on both platforms; paths reach the server via AUGUST_DATA_DIR, WHISPER_MODEL_PATH, WHISPER_BIN_PATH and FFMPEG_PATH set before the server module is imported.
 - Packaged builds override globalThis.fetch with electron.net.fetch before importing the server module; Node.js undici does not respect system proxy, certificates or firewall (AUG-138).
 - whisper-cli, ffmpeg and ffprobe are bundled from whisper/bin/<platform>/ into resources/whisper/bin/ as extraResources; the ~874 MB model is never bundled and auto-downloads on first launch.
 - The Windows extraResources folder also carries the bundled Vulkan loader vulkan-1.dll and its VulkanRT-License.txt placed by npm run setup (AUG-117).
@@ -34,12 +34,14 @@
 - On restore, entries of the freshly installed data folder (data/tools: WASAPI helper) replace their old copies, so installer-shipped files always come from the new version.
 - The MSI target uses its own uninstall and is not covered by this preservation (MSI has no auto-update).
 - Install folder drift (AUG-207, research): the NSIS installer takes its target folder only from HKCU `Software\{appGuid}` InstallLocation; the old uninstaller deletes that key and the Uninstall key on every update and the installer writes them back at the end, so an update cut in between (BSOD, power loss, kill) leaves a working install with no registry trace, and the next silent update installs into `%LOCALAPPDATA%\Programs\August` with an empty `data` while the real data stays in the old folder.
-- Recommended fix (AUG-207, not implemented): the updater passes `/D=<folder of the running exe>` and the app keeps a data-dir pointer in `%APPDATA%\August` so the data dir no longer follows the install folder; see "Install folder drift and data left behind (AUG-207)".
+- Fix implemented (AUG-216): on packaged Windows the updater sets `autoUpdater.installDirectory` to the folder of the running exe (installer gets `/D=<folder>`), and the app keeps a data-dir pointer `%APPDATA%\August\data-location.json` so the data dir no longer follows the install folder; see "Implemented fix (AUG-216)".
+- Folders with a space (`C:\Program Files\August`, a user name with a space) are pinned too: the updater starts the installer with a verbatim command line so `/D=` stays unquoted and last (AUG-217); only a path with a quote is not pinned.
+- Not verified end to end: the installer path of AUG-216 (`/D=` on a real update, pointer cleanup on uninstall) was never run; only unit tests, build and code reading back it.
 - Right-click on a sidebar session calls window.august.revealSession(id) over august:reveal-session; main reveals the folder via shell.showItemInFolder (AUG-124).
 - The Archive page opens the sessions data dir via window.august.revealSessionsDir() over august:reveal-sessions-dir; main calls shell.openPath(sessionsDir()) and takes no path from the renderer (AUG-150). The method is optional in desktop.d.ts; the browser build shows the path as text.
 - Compact Mode (AUG-156): CompactController (electron/src/compact.ts) resizes the main window to a right-edge Dock Strip or a 180×180 Dock Square, or hides it behind a frameless transparent always-on-top ghost window (Ghost Caption / Ghost Coin) loading the same app URL with ?ghost=caption|coin; setCompactMode({ shape: 'none' }) restores the saved bounds, maximized flag and the 960×600 minimum.
 - Always-on-top diverges: macOS setAlwaysOnTop(on, 'floating') + setVisibleOnAllWorkspaces(on, { visibleOnFullScreen: true }); Windows setAlwaysOnTop(on) only.
-- Also known as: reveal sessions folder, open data directory (AUG-150), Compact Mode, dock strip, dock square, ghost window, ghost caption, ghost coin, setCompactMode (AUG-156), nsis update data loss, data-backup, KeepsUserData, customRemoveFiles (AUG-158), update item in ControlsPanel (AUG-160), mute hotkey, Ctrl+Alt+M, Mute microphone tray item, august:toggle-mute (AUG-181), ghost position, free drag, magnetic edges, window-state ghost record, compactCaptionWidth (AUG-176), Reset overlay position, ghostGeometry, square caption tools, caption width resize (AUG-187), august:write-clipboard, writeClipboard bridge, clipboard in Ghost Mode (AUG-188), compact panels, compact Copilot window, compact Assistant window, panelGeometry, setCompactPanel, august:compact-panel (AUG-199), remote debugging port, CDP targets, AUGUST_RENDERER_URL, AUGUST_API_URL, UI audit harness, window-state backup (AUG-203), install folder drift, data left behind, InstallLocation missing, default install folder after update, interrupted update, installDirectory, data-dir pointer, data-location.json (AUG-207).
+- Also known as: reveal sessions folder, open data directory (AUG-150), Compact Mode, dock strip, dock square, ghost window, ghost caption, ghost coin, setCompactMode (AUG-156), nsis update data loss, data-backup, KeepsUserData, customRemoveFiles (AUG-158), update item in ControlsPanel (AUG-160), mute hotkey, Ctrl+Alt+M, Mute microphone tray item, august:toggle-mute (AUG-181), ghost position, free drag, magnetic edges, window-state ghost record, compactCaptionWidth (AUG-176), Reset overlay position, ghostGeometry, square caption tools, caption width resize (AUG-187), august:write-clipboard, writeClipboard bridge, clipboard in Ghost Mode (AUG-188), compact panels, compact Copilot window, compact Assistant window, panelGeometry, setCompactPanel, august:compact-panel (AUG-199), remote debugging port, CDP targets, AUGUST_RENDERER_URL, AUGUST_API_URL, UI audit harness, window-state backup (AUG-203), install folder drift, data left behind, InstallLocation missing, default install folder after update, interrupted update, installDirectory, data-dir pointer, data-location.json (AUG-207), sticky data dir, pinned install folder, pinnedInstallDir, resolveDataDir, installLocation, /D= with spaces (AUG-216).
 - Key files: electron/build/installer.nsh, electron/src/main.ts, electron/src/compact.ts, electron/src/preload.cts, electron/src/tray.ts, electron/src/hotkey.ts, electron/src/sessionWatcher.ts, electron/src/updater.ts, electron/electron-builder.yml, server/src/app.ts, client/src/desktop.d.ts.
 
 This route documents how August's Electron desktop shell embeds the existing web app instead of replacing it.
@@ -155,14 +157,14 @@ A desktop shell exists so non-technical users get a one-click install with no te
 
 ## Install folder drift and data left behind (AUG-207)
 
-Research only (2026-11-16); nothing below is implemented. No live reproduction was run (user decision: no sandbox, VM or second profile available); scenarios are ruled in or out from the electron-builder 26.15.3 NSIS templates (node_modules/app-builder-lib/templates/nsis) and from forensic evidence on the affected machine.
+Research from 2026-11-16; options A and B were implemented in AUG-216 (see "Implemented fix (AUG-216)" below), C, D and E were not. No live reproduction was run (user decision: no sandbox, VM or second profile available); scenarios are ruled in or out from the electron-builder 26.15.3 NSIS templates (node_modules/app-builder-lib/templates/nsis) and from forensic evidence on the affected machine.
 
 ### How the installer picks the folder
 
 - `initMultiUser` (assistedInstaller.nsh) reads `InstallLocation` from HKLM and HKCU `Software\{appGuid}`; `setInstallModePerUser` (multiUser.nsh) sets `$INSTDIR` to the HKCU value, else to `%LOCALAPPDATA%\Programs\August`; a `/D=<dir>` argument overrides both. Silent `--updated` runs use the same logic and show no page.
 - `uninstallOldVersion` (installUtil.nsh) finds the old copy through the Uninstall key's `UninstallString` and `InstallLocation`; with both missing it returns without uninstalling anything.
 - The old uninstaller ends with `DeleteRegKey` on the Uninstall key and on `Software\{appGuid}` (uninstaller.nsh), on updates too. The installer writes them back in `registryAddInstallInfo` only after the old uninstall and the 7z extraction. Every update therefore has a window (tens of seconds to minutes) in which the files exist and the registry says "not installed".
-- The app derives the Windows data dir from its own exe folder (main.ts configureServerEnv), so a new folder always means an empty `data`.
+- Up to 0.2.1 the app derived the Windows data dir only from its own exe folder (main.ts configureServerEnv), so a new folder always meant an empty `data`; since AUG-216 the pointer file decides first.
 
 ### Incident 2026-11-09 (0.1.4 → 0.2.0), root cause
 
@@ -201,13 +203,37 @@ Research only (2026-11-16); nothing below is implemented. No live reproduction w
 | D. Move data to fixed `%APPDATA%\August\data` | Simplest end state, matches macOS | Cross-volume migration, ignores the user's drive choice |
 | E. Drop or isolate the MSI target | Removes a second installer without data preservation | Does not address this bug; MSI was not involved |
 
-### Recommendation and proposed impl tasks (not created)
+### Recommendation
 
-- Recommended: A + B together. A stops the drift at its source; B makes data survive any drift that still happens. C is optional hardening; D and E are not recommended now.
-- Task 1 — updater pins the install folder: electron/src/updater.ts sets `autoUpdater.installDirectory` to the folder of `process.execPath` when `process.platform === 'win32'` and the app is packaged. Check: `/D=` stays the last argument (it does while `disableWebInstaller` is true), per-machine silent elevation still works, Cyrillic folder. macOS: no-op, the property exists only on NsisUpdater.
-- Task 2 — sticky data dir: a small pure module (resolve rule + tests mocking `process.platform` for both values) used by configureServerEnv in electron/src/main.ts, win32 branch only. Rule: no pointer → `<install dir>\data`, write pointer; pointer to an existing folder → use it; pointer to a missing folder → `<install dir>\data`, rewrite pointer, log. installer.nsh customUnInstall deletes the pointer on a manual uninstall. Risks: a temporarily missing drive must not silently start an empty library; never merge two data folders automatically.
-- Task 3 (optional) — installer hardening per option C, verified in a VM with a test appId (this file's customInstall / customUnInstall write to `%APPDATA%\August`, so a test build must not include it unchanged).
-- Verification for all three needs a VM or second Windows profile: install to a custom folder, delete both registry keys, run `--updated /S`, expect the same folder and the same data.
+- Recommended and chosen (user decision 2026-11-16): A + B together. A stops the drift at its source; B makes data survive any drift that still happens. C is optional hardening; D and E are not recommended now.
+- Not done — installer hardening per option C: needs a VM with a test appId (this file's customInstall / customUnInstall write to `%APPDATA%\August`, so a test build must not include it unchanged).
+
+### Implemented fix (AUG-216)
+
+- Rules live in electron/src/installLocation.ts, a pure module with no Electron imports; it takes the platform as an input and uses `path.win32`, so it gives the same answers on a Windows and a macOS host.
+- A, pinned install folder: setupAutoUpdater sets `autoUpdater.installDirectory` to `pinnedInstallDir(...)` = folder of `process.execPath`, only when `process.platform === 'win32'` and `app.isPackaged`. electron-updater then appends `/D=<folder>` after `--updated /S --force-run`.
+- `/D=` must be the last installer argument: `autoUpdater.disableWebInstaller` must stay true, because a web installer appends `--package-file` after it.
+- Why folders with a space need special handling (verified 2026-11-17 by printing the child command line): Node wraps an argument containing a space in quotes (`"/D=C:\Users\John Smith\..."`). NSIS matches only an unquoted ` /D=` as the last part of the raw command line, and electron-builder's GetDParameter (multiUser.nsh) copies everything after `/D=`, so a quoted one would leave a quote in `$INSTDIR` (inferred from the template source, not run).
+- Verbatim start (AUG-217): when the pinned folder contains whitespace, updater.ts overrides `spawnLog` on the autoUpdater instance (pinVerbatimInstallerStart; written against electron-updater 6.8.9, BaseUpdater.spawnLog / NsisUpdater.doInstall). verbatimInstallerSpawn quotes the program path and every argument with MS C runtime rules (quoteWindowsArg) and leaves the last argument `/D=<folder>` raw; the child is spawned with `windowsVerbatimArguments: true` and the quoted path as `argv0`. The same applies to the `elevate.exe` start, where the installer path is the first quoted argument.
+- The override keeps spawnLog's contract (detached, unref, resolve once a pid exists, reject on `error`), so NsisUpdater's EACCES/UNKNOWN → elevate.exe fallback and the ENOENT → shell.openPath fallback still work; `--updated`, `/S`, `--force-run` are untouched. Any call whose last argument is not exactly `/D=<pinned folder>`, or a folder without whitespace, goes to the library's own spawnLog (AUG-216 behaviour).
+- Re-check the override when electron-updater is upgraded: if doInstall stops using spawnLog, changes the argument order or adds an argument after `/D=`, the verbatim path silently stops applying (it falls back to the library spawn, not to a broken start).
+- pinnedInstallDir returns null only for a folder containing `"` (not a valid Windows path); then main.log gets `[updater] Install folder not pinned` and the installer uses the registry.
+- main.log shows `[updater] Executing (verbatim): <raw command line>` for a verbatim start.
+- Verified for AUG-217: unit tests (space, no space, Cyrillic, installer path with a space, elevate variant, both host platforms) and a harmless child process (a renamed node.exe in a folder with a space and Cyrillic characters) whose own CommandLine read back through Win32_Process ended with an unquoted ` /D=C:\Program Files\August`. Not exercised: a real NSIS update and elevate.exe's handling of the tail (elevate.exe was not run; it needs UAC).
+- B, sticky data dir: configureServerEnv (win32 branch) calls resolveWindowsDataDir, which reads `%APPDATA%\August\data-location.json` (`{ "dataDir": "<absolute folder>" }`, UTF-8).
+- Resolve rule: no usable pointer → `<install dir>\data`, pointer written; pointer to an existing folder → that folder, even when it differs from `<install dir>\data`; pointer to a missing folder → `<install dir>\data`, pointer rewritten.
+- Unusable pointer content (bad JSON, wrong shape, relative path) counts as no pointer. Paths are compared case-insensitively and without a trailing separator.
+- The pointer is written only when it was missing, unusable or stale, through a `.tmp` file and rename; a write failure is logged and never stops the start.
+- The app writes the pointer, never NSIS: NSIS FileWrite uses the ANSI codepage and breaks non-ASCII paths (same reason as the model-dir fallback).
+- Logging: when the pointer wins or points to a missing folder, one `[data-location]` line with both paths goes to main.log; nothing is shown in the UI.
+- Data folders are never merged, moved or deleted by the app. After a folder change the new `<install dir>\data` (with the installer-shipped data\tools) stays unused next to the app.
+- An explicit AUGUST_DATA_DIR wins over the pointer and the default; in that case the pointer is neither read nor written.
+- macOS and unpackaged runs: no pointer file is read or written; the data dir is unchanged.
+- installer.nsh customUnInstall deletes data-location.json on a manual uninstall and keeps it on updates (`--updated`), in the same block and shell context as model-dir and gpu-engine.
+- The manual-uninstall "remove data" prompt still targets `$INSTDIR\data` only; data kept in another folder through the pointer is left on disk.
+- Known limit: with a pointer to a temporarily missing drive the app starts with `<install dir>\data` (an empty library) and rewrites the pointer, so the old folder is not picked up again when the drive returns.
+- Verification state: unit tests (electron/src/installLocation.test.ts, every rule for win32 and darwin, Cyrillic round trip through the file), build and server tests. The installer path was not exercised: no update was run with `/D=`, no uninstall was run.
+- An end-to-end check needs a VM or second Windows profile: install to a custom folder, delete both registry keys, run `--updated /S`, expect the same folder and the same data.
 
 ## Compact Mode (AUG-156)
 
@@ -260,7 +286,8 @@ Research only (2026-11-16); nothing below is implemented. No live reproduction w
 - electron/src/tray.ts — tray icon creation, idle/recording/transcribing state updates and the update menu item driven by UpdateState; Expand August item and compact tooltip timer (AUG-156).
 - electron/src/hotkey.ts — per-slot global hotkey registration (record, mute) and validation.
 - electron/src/sessionWatcher.ts — polls GET /api/sessions to detect state transitions for notifications.
-- electron/src/updater.ts — electron-updater wiring against GitHub Releases; exposes UpdateState, checkNow/installNow/start controls and the update notifications (AUG-141).
+- electron/src/updater.ts — electron-updater wiring against GitHub Releases; exposes UpdateState, checkNow/installNow/start controls and the update notifications (AUG-141); pins the install folder on packaged Windows (AUG-216) and starts the installer with a verbatim command line when that folder has a space (AUG-217).
+- electron/src/installLocation.ts — pure rules for the Windows data-dir pointer (resolveDataDir, read/write of data-location.json) , the pinned install folder (pinnedInstallDir) and the verbatim installer command line (verbatimInstallerSpawn, quoteWindowsArg, AUG-217); tests in electron/src/installLocation.test.ts run with `npm run electron:test` (AUG-216).
 - electron/src/settings.ts — reads/writes <userData>/desktop-settings.json.
 - electron/src/log.ts — writes <userData>/logs/main.log.
 - electron/scripts/make-icons.mjs — regenerates electron/build/ icons; the only supported way to update them.

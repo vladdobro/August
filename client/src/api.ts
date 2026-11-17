@@ -1,4 +1,4 @@
-import type { ActionItemsFile, AssistantStatus, CopilotMode, CaptureCapabilities, CorrectionStatus, CorrectionsFile, HealthStatus, LlmModelId, LlmModelInfo, LlmStatus, GroqTextStatus, ModelSetupStatus, MuteInterval, ServerCapture, SessionMetadata, StorageSummary, TranscriptionLanguage } from './types';
+import type { ActionItemsFile, AssistantStatus, CopilotMode, CaptureCapabilities, CorrectionStatus, CorrectionsFile, HealthStatus, LlmModelId, LlmModelInfo, LlmStatus, GroqTextStatus, ModelSetupStatus, MuteInterval, ServerCapture, SessionAudioInfo, SessionAudioTrack, SessionMetadata, StorageSummary, TranscriptionLanguage } from './types';
 
 export interface UploadProgress {
   loaded: number;
@@ -126,7 +126,7 @@ export async function fetchActionItems(id: string): Promise<ActionItemsFile | nu
   return handleJsonResponse<ActionItemsFile>(res);
 }
 
-export async function updateActionItem(id: string, itemId: string, patch: { text?: string; owner?: string }): Promise<ActionItemsFile> {
+export async function updateActionItem(id: string, itemId: string, patch: { text?: string; owner?: string; context?: string }): Promise<ActionItemsFile> {
   const res = await fetch(`${API_BASE}/sessions/${id}/action-items/${encodeURIComponent(itemId)}`, {
     method: 'PATCH',
     headers: { 'Content-Type': 'application/json' },
@@ -311,6 +311,17 @@ export async function deleteSessionAudio(id: string, file?: string): Promise<{ s
 export async function redownloadSessionAudio(id: string): Promise<SessionMetadata> {
   const res = await fetch(`${API_BASE}/sessions/${id}/redownload`, { method: 'POST' });
   return handleJsonResponse<SessionMetadata>(res);
+}
+
+/// AUG-215: which audio tracks of a saved session can be played; null when it has none.
+export async function fetchSessionAudioInfo(id: string): Promise<SessionAudioInfo | null> {
+  const res = await fetch(`${API_BASE}/sessions/${id}/audio`);
+  if (res.status === 404) return null;
+  return handleJsonResponse<SessionAudioInfo>(res);
+}
+
+export function sessionAudioUrl(id: string, track: SessionAudioTrack, stamp: number): string {
+  return `${API_BASE}/sessions/${id}/audio/${track}?v=${stamp}`;
 }
 
 export async function transcribeFromUrl(url: string, language: TranscriptionLanguage | string): Promise<SessionMetadata> {

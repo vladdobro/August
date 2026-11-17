@@ -6,6 +6,12 @@ import path from 'node:path';
 import { config } from '../config.js';
 import type { ActionItem, ActionItemsFile, Participants } from '../types.js';
 import { writeCorrectedTranscript } from './transcriptCorrections.js';
+import { formatTimestamp } from './transcriptMerger.js';
+
+/// AUG-213: HH:MM:SS of an anchor time, or null when unknown.
+function clock(atMs?: number): string | null {
+  return typeof atMs === 'number' ? formatTimestamp(atMs / 1000) : null;
+}
 
 export const ACTION_ITEMS_HEADING = '## Action items';
 
@@ -23,10 +29,15 @@ export function participantsLine(p: Participants): string {
 /// One line per item: `- **Owner** — text`, or `- text` when there is no owner.
 export function renderActionItemsSection(items: ActionItem[], p: Participants): string {
   if (items.length === 0) return '';
-  const lines = items.map((i) => {
+  const lines: string[] = [];
+  for (const i of items) {
     const owner = ownerLabel(i.owner, p);
-    return owner ? `- **${owner}** — ${i.text}` : `- ${i.text}`;
-  });
+    lines.push(owner ? `- **${owner}** — ${i.text}` : `- ${i.text}`);
+    if (i.context) {
+      const c = clock(i.anchor?.atMs);
+      lines.push(`  - Context: ${i.context}${c ? ` ([${c}])` : ''}`);
+    }
+  }
   return `${ACTION_ITEMS_HEADING}\n\n${lines.join('\n')}\n`;
 }
 
@@ -61,6 +72,17 @@ export interface TaskDraft { title: string; why: string; criteria: string; const
 export function buildSeparateTaskDraft(item: ActionItem, ctx: ActionItemsExportContext): TaskDraft {
   const p = ctx.participants;
   const owner = ownerLabel(item.owner, p);
+  const anchor = item.anchor;
+  const at = clock(anchor?.atMs);
+  const contextBlock: string[] = [];
+  if (item.context || anchor?.quote || anchor?.kind === 'said') {
+    contextBlock.push('## Context', '');
+    if (item.context) contextBlock.push(item.context, '');
+    if (anchor?.kind === 'said') contextBlock.push(`Said by ${ownerLabel(anchor.speaker ?? item.source, p)}${at ? ` at ${at}` : ''}`);
+    else if (anchor?.kind === 'added' && at) contextBlock.push(`Added at ${at}`);
+    if (anchor?.quote) contextBlock.push(`> ${anchor.quote}`);
+    contextBlock.push('');
+  }
   const why = [
     `Action item from the meeting "${ctx.sessionTitle}" on ${ctx.meetingDate}.`,
     '',
@@ -70,6 +92,7 @@ export function buildSeparateTaskDraft(item: ActionItem, ctx: ActionItemsExportC
     `- Session: ${ctx.sessionRef}`,
     `- Meeting date: ${ctx.meetingDate}`,
     '',
+    ...contextBlock,
     '## Meeting transcript (context)',
     '',
     ctx.transcript?.trim() || 'Transcript not available yet.',
@@ -91,6 +114,7 @@ export function buildCommonTaskDraft(items: ActionItem[], ctx: ActionItemsExport
     `- Participants: ${participantsLine(p)}`,
     `- Session: ${ctx.sessionRef}`,
     `- Meeting date: ${ctx.meetingDate}`,
+    ...(items.some((i) => i.context) ? ['', '## Context', '', ...items.filter((i) => i.context).map((i) => `- ${i.text}: ${i.context}`)] : []),
   ].join('\n');
   const criteria = items
     .map((i) => {

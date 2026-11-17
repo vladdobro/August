@@ -17,8 +17,9 @@ import { downloadFromUrl, UrlDownloadError } from '../services/urlDownloader.js'
 import { isPlatformUrl, probePlatformVideo, downloadPlatformAudio, YtDlpError, YTDLP_MISSING_MESSAGE, INFO_JSON_NAME } from '../services/ytDlp.js';
 import { stopAssistantLiveKey } from '../services/assistantSession.js';
 import { stopCopilotLiveKey } from '../services/copilotEngine.js';
-import { attachLiveActionItemsToSession, readSessionActionItems, mutateSessionActionItems, applyUserEdit, createManualItem, isValidLiveKey } from '../services/liveActionItems.js';
+import { attachLiveActionItemsToSession, readSessionActionItems, mutateSessionActionItems, applyUserEdit, createManualItem, isValidLiveKey, resolveSessionAnchors } from '../services/liveActionItems.js';
 import { writeTranscriptWithActionItems } from '../services/transcriptActionItems.js';
+import { loopbackOnly } from './capture.js';
 import type { CorrectionStatus, ProcessingStage, SessionMetadata, SessionStatus, TranscriptionLanguage } from '../types.js';
 
 const router = Router();
@@ -182,6 +183,7 @@ async function runTranscription(sessionId: string, audioPath: string, language: 
 
     const transcript = renderTranscript(utterances, startedAt, duration, mutes.map((m) => ({ startSec: m.startMs / 1000, endSec: m.endMs / 1000 })));
     await clearCorrections(sessionId);
+    await resolveSessionAnchors(sessionId, transcript).catch((err) => console.warn(`[session ${sessionId}] action item anchors not resolved: ${(err as Error).message}`));
     await writeTranscriptWithActionItems(sessionId, transcript, () => readSessionActionItems(sessionId)); // AUG-166: keeps the Action items section
     if (corrections && corrections.length > 0) {
       await writeCorrections(sessionId, { version: 1, createdAt: new Date().toISOString(), model: semanticModel, items: corrections });
@@ -265,6 +267,7 @@ async function runDualTranscription(
 
     const transcript = renderTranscript(utterances, startedAt, duration, mutes.map((m) => ({ startSec: m.startMs / 1000 + shift, endSec: m.endMs / 1000 + shift })));
     await clearCorrections(sessionId);
+    await resolveSessionAnchors(sessionId, transcript, shift * 1000).catch((err) => console.warn(`[session ${sessionId}] action item anchors not resolved: ${(err as Error).message}`));
     await writeTranscriptWithActionItems(sessionId, transcript, () => readSessionActionItems(sessionId)); // AUG-166: keeps the Action items section
     if (corrections && corrections.length > 0) {
       await writeCorrections(sessionId, { version: 1, createdAt: new Date().toISOString(), model: semanticModel, items: corrections });
@@ -472,7 +475,7 @@ router.get('/:id/action-items', async (req, res) => {
   res.json(file);
 });
 
-// PATCH /api/sessions/:id/action-items/:itemId body { text?, owner? } (AUG-165): user edit; edited fields become locked
+// PATCH /api/sessions/:id/action-items/:itemId body { text?, owner?, context? } (AUG-165): user edit; edited fields become locked
 router.patch('/:id/action-items/:itemId', async (req, res) => {
   const { itemId } = req.params;
   if (!ACTION_ITEM_ID_RE.test(itemId)) {
@@ -484,7 +487,7 @@ router.patch('/:id/action-items/:itemId', async (req, res) => {
     res.status(404).json({ error: 'Session not found' });
     return;
   }
-  const file = await mutateSessionActionItems(req.params.id, (items) => applyUserEdit(items, itemId, { text: req.body?.text, owner: req.body?.owner }));
+  const file = await mutateSessionActionItems(req.params.id, (items) => applyUserEdit(items, itemId, { text: req.body?.text, owner: req.body?.owner, context: req.body?.context }));
   if (!file) {
     res.status(404).json({ error: 'No action items' });
     return;
@@ -571,6 +574,54 @@ router.delete('/:id/audio', async (req, res) => {
   } catch (err) {
     const message = (err as Error)?.message || 'Failed to delete audio';
     res.status(message === 'Not an audio file of this session' ? 400 : 500).json({ error: message });
+  }
+});
+
+/// AUG-215: playback of a saved session's audio (TranscriptView, "Play from here"). Read-only and loopback only:
+/// audio never leaves the machine. A busy session (download / conversion running) has half-written files — no audio.
+async function playableAudio(id: string): Promise<Partial<Record<sessionManager.AudioTrack, string>>> {
+  if (!sessionManager.isValidSessionId(id)) return {};
+  const session = await sessionManager.getSession(id);
+  if (!session || isActive(session)) return {};
+  return sessionManager.findPlayableAudio(id);
+}
+
+// GET /api/sessions/:id/audio — which tracks can be played; 404 when the session has no audio
+router.get('/:id/audio', loopbackOnly, async (req, res) => {
+  try {
+    const files = await playableAudio(req.params.id);
+    const tracks: sessionManager.AudioTrack[] = files.mic || files.system
+      ? (['mic', 'system'] as const).filter((t) => !!files[t])
+      : files.single ? ['single'] : [];
+    if (tracks.length === 0) {
+      res.status(404).json({ error: 'No audio for this session' });
+      return;
+    }
+    const session = await sessionManager.getSession(req.params.id);
+    const offset = session?.systemOffsetMs;
+    res.json({ tracks, systemOffsetMs: typeof offset === 'number' && Number.isFinite(offset) ? offset : 0 });
+  } catch (err) {
+    res.status(500).json({ error: (err as Error)?.message || 'Failed to read audio' });
+  }
+});
+
+// GET /api/sessions/:id/audio/:track — the file itself; res.sendFile answers HTTP range requests (206)
+router.get('/:id/audio/:track', loopbackOnly, async (req, res) => {
+  try {
+    const track = req.params.track;
+    const files = track === 'single' || track === 'mic' || track === 'system' ? await playableAudio(req.params.id) : {};
+    const name = files[track as sessionManager.AudioTrack];
+    if (!name) {
+      res.status(404).json({ error: 'No audio for this session' });
+      return;
+    }
+    res.setHeader('Cache-Control', 'no-store');
+    // Node's fs takes Unicode paths on Windows as is — toSafePath is only for the native binaries.
+    res.sendFile(name, { root: sessionManager.sessionAudioDir(req.params.id), dotfiles: 'allow', cacheControl: false }, (err) => {
+      if (err && !res.headersSent) res.status(404).json({ error: 'No audio for this session' });
+    });
+  } catch (err) {
+    if (!res.headersSent) res.status(500).json({ error: (err as Error)?.message || 'Failed to read audio' });
   }
 });
 

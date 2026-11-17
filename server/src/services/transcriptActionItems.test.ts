@@ -124,3 +124,44 @@ describe('createPraxisTask with drafts', () => {
     expect(task.important_constraints).toBe('PROMPT');
   });
 });
+
+describe('AUG-213 context and anchor', () => {
+  const withCtx: ActionItem = {
+    ...item('a', 'Send report', 'Me'),
+    context: 'Report for the Q3 review',
+    anchor: { kind: 'said', atMs: 60_000, speaker: 'Them', quote: 'please send the report' },
+  };
+
+  test('an item with context gets one indented sub-line, others render as before', () => {
+    const out = renderActionItemsSection([withCtx, item('b', 'Review', 'Them')], P);
+    expect(out).toBe('## Action items\n\n- **Vlad** — Send report\n  - Context: Report for the Q3 review ([00:01:00])\n- **Them** — Review\n');
+  });
+
+  test('context without a time has no clock', () => {
+    const out = renderActionItemsSection([{ ...withCtx, anchor: undefined }], P);
+    expect(out).toContain('\n  - Context: Report for the Q3 review\n');
+  });
+
+  test('separate card has a Context block before the transcript and keeps the transcript', () => {
+    const d = buildSeparateTaskDraft(withCtx, ctx);
+    const c = d.why.indexOf('## Context');
+    expect(c).toBeGreaterThan(-1);
+    expect(c).toBeLessThan(d.why.indexOf('## Meeting transcript (context)'));
+    expect(d.why).toContain('Report for the Q3 review');
+    expect(d.why).toContain('Said by Them at 00:01:00');
+    expect(d.why).toContain('> please send the report');
+    expect(d.why).toContain('[00:00:01] [Me] hello');
+  });
+
+  test('separate card without context or anchor is unchanged', () => {
+    expect(buildSeparateTaskDraft(item('a', 'Send report', 'Me'), ctx).why).not.toContain('## Context');
+  });
+
+  test('common card lists summaries in why and leaves criteria alone', () => {
+    const plain = buildCommonTaskDraft([item('a', 'Send report', 'Me'), item('b', 'Two', '')], ctx);
+    const d = buildCommonTaskDraft([withCtx, item('b', 'Two', '')], ctx);
+    expect(d.why).toContain('## Context\n\n- Send report: Report for the Q3 review');
+    expect(plain.why).not.toContain('## Context');
+    expect(d.criteria).toBe(plain.criteria);
+  });
+});

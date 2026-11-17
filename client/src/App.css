@@ -10082,3 +10082,129 @@ html.ghost-root #root > * {
 @media (prefers-reduced-motion: reduce) {
   .name-popup-dots i { animation: none; opacity: 1; }
 }
+
+/* AUG-214: action item context — summary row, time chip, Context block, source line highlight.
+   Live column and session card only; the compact variant renders none of these elements. */
+.action-item--owned { outline: 2px solid var(--accent); outline-offset: -1px; }
+.action-item-summary {
+  margin-top: 2px;
+  font-size: 12px;
+  line-height: 1.45;
+  color: var(--text-secondary);
+  display: -webkit-box;
+  -webkit-line-clamp: 2;
+  line-clamp: 2;
+  -webkit-box-orient: vertical;
+  overflow: hidden;
+  overflow-wrap: anywhere;
+}
+.action-item-edited-note { font-size: 10px; color: var(--text-secondary); }
+.action-items-panel--live .action-item-meta,
+.action-items-panel--session .action-item-meta { flex-wrap: wrap; gap: 4px 6px; }
+.action-items-panel--live .action-item-owner,
+.action-items-panel--session .action-item-owner { flex: 1 1 56px; min-width: 56px; }
+.action-item-meta-right { margin-left: auto; display: flex; align-items: center; gap: 4px; }
+.action-item-chip {
+  flex: none;
+  font: inherit;
+  font-size: 10px;
+  line-height: 1.5;
+  padding: 1px 6px;
+  border: 1px solid var(--border-color);
+  border-radius: 0;
+  background: transparent;
+  color: inherit;
+  cursor: pointer;
+  white-space: nowrap;
+  font-variant-numeric: tabular-nums;
+  text-transform: none;
+  letter-spacing: normal;
+}
+.action-item-chip:hover:not(:disabled) { border-color: var(--accent); color: var(--accent); }
+.action-item-chip:disabled { opacity: 0.4; cursor: not-allowed; }
+.action-item-chip:focus-visible,
+.action-item-context textarea:focus-visible,
+.source-line:focus-visible { outline: 2px solid var(--accent); outline-offset: 2px; }
+.action-item-context {
+  border-top: 1px solid var(--border-color);
+  margin-top: 6px;
+  padding-top: 6px;
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+  font-size: 12px;
+  line-height: 1.45;
+  overflow-wrap: anywhere;
+}
+.action-item-context-label {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 4px 8px;
+  font-size: 10px;
+  text-transform: uppercase;
+  letter-spacing: 0.06em;
+  color: var(--text-secondary);
+}
+.action-item-context-muted { color: var(--text-secondary); }
+.action-item-context textarea {
+  width: 100%;
+  min-height: 60px;
+  box-sizing: border-box;
+  font: inherit;
+  background: transparent;
+  color: inherit;
+  border: 1px solid var(--accent);
+  border-radius: 0;
+  padding: 4px;
+  resize: vertical;
+}
+.action-item-quote { margin: 0; border-left: 2px solid var(--accent); padding-left: 8px; }
+.action-item-quote--them { border-left-color: var(--status-uploading); }
+.action-item-context-acts { display: flex; flex-wrap: wrap; align-items: center; gap: 6px; }
+.action-item-context-warn { border: 1px solid var(--status-uploading); border-radius: 0; padding: 4px 6px; font-size: 11px; }
+.source-line-tag-row { line-height: 1.2; }
+.source-line-tag {
+  display: inline-block;
+  font-family: var(--font-terminal);
+  font-size: 10px;
+  font-weight: 400;
+  letter-spacing: 0.06em;
+  text-transform: uppercase;
+  color: var(--accent);
+  border: 1px solid var(--accent);
+  border-radius: 0;
+  padding: 0 4px;
+  margin: 2px 0;
+}
+.live-line--source { background: var(--accent-light); border-left-color: var(--accent); cursor: pointer; }
+/* A wrapper around an unchanged .transcript-line: the negative margin keeps the text in its column. */
+.transcript-line--source {
+  background: var(--accent-light);
+  border-left: 3px solid var(--accent);
+  margin-left: -9px;
+  padding-left: 6px;
+  cursor: pointer;
+}
+
+/* AUG-215: player strip under the transcript */
+.transcript-player {
+  position: sticky;
+  bottom: -48px; /* .transcript-body bottom padding: the strip sits on the visible bottom edge */
+  z-index: 2;
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 6px 12px;
+  max-width: 760px;
+  margin-top: 16px;
+  padding: 6px 8px;
+  border-top: 1px solid var(--accent);
+  border-radius: 0;
+  background: var(--page-bg);
+  font-size: 12px;
+}
+.transcript-player-time { font-variant-numeric: tabular-nums; }
+.transcript-player-note { color: var(--text-secondary); }
+.transcript-player-bar { flex: 1; min-width: 80px; height: 4px; background: var(--border-color); }
+.transcript-player-bar i { display: block; height: 100%; background: var(--accent); }

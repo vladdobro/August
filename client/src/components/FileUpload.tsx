@@ -1,11 +1,12 @@
-import React, { useCallback, useEffect, useRef, useState } from 'react';
+import React, { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { sendActionItemsToPraxis, uploadAudio, uploadDualAudio, uploadDualAudioWithCapture, fetchCaptureCapabilities, startServerCapture, stopServerCapture, transcribeFromUrl, type UploadProgress } from '../api';
 import type { ActionItem, CaptureCapabilities, MuteInterval, Participants, ServerCapture, TranscriptionLanguage } from '../types';
 import { useTheme } from '../theme';
 import RecordingModePicker, { type RecordingMode } from './RecordingModePicker';
 import LanguagePicker from './LanguagePicker';
 import MicPicker from './MicPicker';
-import ActionItemsPanel from './ActionItemsPanel';
+import ActionItemsPanel, { type ActionItemSourceNav } from './ActionItemsPanel';
+import { MSG_LINES_CLEARED, resolveLivePart } from '../services/actionItemSource';
 import PraxisModal from './PraxisModal';
 import LiveColumns from './live/LiveColumns';
 import { isMacPlatform } from './live/platform';
@@ -342,7 +343,7 @@ const FileUpload: React.FC<FileUploadProps> = ({ onUploaded, onRecordingChange, 
     assistantStore.setLive(true, false);
     assistantStore.autoOpenDefault(defaultPraxisProjectRef.current);
     void assistantStore.refreshStatus();
-    client.startMeeting(key, liveParticipantsRef.current);
+    client.startMeeting(key, liveParticipantsRef.current, micStartedAtRef.current || null);
     setMeetingActive(true);
   }, [applyActionItems]);
 
@@ -358,8 +359,8 @@ const FileUpload: React.FC<FileUploadProps> = ({ onUploaded, onRecordingChange, 
 
       const client = new LiveTranscriptionClient({
         onTranscript: (speaker, text, id) => {
+          const part = { id, text, at: micStartedAtRef.current ? Date.now() - micStartedAtRef.current : undefined }; // AUG-214
           setLiveLines((prev) => {
-            const part = { id, text };
             const last = prev.length > 0 ? prev[prev.length - 1] : null;
             if (last && last.speaker === speaker && !last.kind) {
               const updated = [...prev];
@@ -395,7 +396,7 @@ const FileUpload: React.FC<FileUploadProps> = ({ onUploaded, onRecordingChange, 
       assistantStore.setLive(true, true);
       assistantStore.autoOpenDefault(defaultPraxisProjectRef.current);
       void assistantStore.refreshStatus();
-      client.start(micStream, systemStream, language, engine, captureId, liveKeyRef.current, liveParticipantsRef.current);
+      client.start(micStream, systemStream, language, engine, captureId, liveKeyRef.current, liveParticipantsRef.current, micStartedAtRef.current || null);
     },
     [language, stopMeetingSocket, applyActionItems],
   );
@@ -1003,13 +1004,49 @@ const FileUpload: React.FC<FileUploadProps> = ({ onUploaded, onRecordingChange, 
     setLiveParticipants(p);
     controlClient()?.setParticipants(p);
   }, []);
-  const handleActionEdit = useCallback((id: string, patch: { text?: string; owner?: string }) => controlClient()?.editActionItem(id, patch), []);
+  const handleActionEdit = useCallback((id: string, patch: { text?: string; owner?: string; context?: string }) => controlClient()?.editActionItem(id, patch), []);
   const handleActionDelete = useCallback((id: string) => controlClient()?.deleteActionItem(id), []);
   const handleActionAdd = useCallback((text: string, owner: string) => controlClient()?.addActionItem(text, owner || undefined), []);
 
   const handleLiveClearAll = useCallback(() => {
     setLiveLines([]);
   }, []);
+
+  // AUG-214: jump from an action item to its line in the live transcript and back.
+  const [liveSource, setLiveSource] = useState<{ itemId: string; partId: string; n: number } | null>(null);
+  const [liveReveal, setLiveReveal] = useState<{ id: string; n: number } | null>(null);
+  const [liveFlashId, setLiveFlashId] = useState<string | null>(null);
+  const liveFlashTimerRef = useRef<number | undefined>(undefined);
+  useEffect(() => () => window.clearTimeout(liveFlashTimerRef.current), []);
+  // The highlight ends when its line is cleared or its item is deleted.
+  useEffect(() => {
+    if (!liveSource) return;
+    const partAlive = liveLines.some((l) => l.parts?.some((p) => p.id === liveSource.partId));
+    const itemAlive = liveActionItems.some((i) => i.id === liveSource.itemId);
+    if (!partAlive || !itemAlive) setLiveSource(null);
+  }, [liveLines, liveActionItems, liveSource]);
+  const handleLiveSourceBack = useCallback(() => {
+    if (!liveSource) return;
+    const id = liveSource.itemId;
+    setLiveSource(null);
+    setLiveReveal((r) => ({ id, n: (r?.n ?? 0) + 1 }));
+    setLiveFlashId(id);
+    liveColumnsStore.show('ai'); // the column may be hidden or collapsed to its rail
+    window.clearTimeout(liveFlashTimerRef.current);
+    liveFlashTimerRef.current = window.setTimeout(() => setLiveFlashId(null), 2000);
+  }, [liveSource]);
+  const liveSourceNav = useMemo<ActionItemSourceNav>(() => ({
+    target: (item) => (item.anchor && ((item.anchor.lineIds?.length ?? 0) > 0 || typeof item.anchor.atMs === 'number') ? 'jump' : 'none'),
+    blocked: (item) => (resolveLivePart(item, liveLines) ? null : { text: MSG_LINES_CLEARED }),
+    go: (item) => {
+      const partId = resolveLivePart(item, liveLines);
+      if (!partId) return;
+      setLiveFlashId(null);
+      setLiveSource((prev) => ({ itemId: item.id, partId, n: (prev?.n ?? 0) + 1 }));
+    },
+    ownerId: liveSource?.itemId ?? liveFlashId,
+    reveal: liveReveal,
+  }), [liveLines, liveSource, liveFlashId, liveReveal]);
 
   // Compact Mode retry: the server detaches the capture tee on WS stop and re-attaches on attach-capture, so this is safe.
   const handleLiveRetry = useCallback(() => {
@@ -1180,6 +1217,7 @@ const FileUpload: React.FC<FileUploadProps> = ({ onUploaded, onRecordingChange, 
       onAdd={handleActionAdd}
       onEdit={handleActionEdit}
       onDelete={handleActionDelete}
+      source={liveSourceNav}
       onSendToPraxis={(ids, mode) => {
         const liveKey = liveKeyRef.current;
         if (liveKey) setPraxisExport({ ids, mode, liveKey });
@@ -1439,6 +1477,9 @@ const FileUpload: React.FC<FileUploadProps> = ({ onUploaded, onRecordingChange, 
       {liveActive && !liveHidden && (
         <LiveTranscriptPanel
           lines={liveLines}
+          sourcePartId={liveSource?.partId ?? null}
+          sourceNonce={liveSource?.n ?? 0}
+          onSourceBack={handleLiveSourceBack}
           status={liveStatus}
           error={liveError}
           warning={liveWarning}

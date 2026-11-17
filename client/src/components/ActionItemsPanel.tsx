@@ -1,5 +1,24 @@
 import React, { useEffect, useRef, useState } from 'react';
 import type { ActionItem, Participants } from '../types';
+import { formatClock, scrollBehavior } from '../services/actionItemSource';
+
+/// AUG-214: how an item reaches its source line.
+export interface ActionItemSourceNav {
+  /// 'jump' = the source line is known; 'find' = no stored line, search by word overlap; 'none' = no jump controls.
+  target: (item: ActionItem) => 'jump' | 'find' | 'none';
+  /// Non-null disables the jump controls and explains why; `warn` shows the text in the yellow-outlined box.
+  blocked: (item: ActionItem) => { text: string; warn?: boolean } | null;
+  go: (item: ActionItem) => void;
+  /// Returns false when no line matches.
+  find?: (item: ActionItem) => boolean;
+  /// AUG-215 (saved session only): play the session audio from the item's moment. Absent / false = no Play control at all.
+  canPlay?: (item: ActionItem) => boolean;
+  play?: (item: ActionItem) => void;
+  /// Card whose source line is highlighted now (accent outline).
+  ownerId: string | null;
+  /// Changes when the user comes back from the highlighted line: scroll to the card and expand it.
+  reveal: { id: string; n: number } | null;
+}
 
 interface ActionItemsPanelProps {
   items: ActionItem[];
@@ -13,7 +32,7 @@ interface ActionItemsPanelProps {
   onParticipantsChange?: (p: Participants) => void;
   /// AUG-165: when set, the panel offers `+ Add an item` (hand-written item).
   onAdd?: (text: string, owner: string) => void;
-  onEdit: (id: string, patch: { text?: string; owner?: string }) => void;
+  onEdit: (id: string, patch: { text?: string; owner?: string; context?: string }) => void;
   onDelete: (id: string) => void;
   /// AUG-166: when set (live + session variants), items get checkboxes and the Praxis export bar.
   onSendToPraxis?: (ids: string[], mode: 'separate' | 'common') => void;
@@ -21,6 +40,8 @@ interface ActionItemsPanelProps {
   embedded?: boolean;
   // AUG-204: compact "Turn on automatic items" link
   onEnableAuto?: () => void;
+  /// AUG-214: source jump, supplied by the owner of the transcript (live panel / TranscriptView). Ignored by the compact variant.
+  source?: ActionItemSourceNav;
 }
 
 /// AUG-166: `AUG-12-ab12cd` -> `AUG-12`.
@@ -170,7 +191,130 @@ const AddItemForm: React.FC<AddItemFormProps> = ({ onAdd, onCancel }) => {
   );
 };
 
-const ActionItemsPanel: React.FC<ActionItemsPanelProps> = ({ items, participants, variant, enabled, offReason, onParticipantsChange, onAdd, onEdit, onDelete, onSendToPraxis, embedded, onEnableAuto }) => {
+interface ItemContextBlockProps {
+  item: ActionItem;
+  participants: Participants;
+  clock: string | null;
+  source?: ActionItemSourceNav;
+  target: 'jump' | 'find' | 'none';
+  blocked: { text: string; warn?: boolean } | null;
+  onEdit: (id: string, patch: { context?: string }) => void;
+}
+
+/// AUG-214: expanded block of a card: summary (editable), who said it and when, the verbatim quote, the jump.
+const ItemContextBlock: React.FC<ItemContextBlockProps> = ({ item, participants, clock, source, target, blocked, onEdit }) => {
+  const [editing, setEditing] = useState(false);
+  const [draft, setDraft] = useState('');
+  const [findMiss, setFindMiss] = useState(false);
+  const cancelledRef = useRef(false);
+  const refocusRef = useRef(false);
+  const editBtnRef = useRef<HTMLButtonElement>(null);
+
+  // Enter / Escape hand the focus back to Edit; a click elsewhere keeps the focus where the user put it.
+  useEffect(() => {
+    if (!editing && refocusRef.current) {
+      refocusRef.current = false;
+      editBtnRef.current?.focus();
+    }
+  }, [editing]);
+
+  const anchor = item.anchor;
+  const quote = anchor?.quote ?? '';
+  const warnBox = blocked?.warn ? <div className="action-item-context-warn" role="status">{blocked.text}</div> : null;
+  const findControls = target === 'find' && source?.find ? (
+    <>
+      <button type="button" className="action-item-chip" disabled={!!blocked} title={blocked?.text} onClick={() => setFindMiss(!source.find!(item))}>Find in transcript</button>
+      {findMiss && <span className="action-item-context-muted" role="status">No matching line found.</span>}
+    </>
+  ) : null;
+
+  // Recorded before AUG-213: nothing was stored about where the item came from.
+  if (!anchor && !item.manual) {
+    return (
+      <div className="action-item-context">
+        <div className="action-item-context-muted">No source was saved for this item (recorded before this feature).</div>
+        {warnBox}
+        {findControls && <div className="action-item-context-acts">{findControls}</div>}
+      </div>
+    );
+  }
+
+  const startEdit = () => { cancelledRef.current = false; setDraft(item.context ?? ''); setEditing(true); };
+  const save = () => {
+    setEditing(false);
+    const next = draft.trim();
+    if (next !== (item.context ?? '')) onEdit(item.id, { context: next });
+  };
+  const showWhy = !(item.manual && !item.context && !item.locked?.context);
+  const speaker = anchor?.speaker ?? item.source;
+  const canPlay = !!source?.play && !!source.canPlay?.(item);
+
+  return (
+    <div className="action-item-context">
+      {showWhy && (
+        <>
+          <div className="action-item-context-label">
+            Why / what
+            {!editing && <button ref={editBtnRef} type="button" className="action-item-chip" onClick={startEdit}>Edit</button>}
+          </div>
+          {editing ? (
+            <textarea
+              autoFocus
+              value={draft}
+              maxLength={240}
+              aria-label="Summary"
+              onFocus={(e) => { const end = e.currentTarget.value.length; e.currentTarget.setSelectionRange(end, end); }}
+              onChange={(e) => setDraft(e.target.value)}
+              onBlur={() => { if (cancelledRef.current) { cancelledRef.current = false; return; } save(); }}
+              onKeyDown={(e) => {
+                if (e.key === 'Enter' && !e.shiftKey) {
+                  e.preventDefault();
+                  refocusRef.current = true;
+                  e.currentTarget.blur();
+                } else if (e.key === 'Escape') {
+                  e.preventDefault();
+                  e.stopPropagation();
+                  cancelledRef.current = true;
+                  refocusRef.current = true;
+                  setEditing(false);
+                }
+              }}
+            />
+          ) : item.context ? (
+            <div>{item.context}</div>
+          ) : (
+            <div className="action-item-context-muted">{quote ? 'No summary for this item — the quote below is the source.' : 'No summary for this item.'}</div>
+          )}
+        </>
+      )}
+      {item.manual ? (
+        <div>{clock ? `Added by hand at ${clock}. ` : 'Added by hand. '}No quote — the item was not taken from speech.</div>
+      ) : anchor?.kind === 'added' ? (
+        <div>{clock ? `Added at ${clock}. ` : ''}No quote — the item was not taken from speech.</div>
+      ) : (
+        <>
+          <div className="action-item-context-label">Said by {displayOwner(speaker, participants)}{clock ? ` · ${clock}` : ''}</div>
+          {quote
+            ? <blockquote className={`action-item-quote${speaker === 'Them' ? ' action-item-quote--them' : ''}`}>«{quote}»</blockquote>
+            : <div className="action-item-context-muted">The exact words were not saved for this item.</div>}
+        </>
+      )}
+      {warnBox}
+      {(target !== 'none' || canPlay || (blocked && !blocked.warn)) && (
+        <div className="action-item-context-acts">
+          {target === 'jump' && source && (
+            <button type="button" className="action-item-chip" disabled={!!blocked} title={blocked?.text} onClick={() => source.go(item)}>Show in transcript</button>
+          )}
+          {findControls}
+          {canPlay && <button type="button" className="action-item-chip" onClick={() => source!.play!(item)}>▶ Play from here</button>}
+          {blocked && !blocked.warn && target !== 'none' && <span className="action-item-context-muted">{blocked.text}</span>}
+        </div>
+      )}
+    </div>
+  );
+};
+
+const ActionItemsPanel: React.FC<ActionItemsPanelProps> = ({ items, participants, variant, enabled, offReason, onParticipantsChange, onAdd, onEdit, onDelete, onSendToPraxis, embedded, onEnableAuto, source }) => {
   const [adding, setAdding] = useState(false);
   const compact = variant === 'compact';
   const exportEnabled = Boolean(onSendToPraxis) && !compact;
@@ -187,7 +331,37 @@ const ActionItemsPanel: React.FC<ActionItemsPanelProps> = ({ items, participants
     if (next.has(id)) next.delete(id); else next.add(id);
     return next;
   });
-  const addForm = onAdd && adding ? <AddItemForm onAdd={onAdd} onCancel={() => setAdding(false)} /> : null;
+
+  // AUG-214: context blocks (never in the compact variant)
+  const rich = !compact;
+  const nav = rich ? source : undefined;
+  const [expanded, setExpanded] = useState<Set<string>>(new Set());
+  const toggleExpanded = (id: string) => setExpanded((prev) => {
+    const next = new Set(prev);
+    if (next.has(id)) next.delete(id); else next.add(id);
+    return next;
+  });
+  const listRef = useRef<HTMLUListElement>(null);
+  const revealId = nav?.reveal?.id;
+  const revealN = nav?.reveal?.n;
+  useEffect(() => {
+    if (!revealId) return;
+    setExpanded((prev) => (prev.has(revealId) ? prev : new Set(prev).add(revealId)));
+    const frame = requestAnimationFrame(() => {
+      const el = Array.from(listRef.current?.children ?? []).find((c) => (c as HTMLElement).dataset.itemId === revealId) as HTMLElement | undefined;
+      const list = listRef.current;
+      if (el && list) {
+        // Scroll the list itself: scrollIntoView on the card would also move overflow-hidden ancestors of the live panel.
+        const r = el.getBoundingClientRect();
+        const c = list.getBoundingClientRect();
+        list.scrollTo({ top: list.scrollTop + (r.top - c.top) - list.clientHeight / 2 + r.height / 2, behavior: scrollBehavior() });
+        list.scrollIntoView({ block: 'nearest', behavior: scrollBehavior() }); // session card: bring the list back into the page view
+      }
+      el?.querySelector<HTMLElement>('.action-item-ctx-toggle')?.focus({ preventScroll: true });
+    });
+    return () => cancelAnimationFrame(frame);
+  }, [revealId, revealN]);
+  const addForm =onAdd && adding ? <AddItemForm onAdd={onAdd} onCancel={() => setAdding(false)} /> : null;
   const itemsOff = offReason === 'items';
   const disabledHint = offReason === 'manual'
     ? `Live text is off, so action items are not collected automatically.${onAdd ? ' Add them by hand or with → Action item in ASSISTANT.' : ''}`
@@ -254,26 +428,22 @@ const ActionItemsPanel: React.FC<ActionItemsPanelProps> = ({ items, participants
         </div>
       ) : <div className="action-items-hint">{disabledHint}</div>)}
       {enabled !== false && items.length === 0 && <div className="action-items-empty">{emptyText}</div>}
-      <ul className="action-items-list">
+      <ul className="action-items-list" ref={listRef}>
         {/* Newest first: right under the Add form, so a just-added item is always in view. */}
-        {[...items].reverse().map((item) => (
-          <li key={item.id} className={`action-item${item.locked ? ' action-item--edited' : ''}${exportEnabled ? ' action-item--selectable' : ''}`} title={item.locked ? 'Edited by you — the model will not change it' : undefined}>
-            {exportEnabled && (
-              <input type="checkbox" className="action-item-check" aria-label="Select action item" checked={selected.has(item.id)} onChange={() => toggleOne(item.id)} />
-            )}
-            <div className="action-item-body">
-            <InlineField className="action-item-text" multiline value={item.text} ariaLabel="Action item" onCommit={(v) => onEdit(item.id, { text: v })} />
-            <div className="action-item-meta">
-              {item.manual ? (
-                <span className="action-item-source action-item-source--manual" title="Added by you">Manual</span>
-              ) : (
-                <span className={`action-item-source action-item-source--${item.source.toLowerCase()}`} title="Said by">{item.source}</span>
-              )}
-              <span className="action-item-arrow" aria-hidden="true">→</span>
-              <InlineField className="action-item-owner" value={displayOwner(item.owner, participants)} placeholder="Owner" ariaLabel="Owner" allowEmpty onCommit={(v) => onEdit(item.id, { owner: v })} />
-              {item.assistant && <span className="live-ai-tag" title="Added by the meeting assistant">AI</span>}
-              {item.praxis && (
-                <span className="action-item-praxis-badge" title={`Sent to Praxis: ${item.praxis.projectPath}`}>{shortTaskId(item.praxis.taskId)}</span>
+        {[...items].reverse().map((item) => {
+          const atMs = item.anchor?.atMs;
+          const clock = typeof atMs === 'number' ? formatClock(atMs) : null;
+          const quote = item.anchor?.quote ?? '';
+          const open = rich && expanded.has(item.id);
+          const target = nav ? nav.target(item) : 'none';
+          const blocked = nav && target !== 'none' ? nav.blocked(item) : null;
+          // AUG-214: summary -> start of the quote -> "Added by hand at" -> no row at all
+          const summaryRow = item.context ? item.context : quote ? `«${quote}»` : item.manual && clock ? `Added by hand at ${clock}` : '';
+          const owned = rich && nav?.ownerId === item.id;
+          const rightControls = (
+            <>
+              {rich && (
+                <button type="button" className="action-item-chip action-item-ctx-toggle" aria-expanded={open} onClick={() => toggleExpanded(item.id)}>Context {open ? '▴' : '▾'}</button>
               )}
               {exportEnabled && onSendToPraxis && (
                 <button type="button" className="action-item-praxis" onClick={() => onSendToPraxis([item.id], 'separate')} title="Create a Praxis task from this item">→ Praxis</button>
@@ -282,10 +452,39 @@ const ActionItemsPanel: React.FC<ActionItemsPanelProps> = ({ items, participants
                 <button type="button" className="action-item-praxis action-item-praxis--compact" onClick={() => onSendToPraxis?.([item.id], 'separate')} title="Send to Praxis" aria-label="Send to Praxis">→</button>
               )}
               <button type="button" className="action-item-delete" onClick={() => onDelete(item.id)} aria-label="Delete action item" title="Delete">×</button>
-            </div>
-            </div>
-          </li>
-        ))}
+            </>
+          );
+          return (
+            <li key={item.id} data-item-id={item.id} className={`action-item${item.locked ? ' action-item--edited' : ''}${exportEnabled ? ' action-item--selectable' : ''}${owned ? ' action-item--owned' : ''}`} title={item.locked ? 'Edited by you — the model will not change it' : undefined}>
+              {exportEnabled && (
+                <input type="checkbox" className="action-item-check" aria-label="Select action item" checked={selected.has(item.id)} onChange={() => toggleOne(item.id)} />
+              )}
+              <div className="action-item-body">
+              <InlineField className="action-item-text" multiline value={item.text} ariaLabel="Action item" onCommit={(v) => onEdit(item.id, { text: v })} />
+              {rich && summaryRow && <div className="action-item-summary">{summaryRow}</div>}
+              {rich && item.locked?.context && <div className="action-item-edited-note">Edited by you</div>}
+              <div className="action-item-meta">
+                {item.manual ? (
+                  <span className="action-item-source action-item-source--manual" title="Added by you">Manual</span>
+                ) : (
+                  <span className={`action-item-source action-item-source--${item.source.toLowerCase()}`} title="Said by">{item.source}</span>
+                )}
+                <span className="action-item-arrow" aria-hidden="true">→</span>
+                <InlineField className="action-item-owner" value={displayOwner(item.owner, participants)} placeholder="Owner" ariaLabel="Owner" allowEmpty onCommit={(v) => onEdit(item.id, { owner: v })} />
+                {item.assistant && <span className="live-ai-tag" title="Added by the meeting assistant">AI</span>}
+                {item.praxis && (
+                  <span className="action-item-praxis-badge" title={`Sent to Praxis: ${item.praxis.projectPath}`}>{shortTaskId(item.praxis.taskId)}</span>
+                )}
+                {nav && clock && target === 'jump' && (
+                  <button type="button" className="action-item-chip" disabled={!!blocked} title={blocked ? blocked.text : 'Show in transcript'} aria-label={`Show in transcript, ${clock}`} onClick={() => nav.go(item)}>{clock} ↗</button>
+                )}
+                {rich ? <span className="action-item-meta-right">{rightControls}</span> : rightControls}
+              </div>
+              {open && <ItemContextBlock item={item} participants={participants} clock={clock} source={nav} target={target} blocked={blocked} onEdit={onEdit} />}
+              </div>
+            </li>
+          );
+        })}
       </ul>
     </aside>
   );

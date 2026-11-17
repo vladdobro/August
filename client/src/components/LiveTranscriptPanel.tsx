@@ -2,6 +2,7 @@ import React, { useCallback, useEffect, useRef, useState, useSyncExternalStore }
 import HoldToStopButton from './HoldToStopButton';
 import type { LiveStatus, Speaker } from '../services/liveTranscriptionClient';
 import { liveColumnsStore } from '../services/liveColumnsStore';
+import { scrollBehavior } from '../services/actionItemSource';
 
 export interface LiveLinePart {
   id?: string;
@@ -9,6 +10,8 @@ export interface LiveLinePart {
   correctedAt?: number;
   /// AUG-164: text as recognized, before the first online correction; shown on hover.
   original?: string;
+  /// AUG-214: ms from the recording start when the part arrived; places items that carry only a time (added by hand).
+  at?: number;
 }
 
 export interface LiveLine {
@@ -49,6 +52,10 @@ interface LiveTranscriptPanelProps {
   mutedHint?: boolean;
   mode?: 'live' | 'meeting'; // AUG-200: 'meeting' = recording without Live Text (action items + assistant only)
   onStartLive?: () => void;
+  // AUG-214: the live part an action item was taken from; its line is highlighted and scrolled into view.
+  sourcePartId?: string | null;
+  sourceNonce?: number; // changes on every jump, so a repeated jump to the same line scrolls again
+  onSourceBack?: () => void; // click / Enter on the highlighted line
 }
 
 const STATUS_LABEL: Record<LiveStatus, string> = {
@@ -70,7 +77,7 @@ const subscribeNarrow = (cb: () => void) => {
 const getNarrow = () => narrowMq?.matches ?? false;
 
 const LiveTranscriptPanel: React.FC<LiveTranscriptPanelProps> = ({
-  lines, status, error, warning, micUnavailable, onPause, onResume, onCopyAll, onCopyAndClear, skipClearConfirmation, onClose, onStop, onClearAll, elapsed, onEndRecording, onCompact, aside, columns, ctxCount, onCtx, micMuted, onToggleMute, mutedHint, mode = 'live', onStartLive,
+  lines, status, error, warning, micUnavailable, onPause, onResume, onCopyAll, onCopyAndClear, skipClearConfirmation, onClose, onStop, onClearAll, elapsed, onEndRecording, onCompact, aside, columns, ctxCount, onCtx, micMuted, onToggleMute, mutedHint, mode = 'live', onStartLive, sourcePartId, sourceNonce, onSourceBack,
 }) => {
   const bodyRef = useRef<HTMLDivElement>(null);
   const [autoScroll, setAutoScroll] = useState(true);
@@ -118,12 +125,31 @@ const LiveTranscriptPanel: React.FC<LiveTranscriptPanelProps> = ({
     setAutoScroll(atBottom);
   }, []);
 
+  // AUG-214: after Clear nothing is left to stay on, so the next lines are followed again (a source jump turns auto-scroll off).
+  useEffect(() => { if (lines.length === 0) setAutoScroll(true); }, [lines.length]);
+
   const jumpToLive = () => {
     setAutoScroll(true);
     if (bodyRef.current) {
       bodyRef.current.scrollTop = bodyRef.current.scrollHeight;
     }
   };
+
+  // AUG-214: jump to the source line of an action item. Auto-scroll is switched off so the next chunk does not pull the view back down; "↓ Live" returns.
+  const sourceIndex = sourcePartId ? lines.findIndex((l) => !l.kind && l.parts?.some((p) => p.id === sourcePartId)) : -1;
+  useEffect(() => {
+    if (!sourcePartId) return;
+    setAutoScroll(false);
+    const frame = requestAnimationFrame(() => {
+      const body = bodyRef.current;
+      const el = body?.querySelector<HTMLElement>('.live-line--source');
+      if (!body || !el) return;
+      const r = el.getBoundingClientRect();
+      const c = body.getBoundingClientRect();
+      body.scrollTo({ top: body.scrollTop + (r.top - c.top) - body.clientHeight / 2 + r.height / 2, behavior: scrollBehavior() });
+    });
+    return () => cancelAnimationFrame(frame);
+  }, [sourcePartId, sourceNonce]);
 
   const handleConfirm = () => {
     if (confirmAction === 'clearAll') onClearAll();
@@ -246,7 +272,18 @@ const LiveTranscriptPanel: React.FC<LiveTranscriptPanelProps> = ({
             {lines.map((line, i) => line.kind === 'gap' ? (
               <div key={i} className="live-line live-line--gap">{line.text}</div>
             ) : (
-              <div key={i} className="live-line">
+              <div
+                key={i}
+                className={`live-line${i === sourceIndex ? ' live-line--source source-line' : ''}`}
+                {...(i === sourceIndex ? {
+                  role: 'button',
+                  tabIndex: 0,
+                  title: 'Back to the action item',
+                  onClick: onSourceBack,
+                  onKeyDown: (e: React.KeyboardEvent) => { if (e.key === 'Enter' || e.key === ' ') { e.preventDefault(); onSourceBack?.(); } },
+                } : {})}
+              >
+                {i === sourceIndex && <div className="source-line-tag-row"><span className="source-line-tag">Source of action item</span></div>}
                 <span className={`live-line-speaker live-line-speaker--${line.speaker.toLowerCase()}`}>
                   {line.speaker}:
                 </span>
