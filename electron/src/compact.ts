@@ -159,6 +159,8 @@ export class CompactController {
   } | null = null;
   private panels: Partial<Record<PanelKind, BrowserWindow>> = {};
   private panelOn: Record<PanelKind, boolean> = { copilot: false, assistant: false };
+  /// Panels that were open when compact mode was left; they reopen on the next compact entry (app lifetime only).
+  private panelsWanted: Record<PanelKind, boolean> = { copilot: false, assistant: false };
   private savedPanels: PanelState; // saved bounds per panel (AUG-199), loaded from window-state.json
   private panelTimers: Partial<Record<PanelKind, ReturnType<typeof setTimeout>>> = {};
   private readonly onDisplaysChanged = (): void => {
@@ -296,9 +298,13 @@ export class CompactController {
         }
       }
 
+      const enteredCompact = this.current === 'none' && req.shape !== 'none';
       if (req.shape !== this.current) {
         this.current = req.shape;
         this.opts.onShapeChange(this.current);
+      }
+      if (enteredCompact) {
+        for (const k of PANEL_KINDS) if (this.panelsWanted[k]) this.setPanel(k, true);
       }
       if (this.current !== 'none') this.relayoutPanels();
       return { ok: true, shape: this.current };
@@ -453,6 +459,7 @@ export class CompactController {
   private restore(): void {
     const win = this.opts.window;
     this.destroyGhost();
+    if (this.current !== 'none') this.panelsWanted = { ...this.panelOn };
     const hadPanels = this.panelOn.copilot || this.panelOn.assistant;
     this.destroyPanels();
     if (hadPanels) this.notifyPanels();

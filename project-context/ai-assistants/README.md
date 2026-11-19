@@ -55,7 +55,7 @@
     - Keywords = content words of the last 2 lines minus ru/en stopwords, ≤ 6 of them.
     - Calls `search_project_context(query)` and `query_project_graph(find, top keyword)`.
     - A card is shown only when the top hit is `[exact]` or ≥ 2 `[partial]` hits share one route.
-    - Card: route name, up to 2 matching `L<N>` lines (≤ 160 chars each), buttons Open route (fetches `read_context_route tldr` on click), Ask assistant (prefills the active session), Dismiss (suppresses that route for the rest of the meeting).
+    - Card: route name, up to 2 matching `L<N>` lines (≤ 160 chars each), buttons Open route (fetches `read_context_route tldr` on click), Ask assistant (sends the question to the active session at once; prefills the input only when it cannot be sent now), Dismiss (suppresses that route for the rest of the meeting).
     - Debounce: ≥ 20 s between searches per liveKey, ≤ 1 card per route per 5 min, ≤ 12 cards per hour, dedupe by route+line.
     - Latency ≤ 1 s after the transcript line. Cost 0, nothing leaves the machine, no consent needed.
   - V2 "Always-on Claude copilot": a persistent Claude session receives every ~45 s window and decides itself.

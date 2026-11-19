@@ -552,12 +552,19 @@ const actions = {
       .then((r) => set(mapHint(state, path, hintId, (h) => ({ ...h, routeText: r.text || 'error' }))))
       .catch(() => set(mapHint(state, path, hintId, (h) => ({ ...h, routeText: 'error' }))));
   },
-  /// Ask: prefills the ASSISTANT input and shows that column.
-  askAboutHint(hintId: string): void {
+  /// Ask: shows the ASSISTANT column and sends the question at once. When it cannot be sent now (input disabled,
+  /// or an answer is still streaming) it only prefills the input instead. Returns true when the question was sent.
+  askAboutHint(hintId: string): boolean {
     const hint = copilotView().hints.find((h) => h.hintId === hintId);
-    if (!hint) return;
-    set({ ...state, assistPrefill: { text: hintAskText(hint), nonce: Date.now() } });
+    if (!hint) return false;
     liveColumnsStore.show('as');
+    const tab = activeTab();
+    if (transport && tab && !tab.streamingAskId && inputDisabledReason(state) === null) {
+      actions.ask(hintAskText(hint));
+      return true;
+    }
+    set({ ...state, assistPrefill: { text: hintAskText(hint), nonce: Date.now() } });
+    return false;
   },
 };
 
@@ -677,15 +684,10 @@ function handleChannel(msg: AssistantChannelMessage): void {
     case 'to-task': actions.toTask(a.askId); break;
     case 'copy': actions.copy(a.askId); break;
     case 'copilot-dismiss': actions.dismissHint(a.hintId); break;
-    case 'copilot-ask': {
-      const hint = copilotView().hints.find((h) => h.hintId === a.hintId);
-      if (hint && inputDisabledReason(state) === null) actions.ask(hintAskText(hint));
-      else {
-        compactStore.requestExpand();
-        actions.askAboutHint(a.hintId);
-      }
+    case 'copilot-ask':
+      // Sent at once when possible; otherwise the full window opens with the question prefilled.
+      if (!actions.askAboutHint(a.hintId)) compactStore.requestExpand();
       break;
-    }
     case 'show-copilot':
       compactStore.requestExpand();
       liveColumnsStore.show('cp');
@@ -693,7 +695,15 @@ function handleChannel(msg: AssistantChannelMessage): void {
   }
 }
 
-if (typeof BroadcastChannel !== 'undefined' && typeof window !== 'undefined') {
+/// Only the main app window owns the assistant state. The ghost and the compact panel windows load the same bundle
+/// (main.tsx imports App), so this module runs there too with an empty state; if it joined the channel it would
+/// answer the panels' `hello` with that empty snapshot ("Copilot · Off") until the main window published again.
+const isSatelliteWindow = (): boolean => {
+  const params = new URLSearchParams(window.location.search);
+  return params.has('panel') || params.has('ghost');
+};
+
+if (typeof BroadcastChannel !== 'undefined' && typeof window !== 'undefined' && !isSatelliteWindow()) {
   try {
     channel = new BroadcastChannel(ASSISTANT_CHANNEL);
     channel.onmessage = (e: MessageEvent<AssistantChannelMessage>) => handleChannel(e.data);
